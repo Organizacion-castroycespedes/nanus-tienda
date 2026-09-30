@@ -19,7 +19,6 @@ import {
   Calculator,
   Calendar,
   ClipboardList,
-  CreditCard,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -1445,13 +1444,15 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               ) : null}
               {isPosRoute ? (
                 <HeaderPeripheralStatusGroup>
-                  <HeaderPeripheralStatus
-                    label="Balanza"
-                    Icon={Weight}
-                    status={peripheralStatusLabel(scaleDevice)}
-                    tone={peripheralStatusTone(scaleDevice)}
-                    detail={peripheralStatusDetail(scaleDevice)}
-                  />
+                  {scaleDevice ? (
+                    <HeaderPeripheralStatus
+                      label="Balanza"
+                      Icon={Weight}
+                      status={peripheralStatusLabel(scaleDevice)}
+                      tone={peripheralStatusTone(scaleDevice)}
+                      detail={peripheralStatusDetail(scaleDevice)}
+                    />
+                  ) : null}
                   <HeaderPeripheralStatus
                     label="Impresora"
                     Icon={Printer}
@@ -1460,20 +1461,15 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                     detail={printerHeaderDetail}
                     pulse={printerSocketStatus === "CONNECTING"}
                   />
-                  <HeaderPeripheralStatus
-                    label="Escáner"
-                    Icon={ScanBarcode}
-                    status={peripheralStatusLabel(scannerDevice)}
-                    tone={peripheralStatusTone(scannerDevice)}
-                    detail={peripheralStatusDetail(scannerDevice)}
-                  />
-                  <HeaderPeripheralStatus
-                    label="Datáfono"
-                    Icon={CreditCard}
-                    status="Sin config."
-                    tone="idle"
-                    detail="No configurado en esta terminal"
-                  />
+                  {scannerDevice ? (
+                    <HeaderPeripheralStatus
+                      label="Escáner"
+                      Icon={ScanBarcode}
+                      status={peripheralStatusLabel(scannerDevice)}
+                      tone={peripheralStatusTone(scannerDevice)}
+                      detail={peripheralStatusDetail(scannerDevice)}
+                    />
+                  ) : null}
                   <HeaderPeripheralStatus
                     label="Red"
                     Icon={isNetworkOffline ? WifiOff : Wifi}

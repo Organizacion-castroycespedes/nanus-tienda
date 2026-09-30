@@ -15,8 +15,12 @@ import {
 } from "../../reporteria/services/reporting.service";
 import { printReporteriaSaleTicket } from "../../reporteria/direct-print";
 import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoice-direct-print";
-import { requestElectronicBilling } from "../../reporteria/services/electronic-billing.service";
-import { refreshOperationalSaleBillingStatus } from "../../operational-sales/services/operational-sales.service";
+import {
+  describeElectronicBillingFailure,
+  requestElectronicBilling,
+  type ElectronicBillingOnlineResult,
+  type ElectronicBillingRequestResult,
+} from "../../reporteria/services/electronic-billing.service";
 import {
   ELECTRONIC_DOCUMENT_STATUSES,
   type ElectronicInvoicePrintDataset,
@@ -24,118 +28,162 @@ import {
 import type { ToastVariant } from "../../../components/design-system/Toast";
 import { ApiError } from "../../../lib/request";
 
-const ELECTRONIC_INVOICE_POLL_INTERVAL_MS = 1_500;
-const ELECTRONIC_INVOICE_MAX_ATTEMPTS = 20;
-
-const ELECTRONIC_INVOICE_TERMINAL_STATUSES = new Set<
-  ElectronicInvoicePrintDataset["status"]
->([
-  ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED,
-  ELECTRONIC_DOCUMENT_STATUSES.REJECTED,
-  ELECTRONIC_DOCUMENT_STATUSES.TECHNICAL_ERROR,
-  ELECTRONIC_DOCUMENT_STATUSES.CANCELLED,
-]);
-
 const isAbortError = (error: unknown) =>
   error instanceof Error && error.name === "AbortError";
 
 const abortError = () => {
-  const error = new Error("Electronic invoice polling aborted");
+  const error = new Error("Electronic billing workflow aborted");
   error.name = "AbortError";
   return error;
 };
 
-const waitForDelay = (delayMs: number, signal?: AbortSignal) =>
-  new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(abortError());
-      return;
-    }
+const throwIfAborted = (signal?: AbortSignal) => {
+  if (signal?.aborted) {
+    throw abortError();
+  }
+};
 
-    const handleAbort = () => {
-      window.clearTimeout(timeoutId);
-      signal?.removeEventListener("abort", handleAbort);
-      reject(abortError());
-    };
-    const timeoutId = window.setTimeout(() => {
-      signal?.removeEventListener("abort", handleAbort);
-      resolve();
-    }, delayMs);
-    signal?.addEventListener("abort", handleAbort, { once: true });
+const onlineResult = (
+  status: ElectronicBillingOnlineResult["status"],
+  overrides: Partial<ElectronicBillingOnlineResult> = {},
+): ElectronicBillingOnlineResult => ({
+  status,
+  electronicDocumentId: null,
+  documentType: "INVOICE",
+  fullNumber: null,
+  cufe: null,
+  cude: null,
+  failureClass: null,
+  errorCode: null,
+  errorMessage: null,
+  failures: [],
+  message: "",
+  ...overrides,
+});
+
+const fromRequestResult = (
+  request: ElectronicBillingRequestResult,
+): ElectronicBillingOnlineResult | null => {
+  if (request.electronicBilling) {
+    return request.electronicBilling;
+  }
+  if (request.result === "DOCUMENT_EXISTS") {
+    return null;
+  }
+  if (request.result !== "REQUESTED") {
+    const message = request.reason ?? "La venta no es elegible para facturación electrónica.";
+    return onlineResult("REJECTED", {
+      failureClass: "VALIDATION",
+      errorCode: request.result,
+      errorMessage: message,
+      message,
+    });
+  }
+  return onlineResult("PROCESSING", {
+    message: "El documento electrónico se sigue procesando. Consulte el estado en unos minutos.",
   });
+};
 
-export type ElectronicInvoicePollingDependencies = {
+export type ElectronicBillingResolutionDependencies = {
+  request: (saleId: string) => Promise<ElectronicBillingRequestResult>;
   loadInvoice: (
     saleId: string,
     signal?: AbortSignal,
   ) => Promise<ElectronicInvoicePrintDataset>;
-  refreshStatus: (saleId: string, signal?: AbortSignal) => Promise<unknown>;
-  wait: (delayMs: number, signal?: AbortSignal) => Promise<void>;
 };
 
-export const waitForElectronicInvoice = async (
+export type ElectronicBillingResolution = {
+  online: ElectronicBillingOnlineResult;
+  invoice: ElectronicInvoicePrintDataset | null;
+};
+
+/**
+ * Resolves the fiscal result without polling: the API already waited for the
+ * provider answer. Only an ACCEPTED document needs one read of the print data.
+ */
+export const resolveElectronicBillingOutcome = async (
   saleId: string,
-  options: {
-    signal?: AbortSignal;
-    maxAttempts?: number;
-    intervalMs?: number;
-  } = {},
-  dependencies: ElectronicInvoicePollingDependencies = {
+  initial: ElectronicBillingOnlineResult | null | undefined,
+  options: { signal?: AbortSignal } = {},
+  dependencies: ElectronicBillingResolutionDependencies = {
+    request: requestElectronicBilling,
     loadInvoice: getElectronicInvoicePrintData,
-    refreshStatus: refreshOperationalSaleBillingStatus,
-    wait: waitForDelay,
   },
-) => {
-  const maxAttempts = options.maxAttempts ?? ELECTRONIC_INVOICE_MAX_ATTEMPTS;
-  const intervalMs = options.intervalMs ?? ELECTRONIC_INVOICE_POLL_INTERVAL_MS;
-  let refreshAttempted = false;
-  let latestInvoice: ElectronicInvoicePrintDataset | null = null;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (options.signal?.aborted) {
-      throw abortError();
-    }
-
-    try {
-      latestInvoice = await dependencies.loadInvoice(saleId, options.signal);
-    } catch (error) {
-      if (isAbortError(error)) {
-        throw error;
-      }
-      if (!(error instanceof ApiError) || error.status !== 404) {
-        throw error;
-      }
-    }
-
-    if (
-      latestInvoice &&
-      ELECTRONIC_INVOICE_TERMINAL_STATUSES.has(latestInvoice.status)
-    ) {
-      return latestInvoice;
-    }
-
-    if (
-      latestInvoice?.status === ELECTRONIC_DOCUMENT_STATUSES.PROCESSING &&
-      !refreshAttempted
-    ) {
-      refreshAttempted = true;
-      try {
-        await dependencies.refreshStatus(saleId, options.signal);
-      } catch (error) {
-        if (isAbortError(error)) {
-          throw error;
-        }
-        // Background reconciliation remains active. Continue bounded polling.
-      }
-      continue;
-    }
-
-    if (attempt < maxAttempts - 1) {
-      await dependencies.wait(intervalMs, options.signal);
-    }
+): Promise<ElectronicBillingResolution> => {
+  throwIfAborted(options.signal);
+  let online = initial ?? null;
+  let documentExists = false;
+  if (!online) {
+    const request = await dependencies.request(saleId);
+    throwIfAborted(options.signal);
+    online = fromRequestResult(request);
+    documentExists = request.result === "DOCUMENT_EXISTS" && !online;
   }
 
-  return latestInvoice;
+  if (online && online.status !== "ACCEPTED") {
+    return { online, invoice: null };
+  }
+
+  let invoice: ElectronicInvoicePrintDataset | null = null;
+  try {
+    invoice = await dependencies.loadInvoice(saleId, options.signal);
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    if (!(error instanceof ApiError) || error.status !== 404) {
+      console.error("Error al cargar la factura electrónica aceptada:", error);
+    }
+  }
+  throwIfAborted(options.signal);
+
+  if (online) {
+    return { online, invoice };
+  }
+  if (documentExists && invoice?.status === ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED) {
+    return {
+      online: onlineResult("ACCEPTED", {
+        electronicDocumentId: invoice.electronicDocumentId,
+        fullNumber: invoice.documentNumber,
+        cufe: invoice.cufe,
+        message: "Factura electrónica aceptada por la DIAN.",
+      }),
+      invoice,
+    };
+  }
+  return {
+    online: onlineResult("PROCESSING", {
+      message: "El documento electrónico se sigue procesando. Consulte el estado en unos minutos.",
+    }),
+    invoice: null,
+  };
+};
+
+export const buildElectronicBillingNotice = (
+  online: ElectronicBillingOnlineResult,
+): { message: string; variant: ToastVariant } | null => {
+  if (online.status === "ACCEPTED") {
+    return null;
+  }
+  if (online.status === "REJECTED") {
+    const failure = describeElectronicBillingFailure(online);
+    return {
+      message: `La venta se guardó, pero la factura electrónica fue rechazada. ${failure.text}`.trim(),
+      variant: "error",
+    };
+  }
+  if (online.status === "QUEUED_NETWORK") {
+    return {
+      message:
+        "La venta se guardó. Sin conexión con facturación electrónica: la factura quedó en cola y se enviará automáticamente.",
+      variant: "warning",
+    };
+  }
+  return {
+    message:
+      "La venta se guardó. La factura electrónica sigue en proceso con la DIAN; consulte el estado en unos minutos.",
+    variant: "warning",
+  };
 };
 
 export type PdfPreviewConfig = {
@@ -153,6 +201,7 @@ export type ExecuteSalePrintWorkflowParams = {
   terminalId?: string | null;
   electronicBillingEnabled?: boolean;
   electronicBillingMode?: "AUTOMATIC" | "ON_DEMAND";
+  electronicBilling?: ElectronicBillingOnlineResult | null;
   showToast?: (
     message: string,
     variant: ToastVariant
@@ -174,6 +223,7 @@ export const executeSalePrintWorkflow = async (
     terminalId,
     electronicBillingEnabled = true,
     electronicBillingMode,
+    electronicBilling,
     showToast,
   } = params;
   const { setPdfConfig, setIsBillingProcessing, signal } = options;
@@ -219,16 +269,10 @@ export const executeSalePrintWorkflow = async (
 
   if (isElectronicBillingActive) {
     setIsBillingProcessing(true);
-    let invoiceData: ElectronicInvoicePrintDataset | null = null;
+    let resolution: ElectronicBillingResolution | null = null;
     let cancelled = false;
     try {
-      const request = await requestElectronicBilling(saleId);
-      if (!["REQUESTED", "DOCUMENT_EXISTS"].includes(request.result)) {
-        throw new Error(
-          request.reason ?? "La venta no es elegible para facturación electrónica.",
-        );
-      }
-      invoiceData = await waitForElectronicInvoice(saleId, { signal });
+      resolution = await resolveElectronicBillingOutcome(saleId, electronicBilling, { signal });
     } catch (err) {
       cancelled = isAbortError(err);
       if (!cancelled) {
@@ -242,8 +286,9 @@ export const executeSalePrintWorkflow = async (
       return;
     }
 
-    if (invoiceData?.status === ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED) {
-      if (printInvoiceMode === PARAMETER_MODES.ON_DEMAND) {
+    const invoiceData = resolution?.invoice ?? null;
+    if (resolution?.online.status === "ACCEPTED") {
+      if (printInvoiceMode === PARAMETER_MODES.ON_DEMAND || !invoiceData) {
         setPdfConfig({
           title: `Factura electrónica ${saleId.slice(0, 8)}`,
           fileName: `factura-electronica-${saleId}.pdf`,
@@ -276,17 +321,21 @@ export const executeSalePrintWorkflow = async (
         }
       }
     } else {
-      showToast?.(
-        "La venta se guardó, pero la factura electrónica no fue emitida de inmediato.",
-        "warning"
-      );
+      const notice = resolution
+        ? buildElectronicBillingNotice(resolution.online)
+        : {
+            message: "La venta se guardó, pero la factura electrónica no fue emitida de inmediato.",
+            variant: "warning" as ToastVariant,
+          };
+      if (notice) {
+        showToast?.(notice.message, notice.variant);
+      }
       if (printTicketMode === PARAMETER_MODES.ON_DEMAND) {
         setPdfConfig({
           title: `Ticket de venta ${saleId.slice(0, 8)}`,
           fileName: `ticket-venta-${saleId}.pdf`,
           getPdf: () => getPosSaleTicket(saleId),
-          description:
-            "Facturación pendiente. Vista previa del Ticket de Venta.",
+          description: notice?.message ?? "Facturación pendiente. Vista previa del Ticket de Venta.",
           allowPrint: true,
         });
       } else if (printTicketMode === PARAMETER_MODES.AUTOMATIC) {

@@ -2674,6 +2674,7 @@ export const PosScreen = () => {
           branding.electronicBillingMode === PARAMETER_MODES.ON_DEMAND
             ? PARAMETER_MODES.ON_DEMAND
             : PARAMETER_MODES.AUTOMATIC,
+        electronicBilling: sale.electronicBilling ?? null,
         showToast,
       });
 
@@ -3338,6 +3339,7 @@ export const PosScreen = () => {
           getPdf={pdfConfig.getPdf}
           description={pdfConfig.description}
           allowPrint={pdfConfig.allowPrint ?? true}
+          variant="ticket"
           onClose={closePdfModal}
         />
       ) : null}

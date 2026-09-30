@@ -16,7 +16,13 @@ type PdfPreviewModalProps = {
   onDownloadPdf?: () => void;
   allowPrint?: boolean;
   pagination?: { page: number; totalPages: number; onPageChange: (page: number) => void };
+  variant?: "document" | "ticket";
 };
+
+type PdfFitMode = "page" | "width";
+
+const buildPdfViewerUrl = (objectUrl: string, fitMode: PdfFitMode) =>
+  `${objectUrl}#toolbar=1&navpanes=0&view=${fitMode === "page" ? "Fit" : "FitH"}`;
 
 export const PdfPreviewModal = ({
   isOpen,
@@ -29,8 +35,11 @@ export const PdfPreviewModal = ({
   onDownloadPdf,
   allowPrint = false,
   pagination,
+  variant = "document",
 }: PdfPreviewModalProps) => {
+  const isTicket = variant === "ticket";
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const [fitMode, setFitMode] = useState<PdfFitMode>(isTicket ? "page" : "width");
   const [blob, setBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +50,7 @@ export const PdfPreviewModal = ({
       setBlob(null);
       setError(null);
       setFrameReady(false);
+      setFitMode(isTicket ? "page" : "width");
       return;
     }
 
@@ -69,7 +79,7 @@ export const PdfPreviewModal = ({
     return () => {
       active = false;
     };
-  }, [getPdf, isOpen]);
+  }, [getPdf, isOpen, isTicket]);
 
   const objectUrl = useMemo(() => {
     if (!blob) {
@@ -96,13 +106,25 @@ export const PdfPreviewModal = ({
       title={title}
       description={description}
       onClose={onClose}
-      size="xl"
+      size={isTicket ? "lg" : "xl"}
       className="max-h-[calc(100vh-3rem)] overflow-y-auto"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
             Cerrar
           </Button>
+          {isTicket ? (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setFrameReady(false);
+                setFitMode((current) => (current === "page" ? "width" : "page"));
+              }}
+              disabled={!objectUrl || loading}
+            >
+              {fitMode === "page" ? "Ajustar al ancho" : "Ver completo"}
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             onClick={() => {
@@ -152,11 +174,12 @@ export const PdfPreviewModal = ({
           </div>
         ) : objectUrl ? (
           <iframe
+            key={fitMode}
             ref={frameRef}
             onLoad={() => setFrameReady(true)}
-            src={objectUrl}
+            src={isTicket ? buildPdfViewerUrl(objectUrl, fitMode) : objectUrl}
             title={title}
-            className="h-[70vh] min-h-[520px] w-full bg-white"
+            className={`${isTicket ? "h-[calc(100vh-14rem)]" : "h-[70vh]"} min-h-[520px] w-full bg-white`}
           />
         ) : (
           <div className="flex h-[520px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">

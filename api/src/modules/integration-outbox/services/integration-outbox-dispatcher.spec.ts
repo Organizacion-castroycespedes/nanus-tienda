@@ -200,3 +200,112 @@ test("dispatcher fails closed for a stale sale snapshot before Billing", async (
   assert.equal(providerHandoff, false);
   assert.match(failureCode, /OUTBOX_EVENT_INELIGIBLE_SNAPSHOT/);
 });
+
+test("runOnceForEvent dispatches inline and returns the fiscal outcome", async () => {
+  const event = {
+    id: randomUUID(),
+    event_id: randomUUID(),
+    event_type: "SALE_COMPLETED_FOR_ELECTRONIC_BILLING",
+    schema_version: 1,
+    tenant_id: randomUUID(),
+    correlation_id: randomUUID(),
+    source_type: "SALE",
+    source_id: randomUUID(),
+    payload: {
+      sale: { saleId: randomUUID() },
+      customer: {},
+      lines: [],
+      taxes: [],
+      payments: [],
+      totals: {
+        subtotalAmount: "0.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        totalAmount: "0.00",
+      },
+      currencyCode: "COP",
+    },
+    attempt_count: 1,
+    next_attempt_at: new Date().toISOString(),
+  } as any;
+  const published: string[] = [];
+  const retryable: string[] = [];
+  let sendTimeoutMs: number | undefined;
+  let outcome: "PUBLISHED" | "RETRYABLE_FAILURE" = "PUBLISHED";
+  const dispatcher = new IntegrationOutboxDispatcher(
+    {
+      enabled: false,
+      scanIntervalMs: 30000,
+      batchSize: 1,
+      concurrencyLimit: 1,
+      maxRetryAttempts: 5,
+      leaseMs: 300000,
+      initialBackoffMs: 30000,
+      maxBackoffMs: 1800000,
+      timeoutMs: 15000,
+      inlineTimeoutMs: 45000,
+      billingBackendBaseUrl: "http://billing-backend.local",
+      internalToken: "secret-token",
+    },
+    {
+      claimDueEvent: async (eventId: string) => (eventId === event.id ? event : null),
+      markPublished: async (eventId: string) => {
+        published.push(eventId);
+      },
+      markRetryableFailure: async (eventId: string) => {
+        retryable.push(eventId);
+      },
+    } as never,
+    {
+      sendSaleCompletedEvent: async (_event: unknown, options: { timeoutMs?: number } = {}) => {
+        sendTimeoutMs = options.timeoutMs;
+        if (outcome === "RETRYABLE_FAILURE") {
+          return {
+            outcome,
+            retryable: true,
+            statusCode: null,
+            message: "fetch failed",
+            retryAfterMs: null,
+          };
+        }
+        return {
+          outcome,
+          retryable: false,
+          statusCode: 200,
+          message: null,
+          retryAfterMs: null,
+          electronicDocument: {
+            electronicDocumentId: "doc-1",
+            documentType: "INVOICE",
+            status: "ACCEPTED",
+            fullNumber: "SETP1",
+            cufe: "cufe",
+            cude: null,
+            providerStatus: "ACCEPTED",
+            failureClass: "ACCEPTED",
+            retryable: false,
+            errorCode: null,
+            errorMessage: null,
+            failures: [],
+          },
+        };
+      },
+    } as never,
+  );
+
+  const accepted = await dispatcher.runOnceForEvent(event.id);
+  assert.equal(accepted.published, 1);
+  assert.equal(accepted.delivery.outcome, "PUBLISHED");
+  assert.equal(accepted.delivery.electronicDocument?.status, "ACCEPTED");
+  assert.equal(sendTimeoutMs, 45000);
+
+  outcome = "RETRYABLE_FAILURE";
+  const queued = await dispatcher.runOnceForEvent(event.id);
+  assert.equal(queued.retryable, 1);
+  assert.equal(queued.delivery.outcome, "RETRYABLE");
+  assert.equal(retryable.length, 1);
+  assert.equal(published.length, 1);
+
+  const missing = await dispatcher.runOnceForEvent(randomUUID());
+  assert.equal(missing.delivery.outcome, "SKIPPED");
+});

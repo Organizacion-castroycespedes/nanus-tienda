@@ -19,13 +19,19 @@ import {
   ElectronicDocumentAttachmentRepository,
   ElectronicDocumentDeliveryRepository,
   ElectronicDocumentEventRepository,
+  ElectronicDocumentFailureRepository,
   ElectronicDocumentLineRepository,
   ElectronicDocumentReferenceRepository,
   ElectronicDocumentRepository,
   ElectronicDocumentTaxRepository,
   TenantElectronicBillingConfigRepository,
 } from "./repositories";
-import { ElectronicBillingProcessingService, ElectronicBillingService } from "./services";
+import {
+  ElectronicBillingCreditNoteService,
+  ElectronicBillingFailureService,
+  ElectronicBillingProcessingService,
+  ElectronicBillingService,
+} from "./services";
 import { ElectronicBillingBackgroundService } from "./workers";
 
 @Module({
@@ -44,7 +50,9 @@ import { ElectronicBillingBackgroundService } from "./workers";
     },
     SaleCompletedForElectronicBillingConsumerService,
     ElectronicBillingService,
-  ElectronicBillingProcessingService,
+    ElectronicBillingProcessingService,
+    ElectronicBillingFailureService,
+    ElectronicBillingCreditNoteService,
     ElectronicBillingBackgroundService,
     ElectronicBillingProviderRepository,
     ElectronicBillingInboxRepository,
@@ -56,6 +64,7 @@ import { ElectronicBillingBackgroundService } from "./workers";
     ElectronicDocumentEventRepository,
     ElectronicDocumentAttachmentRepository,
     ElectronicDocumentDeliveryRepository,
+    ElectronicDocumentFailureRepository,
   ],
   exports: [
     ElectronicBillingProviderRegistry,
@@ -65,6 +74,7 @@ import { ElectronicBillingBackgroundService } from "./workers";
     ElectronicBillingProviderAdapter,
     ElectronicBillingService,
     ElectronicBillingProcessingService,
+    ElectronicBillingFailureService,
     ElectronicBillingBackgroundService,
     ElectronicBillingProviderRepository,
     ElectronicBillingInboxRepository,
@@ -76,6 +86,7 @@ import { ElectronicBillingBackgroundService } from "./workers";
     ElectronicDocumentEventRepository,
     ElectronicDocumentAttachmentRepository,
     ElectronicDocumentDeliveryRepository,
+    ElectronicDocumentFailureRepository,
   ],
 })
 export class ElectronicBillingModule {}

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service";
 import { ElectronicBillingProviderError } from "../contracts/electronic-billing-errors";
@@ -39,6 +39,11 @@ import {
   ELECTRONIC_BILLING_PROCESSING_STATE_KEY,
   type ElectronicBillingProcessingStage,
 } from "../contracts/processing-state";
+import {
+  buildFailureDetailsFromError,
+  buildFailureDetailsFromProviderResult,
+} from "../domain/electronic-billing-failure";
+import { ElectronicBillingFailureService } from "./electronic-billing-failure.service";
 
 type LoadedAggregate = {
   document: ElectronicDocumentRecord;
@@ -366,6 +371,9 @@ export class ElectronicBillingProcessingService {
     private readonly eventRepository: ElectronicDocumentEventRepository,
     @Inject(ElectronicBillingProviderResolver)
     private readonly providerResolver: ElectronicBillingProviderResolver,
+    @Optional()
+    @Inject(ElectronicBillingFailureService)
+    private readonly failureService?: ElectronicBillingFailureService,
   ) {}
 
   async processDocument(tenantId: string, electronicDocumentId: string): Promise<ProcessingResult> {
@@ -1647,6 +1655,8 @@ export class ElectronicBillingProcessingService {
         sourceLineId: line.source_line_id,
         originalElectronicDocumentLineId: originalLineId,
         providerOriginalLineId,
+        standardItemId: lineSnapshot.standardItemId ?? null,
+        standardItemSchemeId: lineSnapshot.standardItemSchemeId ?? null,
         sku: line.sku,
         description: line.description,
         quantity: line.quantity,
@@ -1851,6 +1861,9 @@ export class ElectronicBillingProcessingService {
         providerResult.normalizedStatus ?? currentDocument.status,
       );
       const statusChanged = currentDocument.status !== normalizedStatus;
+      const graphicRepresentation = normalizedStatus === "ACCEPTED"
+        ? providerResult.graphicRepresentation ?? null
+        : null;
       const sentAt = this.resolveSentAt(currentDocument, providerResult);
       const acceptedAt = this.resolveAcceptedAt(providerResult);
       const rejectedAt = this.resolveRejectedAt(providerResult);
@@ -1878,7 +1891,7 @@ export class ElectronicBillingProcessingService {
           providerStatusDetail: providerResult.providerStatusDetail ?? null,
           metadata: {
             ...currentDocument.metadata,
-            ...(fiscalIssuerSnapshot || currentQrPayload || authoritativeQrPayload
+            ...(fiscalIssuerSnapshot || currentQrPayload || authoritativeQrPayload || graphicRepresentation
               ? {
                   electronicBilling: {
                     ...(currentElectronicBillingMetadata &&
@@ -1887,6 +1900,7 @@ export class ElectronicBillingProcessingService {
                       ? currentElectronicBillingMetadata
                       : {}),
                     ...(fiscalIssuerSnapshot ? { fiscalIssuerSnapshot } : {}),
+                    ...(graphicRepresentation ? { graphicRepresentation } : {}),
                     ...(!currentQrPayload && authoritativeQrPayload ? { qrPayload: authoritativeQrPayload } : {}),
                   },
                 }
@@ -1922,17 +1936,27 @@ export class ElectronicBillingProcessingService {
         client,
       );
 
+      const failureDetails = buildFailureDetailsFromProviderResult(providerResult, normalizedStatus);
+      const primaryFailure = failureDetails[0] ?? null;
+      const failureErrorCode = primaryFailure
+        ? primaryFailure.code ?? providerResult.providerStatusCode ?? `PROVIDER_${normalizedStatus}`
+        : null;
+
       await this.documentRepository.updateError(
         tenantId,
         aggregate.document.id,
         {
-          lastErrorCode: null,
-          lastErrorMessage: null,
+          lastErrorCode: failureErrorCode,
+          lastErrorMessage: primaryFailure?.message ?? null,
         },
         client,
       );
 
       await this.persistProviderLineIds(tenantId, aggregate, providerResult, client);
+
+      if (failureDetails.length > 0 && (statusChanged || isRetry) && this.failureService) {
+        await this.failureService.recordFailureDetails(client, tenantId, aggregate.document.id, attempt, failureDetails);
+      }
 
       if (statusChanged) {
         await this.eventRepository.append(
@@ -1945,13 +1969,16 @@ export class ElectronicBillingProcessingService {
             operation: isRetry ? "RETRY" : "ISSUE",
             attempt,
             httpStatus: null,
-            errorCode: null,
-            errorMessage: null,
+            errorCode: failureErrorCode,
+            errorMessage: primaryFailure?.message ?? null,
             metadata: {
               source: "electronic-billing-processing",
               providerCode: resolved.provider.code,
               providerStatus: providerResult.providerStatus,
               normalizedStatus,
+              ...(providerResult.failureClass ? { failureClass: providerResult.failureClass } : {}),
+              ...(providerResult.probableCause ? { probableCause: providerResult.probableCause } : {}),
+              ...(failureDetails.length > 0 ? { failureCount: failureDetails.length } : {}),
             },
             createdAt: new Date(),
           },
@@ -2074,6 +2101,16 @@ export class ElectronicBillingProcessingService {
         },
         client,
       );
+
+      if (this.failureService) {
+        await this.failureService.recordFailureDetails(
+          client,
+          tenantId,
+          aggregate.document.id,
+          attempt,
+          buildFailureDetailsFromError(error, { code, message, httpStatus, classification }),
+        );
+      }
 
       await client.query("COMMIT");
       const refreshed = await this.loadAggregate(tenantId, aggregate.document.id);

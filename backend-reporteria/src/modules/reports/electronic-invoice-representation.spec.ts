@@ -86,9 +86,123 @@ test("renderer includes long CUFE as breakable content", () => {
   );
   const serialized = JSON.stringify(document);
 
-  assert.match(serialized, /Factura electrónica/);
+  assert.match(serialized, /FACTURA ELECTRÓNICA DE VENTA/);
+  assert.match(serialized, /No\. SETP990000007/);
   assert.equal(serialized.includes("\u200b"), false);
-  assert.equal(serialized.includes("\\n"), true);
+  assert.equal(serialized.includes("a".repeat(48) + "\\n" + "a".repeat(48)), true);
+});
+
+test("renderer does not show acceptance state or acceptance date", () => {
+  const serialized = JSON.stringify(
+    buildElectronicInvoiceRepresentationTemplate(buildElectronicInvoiceRepresentation(input))
+  );
+
+  assert.doesNotMatch(serialized, /Aceptad/i);
+  assert.doesNotMatch(serialized, /aceptaci/i);
+  assert.doesNotMatch(serialized, /Estado/);
+});
+
+test("renderer uses FactuCore fiscal data required by DIAN when available", () => {
+  const fiscal = {
+    version: 1,
+    documentType: "INVOICE",
+    environment: "TEST",
+    fullNumber: "SETP990010028",
+    prefix: "SETP",
+    number: 990010028,
+    issueDate: "2026-09-29",
+    issueTime: "22:15:09-05:00",
+    dueDate: null,
+    currency: "COP",
+    documentKey: { type: "CUFE" as const, value: "b".repeat(96) },
+    resolution: {
+      number: "18760000001",
+      prefix: "SETP",
+      rangeStart: 990000000,
+      rangeEnd: 995000000,
+      validFrom: "2019-01-19",
+      validTo: "2030-01-19",
+    },
+    issuer: {
+      legalName: "SIRLEY MAYERLIS CESPEDES ANAYA",
+      tradeName: "Nanus",
+      personType: "NATURAL" as const,
+      identificationTypeCode: "31",
+      identificationNumber: "1045697508",
+      verificationDigit: "5",
+      fiscalResponsibilityCodes: ["R-99-PN"],
+      taxSchemeId: "ZZ",
+      taxSchemeName: "No aplica",
+      address: "CL 18B 17F 24",
+      city: "Barranquilla",
+      department: "Atlántico",
+      country: "Colombia",
+      phone: "3022243805",
+      email: "ventas@nanus.co",
+    },
+    customer: {
+      legalName: "Chinaco",
+      tradeName: null,
+      personType: "NATURAL" as const,
+      identificationTypeCode: "13",
+      identificationNumber: "21265848",
+      verificationDigit: null,
+      fiscalResponsibilityCodes: [],
+      taxSchemeId: null,
+      taxSchemeName: null,
+      address: null,
+      city: "Barranquilla",
+      department: null,
+      country: null,
+      phone: null,
+      email: null,
+    },
+    payments: [{ formCode: "1", meansCode: "10", amount: 1800, dueDate: null }],
+    lines: [{
+      lineNumber: 1,
+      code: "SKU-1",
+      description: "Producto prueba",
+      unitCode: "NIU",
+      quantity: 1,
+      unitPrice: 1512.61,
+      discount: 0,
+      lineExtensionAmount: 1512.61,
+      taxAmount: 287.39,
+      total: 1800,
+      taxes: [{ type: "IVA", rate: 19, taxableBase: 1512.61, amount: 287.39 }],
+    }],
+    taxTotals: [{ type: "IVA", rate: 19, taxableBase: 1512.61, amount: 287.39 }],
+    totals: { lineExtension: 1512.61, discount: 0, tax: 287.39, payable: 1800 },
+    referencedDocument: null,
+    notes: null,
+    softwareProvider: {
+      name: "SIRLEY MAYERLIS CESPEDES ANAYA",
+      identificationNumber: "1045697508",
+      verificationDigit: "5",
+      softwareName: "FactuCore",
+    },
+  };
+  const serialized = JSON.stringify(
+    buildElectronicInvoiceRepresentationTemplate(buildElectronicInvoiceRepresentation({ ...input, fiscal }))
+  );
+
+  assert.match(serialized, /No\. SETP990010028/);
+  assert.match(serialized, /NIT 1045697508-5/);
+  assert.match(serialized, /Autorización de numeración DIAN No\. 18760000001/);
+  assert.match(serialized, /del 990000000 al 995000000/);
+  assert.match(serialized, /Vigencia hasta 19\/01\/2030/);
+  assert.match(serialized, /29\/09\/2026/);
+  assert.match(serialized, /22:15:09/);
+  assert.match(serialized, /Contado/);
+  assert.match(serialized, /Efectivo/);
+  assert.match(serialized, /CC 21265848/);
+  assert.match(serialized, /R-99-PN No responsable/);
+  assert.match(serialized, /Cód\. SKU-1/);
+  assert.match(serialized, /IVA 19%/);
+  assert.match(serialized, /TOTAL A PAGAR/);
+  assert.match(serialized, /Software propio del facturador: FactuCore/);
+  assert.match(serialized, /ambiente de habilitación/);
+  assert.doesNotMatch(serialized, /Aceptad/i);
 });
 
 test("renderer includes one centered QR drawing from the exact authoritative payload", () => {

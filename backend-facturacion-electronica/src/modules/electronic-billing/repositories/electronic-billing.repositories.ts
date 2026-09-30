@@ -394,6 +394,8 @@ type BackgroundSyncClaimOptions = {
   dueBefore: Date | string;
   limit: number;
   leaseMs?: number;
+  /** Skip documents whose processing stage changed less than this many ms ago. */
+  minStageAgeMs?: number;
 };
 
 @Injectable()
@@ -1169,6 +1171,10 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
             OR NOT (d.processing_stage = 'PROVIDER_CREATE_INTENT' AND d.provider_document_id IS NULL)
           )
           AND (d.last_status_check_at IS NULL OR d.last_status_check_at <= $2)
+          AND (
+            $8::bigint IS NULL
+            OR COALESCE(d.processing_stage_updated_at, d.created_at) <= NOW() - ($8::bigint * INTERVAL '1 millisecond')
+          )
         ORDER BY COALESCE(d.last_status_check_at, d.created_at) ASC, d.created_at ASC, d.id ASC
         FOR UPDATE SKIP LOCKED
         LIMIT $3
@@ -1227,6 +1233,7 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
         options.processingStages?.length ? options.processingStages : null,
         options.providerDocumentIdAbsent ?? null,
         options.excludePreProviderIntentWithoutProvider ?? null,
+        options.minStageAgeMs ?? null,
       ],
       client
     );

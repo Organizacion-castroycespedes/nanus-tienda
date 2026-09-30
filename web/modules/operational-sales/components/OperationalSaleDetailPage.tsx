@@ -380,6 +380,7 @@ const ActionCard = ({
         fileName={`factura-electronica-${sale.id}.pdf`}
         onClose={() => setPreviewOpen(false)}
         getPdf={getPdf}
+        variant="ticket"
       />
       <PdfPreviewModal
         isOpen={ticketPreviewOpen}
@@ -387,6 +388,7 @@ const ActionCard = ({
         fileName={`ticket-venta-${sale.id}.pdf`}
         onClose={() => setTicketPreviewOpen(false)}
         getPdf={() => getPosSaleTicket(sale.id)}
+        variant="ticket"
       />
       <PreInvoiceWizardModal
         open={wizardOpen}
@@ -401,8 +403,8 @@ const ActionCard = ({
         sale={sale}
         isOpen={voidModalOpen}
         onClose={() => setVoidModalOpen(false)}
-        onSuccess={() => {
-          setLocalActionMessage("Venta anulada correctamente.");
+        onSuccess={(_updated, message) => {
+          setLocalActionMessage(message);
           void onReload();
         }}
       />

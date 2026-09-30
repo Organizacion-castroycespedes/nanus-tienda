@@ -141,6 +141,18 @@ export class FactuCoreClient {
       path: `${FACTUCORE_DOCUMENT_ENDPOINT}/invoices/issue`,
       operation: "issue_invoice",
       context,
+      timeoutMs: request.transmissionMode === "sync" ? context.syncTimeoutMs : undefined,
+      body: request,
+    });
+  }
+
+  async issueCreditNote(context: FactuCoreRuntimeContext, request: FactuCoreCreditNoteRequest) {
+    return this.requestJson<FactuCoreDocumentResponse>({
+      method: "POST",
+      path: `${FACTUCORE_DOCUMENT_ENDPOINT}/credit-notes/issue`,
+      operation: "issue_credit_note",
+      context,
+      timeoutMs: request.transmissionMode === "sync" ? context.syncTimeoutMs : undefined,
       body: request,
     });
   }

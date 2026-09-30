@@ -1,4 +1,5 @@
 export * from "./config/integration-outbox.config";
+export * from "./contracts/electronic-billing-outcome";
 export * from "./contracts/integration-outbox-events";
 export * from "./contracts/integration-outbox.errors";
 export * from "./integration-outbox.module";
