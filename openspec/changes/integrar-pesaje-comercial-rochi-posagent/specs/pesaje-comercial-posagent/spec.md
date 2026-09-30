@@ -1,5 +1,25 @@
 ## Purpose
 
+### Requirement: Installer technical completion and interactive peripherals
+
+The installer Core SHALL report technical completion only after service health
+and managed installation steps succeed. Peripheral discovery and configuration
+SHALL remain a subsequent interactive WebView stage.
+
+#### Scenario: Technical installation precedes device discovery
+
+- **WHEN** the service starts and its health check succeeds
+- **THEN** the Core SHALL mark `DISCOVER_DEVICES` and `CONFIGURE_DEVICES` as
+  `SKIPPED` with an explicit post-install message, emit `INSTALL_SUCCEEDED`, and
+  allow the existing visual discovery flow to begin without reinstalling the Agent.
+
+#### Scenario: Optional peripheral failure does not roll back the service
+
+- **WHEN** device discovery or an optional printer/cash-drawer test fails
+- **THEN** the WebView SHALL expose its existing retry or continue-without-device
+  behavior, SHALL NOT claim a physical test passed, and SHALL NOT roll back the
+  technically healthy service.
+
 Define a safe, on-demand commercial weighing capability between Manus POS and the authorized Peripheral Agent, reusing the existing product sale model and excluding metrological certification.
 
 ## ADDED Requirements
@@ -420,3 +440,98 @@ Electron SHALL use the existing typed bridge without exposing the Agent credenti
 - **WHEN** the renderer supplies only `terminalId`, `deviceId` or `installationId`
 - **THEN** the main process and backend SHALL reject the operation as insufficient proof and SHALL not open ROCHI.
 
+### Requirement: Local Agent secrets fail closed
+
+The local Agent SHALL expose a typed secure-secret store that keeps only a
+versioned DPAPI `CurrentUser` protected blob on disk. The store SHALL reject
+unknown versions, malformed blobs, invalid identifiers, unsupported platforms,
+profile failures and permission failures without falling back to plaintext.
+
+#### Scenario: Secret lifecycle
+
+- **WHEN** a caller sets, gets, rotates or deletes a secret using a valid identifier
+- **THEN** the store SHALL use the protected Windows profile, preserve the old value until a successful replacement, and return no partial secret data.
+
+#### Scenario: Protected storage failure
+
+- **WHEN** DPAPI, the Windows profile, ACL setup, atomic replacement or the blob format fails
+- **THEN** the store SHALL fail closed and SHALL NOT regenerate, log, serialize or export the secret.
+
+#### Scenario: Unsupported runtime or packaging
+
+- **WHEN** the Agent runs outside supported Windows x64/runtime/packaging controls
+- **THEN** secure storage SHALL remain unavailable and SHALL NOT silently use plaintext or the public installation identifier.
+### Requirement: Windows Agent execution identity and managed distribution
+
+The Windows production Agent SHALL run under `NT AUTHORITY\\LocalService`. A
+user-interactive Scheduled Task or manual launcher SHALL NOT be started by the
+productive installer or coexist with the managed service on `127.0.0.1:4050`.
+
+The installer SHALL fail closed when the managed service identity differs, a
+known Agent task exists, or an unrelated process owns the Agent port. A listener
+is owned by the managed Agent when its PID equals the service PID or its parent
+chain reaches the current managed service PID within a bounded snapshot; a
+missing, cyclic or broken ancestry SHALL fail closed. It SHALL
+not copy DPAPI `CurrentUser` blobs between Windows identities.
+
+Managed executable and secret paths SHALL remove inherited broad write access.
+`Everyone`, `Users` and `Authenticated Users` SHALL NOT receive Modify access.
+
+#### Scenario: Authorized descendant owns the Agent listener
+
+- **WHEN** the managed service is running and a listener on `127.0.0.1:4050`
+  belongs to its bounded process ancestry
+- **THEN** the installer SHALL accept the listener without relying only on the
+  executable name or an arbitrary PID
+
+#### Scenario: Unsafe coexistence is rejected
+
+- **WHEN** a known Agent Scheduled Task exists, the managed service identity differs, or an unexpected process owns `127.0.0.1:4050`
+- **THEN** the installer SHALL stop before changing service state or managed data and SHALL report a sanitized recovery reason.
+### Requirement: Local secret operations are serialized across processes
+
+The Agent secure store SHALL create an exclusive, per-secret Windows Named Mutex
+in the protected storage scope before a consistent read, write, rotation or
+deletion. The mutex name SHALL be derived from the validated secret identifier
+without exposing secret material, and its DACL SHALL restrict access to
+`NT AUTHORITY\\LocalService`, `SYSTEM` and `BUILTIN\\Administrators`. Any
+diagnostic lockfile is non-authoritative and SHALL NOT control ownership.
+
+#### Scenario: Concurrent operations use one critical section
+
+- **WHEN** two Agent processes operate on the same secret
+- **THEN** one process SHALL hold the lock, the other SHALL wait with a bounded timeout, and no process SHALL observe or persist a partial blob.
+
+#### Scenario: Abandoned or malformed lock
+
+- **WHEN** a mutex returns `WAIT_ABANDONED`
+- **THEN** the store SHALL mark the state indeterminate, fail closed, preserve the last confirmed blob and SHALL NOT write, rotate, delete or clean up automatically.
+
+#### Scenario: Lock release ownership changes
+
+- **WHEN** acquisition returns `WAIT_TIMEOUT` or `WAIT_FAILED`
+- **THEN** the store SHALL return a sanitized typed error and SHALL NOT mutate the blob or release an ownership held by another operation.
+
+### Requirement: Productive secret path matches managed service storage
+
+The secure store SHALL resolve its productive secret and lock directory under
+the installer-managed `ProgramData\\Manus\\PeripheralAgent\\state` tree when
+the Agent runs as `NT AUTHORITY\\LocalService`. It SHALL keep interactive and
+legacy state consumers compatible and SHALL NOT migrate blobs between DPAPI
+profiles automatically.
+
+#### Scenario: Productive path resolution
+
+- **WHEN** Windows paths are resolved with `ProgramData` available
+- **THEN** `secureSecretDir` SHALL be `ProgramData\\Manus\\PeripheralAgent\\state\\secrets`.
+
+### Requirement: Conservative ACL rollback
+
+The installer SHALL save each managed ACL before mutation and SHALL include the
+currently processed path in rollback when ACL application fails partially.
+
+#### Scenario: Partial ACL failure
+
+- **WHEN** applying a managed ACL fails after changing the current path
+- **THEN** rollback SHALL restore the current path and all previously affected paths,
+  reporting the original error and any rollback error separately.

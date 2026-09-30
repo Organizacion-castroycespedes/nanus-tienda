@@ -1,5 +1,13 @@
 ## Context
 
+### Fase 1B.9.1: Core tÃ©cnico y etapa visual posterior
+
+La instalaciÃ³n tÃ©cnica y el health check terminan antes de la etapa visual de
+perifÃ©ricos. El Core marca `DISCOVER_DEVICES` y `CONFIGURE_DEVICES` como
+`SKIPPED` con motivo explÃ­cito de etapa interactiva y luego emite
+`INSTALL_SUCCEEDED`. El WebView reutiliza discovery y sus reintentos; las
+pruebas de impresora o cajÃ³n no certifican ROCHI ni habilitan ventas `REAL`.
+
 The repository already contains the product sale model (`UNIT`, `WEIGHT`, `BOTH`), terminal peripheral settings (`scaleDeviceId`, `enableScale`), POS scale controls, a MOCK `ScaleService`, generic device registration, and a separately validated ROCHI serial driver. The current scale HTTP contract returns a simulated value and does not expose commercial freshness, source, unit verification, or capture ownership. The previous ROCHI change remains the driver and Windows QA boundary; this change defines the commercial integration only.
 
 Relevant existing areas:
@@ -526,3 +534,107 @@ La decisión debe exigir autenticidad, audiencia, tenant, sucursal, terminal, in
 
 Antes de código REAL deben aprobarse: contrato aditivo de resolución; relación Agent-terminal-SCALE; prueba de posesión local; autorización corta; revocación; evidencia única; concurrencia; y pruebas de tenant cruzado. QA debe cubrir terminal sin asignación, `mock-scale-001`, REAL registrado desconectado, REAL en otra terminal/tenant, instalación revocada, cambio de terminal/sesión, autorización expirada/replay, KG dudoso y desconexión durante lectura. Ninguno de estos casos se ejecuta ni se marca completado en esta fase documental.
 
+### Fase 1B implementada: SecureSecretStore local
+
+`backend-perifericos/src/platform/secure-secret-store.ts` define el contrato
+tipado `SecureSecretStore` con `get`, `set`, `rotate` y `delete`. El archivo
+persistido usa versión `1`, protección `DPAPI_CURRENTUSER` y solo contiene el
+blob cifrado en base64. El secreto original vive únicamente en memoria.
+
+La implementación usa `powershell.exe` y la API nativa Windows `CryptProtectData`/`CryptUnprotectData`
+El transporte al proceso auxiliar es stdin/stdout controlado; no usa argumentos,
+variables persistentes ni logs para
+transportar secretos. En Windows aplica ACL explícitas al directorio, temporal y
+blob usando SID del usuario actual, SYSTEM y Administrators. Si DPAPI, Windows,
+ACL, el perfil o la operación de reemplazo fallan, el store falla cerrado.
+
+La escritura usa temporal en el mismo volumen, `fsync` y reemplazo Windows con
+`File.Replace` cuando existe un valor anterior. `delete` elimina la referencia
+persistida, pero no promete borrado irrecuperable de SSD o backups. En Windows,
+el lock productivo es un Named Mutex por identificador; en plataformas sin esa
+primitiva se conserva el mecanismo local existente.
+
+La integración con enrolamiento, autenticación Agent-backend, TLS, nonce,
+anti-replay, Electron/WEB y captura REAL no está implementada.
+### Corrección de packaging Fase 1B
+
+`backend-perifericos/scripts/package-windows-x64.mjs` ahora falla cerrado si el
+runtime que ejecuta el empaquetado es menor que Node `24.21.0`. Esto evita
+copiar accidentalmente un `node.exe` incompatible al artefacto Windows. No
+descarga ni instala runtimes y todavía requiere ejecutar el packaging con un
+runtime oficial verificable y revisar las ACL del artefacto.
+
+### Validación final aislada de Fase 1B
+
+La validación usó el ZIP oficial `node-v24.21.0-win-x64.zip`, cuyo SHA-256
+coincidió con `SHASUMS256.txt`. `npm ci --ignore-scripts`, el build y 140/140
+pruebas del Agent pasaron en la copia temporal. SecureSecretStore pasó 9/9
+pruebas focalizadas y el paquete Windows ejecutó con runtime embebido
+`v24.21.0`; la validación del paquete y el manifest completo pasaron 6/6. La
+observación histórica 5/6 correspondía únicamente a una copia sin el fixture
+Electron y no describe el artefacto certificado.
+
+Las carreras administradas 1B.14B certificaron coordinación interproceso,
+DPAPI `CurrentUser`, DACL del mutex, recuperación tras abandono, IPC, Job
+Object y ausencia de huérfanos bajo `LocalService`. Los resultados antiguos de
+carreras locales y ACL heredadas son históricos de pre-certificación, no el
+estado productivo vigente. DPAPI `CurrentUser` tampoco protege frente a
+malware bajo la misma cuenta.
+### Fase 1B.6: ejecución y distribución administrada
+
+El servicio Windows `ManusPeripheralAgent` se mantiene como vía productiva y
+usa `NT AUTHORITY\\LocalService`, `Program Files` para ejecutables y
+`ProgramData` para configuración, logs y estado. La Scheduled Task
+`Manus Peripheral Agent` no se registra durante la instalación productiva.
+El preflight rechaza una tarea existente, una identidad de servicio distinta o
+un PID inesperado ocupando `127.0.0.1:4050`, pero permite actualizar el servicio
+administrado que él mismo controla.
+
+Las ACL administradas retiran herencia y ACE de `Everyone`, `Users` y
+`Authenticated Users`. SYSTEM y Administrators conservan control total;
+LocalService obtiene RX sobre ejecutables/configuración y Modify solo sobre
+logs/estado. Las ACL previas se guardan temporalmente y se restauran si una
+aplicación posterior falla. No se siguen reparse points.
+
+El empaquetado invoca `npm-cli.js` mediante el Node compatible y `shell:false`.
+No copia blobs DPAPI entre LocalService y usuarios interactivos. La exclusión
+interproceso productiva está descrita en la sección siguiente.
+### Fase 1B.7/1B.15: exclusion interproceso conservadora
+
+En Windows, cada identificador validado usa un Named Mutex `Local\\ManusPeripheralAgent-<sha256>`, creado por el modo helper del ejecutable de servicio ya instalado. El helper fija
+su OS thread con `runtime.LockOSThread`, mantiene el mutex durante toda la sección
+crítica y solo acepta `DONE` o `ABORT` correlacionados con un token aleatorio.
+La sección cubre lectura, DPAPI, temporal, `fsync`, `File.Replace`, limpieza y
+liberación. `WAIT_OBJECT_0` permite continuar; `WAIT_TIMEOUT`, `WAIT_FAILED` y
+`WAIT_ABANDONED` fallan cerrado. Un abandono deja el estado indeterminado y exige
+recuperación administrativa; no se borran lockfiles por PID o antigüedad.
+
+La DACL efectiva certificada por QA permite únicamente `LocalService`, `SYSTEM` y
+`Administrators` con sincronización, modificación del mutex y lectura de control.
+El lockfile histórico, si aparece, es solo diagnóstico y nunca autoridad. El
+servicio existente coloca Node y sus hijos en un Job Object con
+`KILL_ON_JOB_CLOSE`, usando `JOBOBJECT_EXTENDED_LIMIT_INFORMATION` de tamaño real;
+no se crea un segundo servicio productivo. La evidencia administrada final está
+en `C:\\ManusQA\\evidence\\1B14B-FINAL-20260929-164755-bcc7300e\\REPORT-FINAL.md`.
+
+### Fase 1B.10: endurecimiento de ruta, liberacion y rollback
+
+La ruta productiva de secretos se separa de `stateDir` interactivo mediante
+`PlatformPaths.secureSecretDir`. En Windows se resuelve bajo
+`ProgramData\\Manus\\PeripheralAgent\\state\\secrets`, que queda dentro de la
+ruta de estado administrada por el instalador y sus ACL para `LocalService`.
+No se migran blobs entre perfiles DPAPI ni se elimina automaticamente un blob
+en otra identidad.
+
+La implementación productiva Windows ya no libera exclusión mediante validación
+seguida de `unlink`; usa el Named Mutex y libera solo en el OS thread propietario.
+La prueba adversarial de lockfile `REPLACEMENT_ALLOWED` queda como regresión
+histórica y el lockfile no forma parte del protocolo de autoridad.
+
+Si falla la aplicacion de una ACL, el rollback incluye tambien la ruta que pudo
+haber cambiado parcialmente y restaura las rutas afectadas en orden inverso.
+La prueba de rollback de `main_windows.go` cubre la selección de la ruta fallida;
+la evidencia administrada 1B.14B certificó ACL efectiva y DPAPI bajo
+`LocalService`. La validación de ownership del listener 4050 acepta el PID del
+servicio o un descendiente demostrable de ese PID, y falla cerrado ante un PID
+ajeno, inexistente o con ancestry incompleta.

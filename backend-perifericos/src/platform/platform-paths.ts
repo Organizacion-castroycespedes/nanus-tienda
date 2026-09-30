@@ -13,6 +13,7 @@ export const resolvePlatformPaths = (
       configDir: join(sharedBase, "Manus", "PeripheralAgent", "config"),
       stateDir: join(userBase, "Manus", "PeripheralAgent", "state"),
       logDir: join(userBase, "Manus", "PeripheralAgent", "logs"),
+      secureSecretDir: join(sharedBase, "Manus", "PeripheralAgent", "state", "secrets"),
     };
   }
 
@@ -22,6 +23,7 @@ export const resolvePlatformPaths = (
       configDir: join(base, "Application Support", "Manus", "PeripheralAgent"),
       stateDir: join(base, "Application Support", "Manus", "PeripheralAgent", "state"),
       logDir: join(base, "Logs", "Manus", "PeripheralAgent"),
+      secureSecretDir: join(base, "Application Support", "Manus", "PeripheralAgent", "state", "secrets"),
     };
   }
 
@@ -29,5 +31,6 @@ export const resolvePlatformPaths = (
     configDir: "/etc/manus-peripheral-agent",
     stateDir: "/var/lib/manus-peripheral-agent",
     logDir: "/var/log/manus-peripheral-agent",
+    secureSecretDir: "/var/lib/manus-peripheral-agent/secrets",
   };
 };

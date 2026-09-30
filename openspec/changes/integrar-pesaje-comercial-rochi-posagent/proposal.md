@@ -1,5 +1,15 @@
 ## Why
 
+### Fase 1B.9.1: Core tÃ©cnico y recorrido visual
+
+El Core termina la instalaciÃ³n tÃ©cnica, el arranque y el health check del
+servicio antes de iniciar el recorrido interactivo. `DISCOVER_DEVICES` y
+`CONFIGURE_DEVICES` reciben `STEP_SKIPPED` explÃ­cito: eso no declara detecciÃ³n
+ni prueba fÃ­sica exitosa. El WebView inicia despuÃ©s discovery, configuraciÃ³n,
+reintentos y la opciÃ³n de continuar sin perifÃ©ricos opcionales. Un fallo de
+perifÃ©rico no reinstala ni revierte el servicio sano. ROCHI, KG, autenticaciÃ³n
+Agent y ventas `REAL` siguen fuera de esta fase.
+
 Manus ya guarda el modelo de venta `UNIT`, `WEIGHT` y `BOTH`. El flujo de `/pos` conserva controles históricos de balanza MOCK, pero debe ocultarlos cuando la terminal no tiene configuración efectiva y no puede usar una lectura como evidencia comercial REAL. El driver ROCHI Windows ya fue validado de forma independiente; este cambio define el contrato comercial seguro para solicitar peso bajo demanda.
 
 ## What Changes
@@ -90,3 +100,66 @@ Hechos confirmados en el repositorio:
 - `ScaleService` comercial aún devuelve una lectura simulada de `1.25 kg`; el driver ROCHI no está conectado a ese módulo.
 
 Brecha y propuesta: antes de habilitar peso REAL, debe existir una vinculación verificable tenant--sucursal--terminal--instalación Agent--dispositivo SCALE. La extensión de `resolve-current`, la autorización corta y la prueba de posesión del Agent quedan como contratos propuestos y tareas futuras. No se acepta un `scaleDeviceId` no vacío ni `source=CONFIGURED` como prueba REAL.
+### Fase 1B — almacenamiento local seguro del Agent
+
+Se implementa de forma aislada `SecureSecretStore` en `backend-perifericos`.
+El store usa blobs JSON versionados que contienen únicamente datos protegidos
+por DPAPI `CurrentUser`; no emite credenciales, no conoce el backend y no se
+conecta al flujo comercial.
+
+La prueba unitaria usa un protector controlado y cubre ausencia, lectura,
+rotación, borrado, corrupción, path traversal y concurrencia local. La
+validación administrada posterior usó Node oficial `v24.21.0`, DPAPI bajo
+`LocalService`, servicio temporal QA y empaquetado protegido. La Scheduled Task
+interactiva no es la vía productiva.
+### Fase 1B.6 — identidad y distribución Windows
+
+El servicio productivo usa `NT AUTHORITY\\LocalService`. La Scheduled Task
+interactiva queda solo para QA o uso local explícito. El instalador separa
+ejecutables y datos, endurece ACL administradas y rechaza coexistencia con una
+tarea o proceso Agent inesperado. La validación administrada 1B.14B certificó
+`LocalService`, ACL, DPAPI, exclusión interproceso y empaquetado.
+El \`SecureSecretStore\` usa un lock por identificador, creado de forma exclusiva
+en el directorio protegido del blob. El lock solo contiene version, nonce,
+proceso y timestamp UTC; nunca contiene secretos ni blobs DPAPI. \`set\`,
+\`rotate\`, \`delete\` y las lecturas consistentes esperan con timeout acotado y
+fallan cerrado si permanece ocupado.
+El `SecureSecretStore` usa un lock por identificador, creado de forma exclusiva
+en el directorio protegido del blob. El lock solo contiene version, nonce,
+proceso y timestamp UTC; nunca contiene secretos ni blobs DPAPI. `set`,
+`rotate`, `delete` y las lecturas consistentes esperan con timeout acotado y
+fallan cerrado si permanece ocupado.
+
+La liberacion valida nonce e identidad del archivo antes de eliminarlo. Un lock
+abandonado no se elimina automaticamente: requiere procedimiento administrativo
+separado con el Agent detenido. La rotacion conserva el ultimo blob confirmado
+ante fallo. Esta fase no emite credenciales ni habilita REAL.
+### Fase 1B.7/1B.15 - exclusion interproceso (contrato vigente)
+
+En Windows el almacenamiento seguro serializa operaciones por secreto con un
+Named Mutex `Local\\ManusPeripheralAgent-<sha256>`, protegido por una DACL
+explícita para `LocalService`, `SYSTEM` y `Administrators`. Un helper dentro del
+ejecutable de servicio conserva el ownership en el mismo OS thread y acepta solo
+mensajes correlacionados `DONE`/`ABORT`. El lockfile histórico no es autoridad.
+Los estados `WAIT_TIMEOUT`, `WAIT_FAILED` y `WAIT_ABANDONED` fallan cerrado; el
+abandono requiere recuperación administrativa y no limpieza automática.
+
+### Fase 1B.10 - estado de endurecimiento
+
+El store usa una ruta de secretos explicita bajo el estado administrado de
+`ProgramData` para el servicio `LocalService`; `stateDir` de otros consumidores
+no se modifica indiscriminadamente. No existe migracion automatica entre
+perfiles DPAPI.
+
+La liberación productiva ya no reabre ni elimina un pathname para decidir
+ownership. Usa el Named Mutex, por lo que la carrera adversarial
+`REPLACEMENT_ALLOWED` del lockfile no forma parte del protocolo productivo.
+La evidencia administrada QA certificó DACL/SDDL, estados WAIT, DPAPI
+`CurrentUser` bajo `LocalService`, reinicio, recuperación de abandono, IPC,
+Job Object y ausencia de huérfanos. Ver `REPORT-FINAL.md` en el artefacto QA
+reportado en el diseño.
+
+El rollback de ACL incluye la entrada actualmente procesada cuando una aplicación
+falla parcialmente. La validación administrada certificó ACL efectiva bajo
+`LocalService` y la instalación del servicio; la Scheduled Task interactiva no
+es un componente productivo.

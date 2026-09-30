@@ -1,5 +1,11 @@
 ## 1. Baseline y decisiones de contrato
 
+## 3E. Fase 1B.9.1 - Core tÃ©cnico y recorrido visual
+
+- [x] 3E.1 Separar finalizaciÃ³n tÃ©cnica del Core y etapa visual posterior con `STEP_SKIPPED` explÃ­cito para `DISCOVER_DEVICES` y `CONFIGURE_DEVICES`.
+- [x] 3E.2 Cubrir aceptaciÃ³n de `INSTALL_SUCCEEDED` tras los skips, duplicados y continuidad del WebView hacia discovery/reintento.
+- [ ] 3E.3 Ejecutar QA visual y fÃ­sico de perifÃ©ricos bajo instalaciÃ³n administrada; ROCHI, KG, autenticaciÃ³n Agent y venta `REAL` siguen pendientes.
+
 - [x] 1.1 Confirmar en código los contratos actuales de `saleType`, `measurementUnit`, terminal activa, `scaleDeviceId`, `enableScale`, modo y origen; verificar que no se creen entidades de producto nuevas. Evidencia: `/pos-terminals/resolve-current` y `web/domains/peripherals/scale-visibility.ts`.
 - [ ] 1.2 Implementar la autorización backend de corta duración vinculada a tenant, sucursal cuando aplique, terminal, sesión POS, producto, operación y dispositivo; verificar rechazo de identidad no autorizada y replay.
 - [ ] 1.3 Aplicar la política aprobada: sin override manual para `WEIGHT` ni para el modo peso de `BOTH`; verificar que cantidad manual solo aplique a operaciones por unidad y nunca se etiquete como REAL.
@@ -96,3 +102,48 @@
 - [ ] 7.3 Verificar que Linux y empaquetado multiplataforma sigan separados de este change hasta completar la tarea 4.6 histórica; no marcarla desde este cambio.
 - [ ] 7.4 Ejecutar suite relevante, build, validación OpenSpec y revisión de diff; verificar ausencia de cambios en POS no relacionados, parser ROCHI histórico, ventas unitarias y facturación.
 - [ ] 7.5 Obtener aprobación independiente de negocio, seguridad y metrología antes de habilitar ventas ponderadas reales; verificar que el feature permanezca deshabilitado hasta esa aprobación.
+## 3C. Fase 1B — almacenamiento local seguro
+
+- [x] 3C.1 Implementar contrato tipado `SecureSecretStore` con `get`, `set`, `rotate` y `delete`, identificadores validados, blobs versionados y separación del `agent-installation-id` público. Evidencia: `backend-perifericos/src/platform/secure-secret-store.ts`.
+- [x] 3C.2 Implementar persistencia temporal, `fsync`, reemplazo Windows, ACL explícitas y fail-closed sin fallback plaintext. Evidencia: store y pruebas unitarias con protector controlado.
+- [x] 3C.3 Añadir pruebas unitarias de ausencia, lifecycle, corrupción, path traversal, concurrencia y limpieza. Evidencia: `backend-perifericos/test/secure-secret-store.spec.ts`, 9/9 PASS con Node oficial `v24.21.0` en copia aislada.
+- [x] 3C.4 Ejecutar prueba real DPAPI bajo Node oficial `>=24.21.0`, perfil Windows operativo y contexto de tarea QA autorizado. LocalService, restart, negative identity y fail-closed pasan en la evidencia administrada 1B.14B.
+- [x] 3C.5 Certificar empaquetado Windows y ACL de distribución sin extracción nativa insegura. Packaging, validator, manifest 6/6 y ACL administradas pasan en la evidencia certificada.
+- [x] 3C.6 Añadir guard de packaging para impedir artefactos Windows con Node menor que `24.21.0`. Evidencia: `backend-perifericos/scripts/package-windows-x64.mjs`; comprobado con runtime compatible en copia aislada.
+
+### Fase 1B — validación final aislada
+
+- [x] 3C.7 `npm ci --ignore-scripts`, build y suite Agent en copia aislada con Node oficial `v24.21.0`: build PASS y 140/140 tests PASS. El manifest completo certificado pasó 6/6; la observación histórica 5/6 era de una copia sin fixture Electron.
+- [x] 3C.8 DPAPI y SecureSecretStore con Node oficial: 9/9 pruebas focalizadas PASS, runtime embebido `v24.21.0` y validador Windows PASS.
+- [x] 3C.9 Certificar ACL administradas de distribución. La evidencia 1B.14B certifica DACL mínima del run y la instalación administrada; no implica que una Scheduled Task sea productiva.
+- [x] 3C.10 Certificar concurrencia interproceso formal. Named Mutex, contención, independencia por secreto y recuperación de abandono pasan bajo LocalService.
+## 3D. Fase 1B.6 — identidad y distribución Windows
+
+- [x] 3D.1 Formalizar `LocalService` como identidad productiva y conservar la Scheduled Task interactiva solo para QA/local controlado.
+- [x] 3D.2 Añadir preflight no destructivo para identidad del servicio, tarea conocida y ocupación inesperada de `127.0.0.1:4050`.
+- [x] 3D.3 Endurecer ACL de rutas Manus administradas con herencia retirada, ACE amplias removidas, permisos separados y rollback ante fallo.
+- [x] 3D.4 Sustituir `npm.cmd` con `shell:true` por `process.execPath` + `npm-cli.js` con `shell:false`.
+- [x] 3D.5 Ejecutar pruebas aisladas de Go, packaging y ACL bajo una instalación temporal; validar después con servicio QA bajo `LocalService`. Evidencia 1B.14B y packaging certificado.
+## 3F. Fase 1B.7 - exclusion interproceso del SecureSecretStore
+
+- [x] 3F.1 Integrar Named Mutex Windows por secreto, con nombre derivado sin secreto, timeout acotado, orden estable junto al lock intraproceso y helper en el OS thread propietario. Evidencia: `backend-perifericos/src/platform/secure-secret-store.ts` y `backend-perifericos/windows-installer/secure_secret_mutex_windows.go`.
+- [x] 3F.2 Reemplazar el lockfile como autoridad Windows por `WAIT_OBJECT_0`, `WAIT_TIMEOUT`, `WAIT_ABANDONED` y `WAIT_FAILED`, con `DONE`/`ABORT` correlacionados y fail-closed. Evidencia administrada 1B.14B; el lockfile queda solo diagnóstico.
+- [x] 3F.3 Cubrir operaciones concurrentes entre procesos, timeout, metadata incompleta, preservación del blob y recuperación manual documentada con secretos ficticios. Evidencia administrada 1B.14B con Node oficial `v24.21.0`.
+- [x] 3F.4 Ejecutar validación completa con Node oficial `>=24.21.0`, suite Agent y DPAPI real después de esta implementación. LocalService, ACL administradas y restart quedan certificados por la evidencia QA.
+
+## 3G. Fase 1B.10 - endurecimiento de ruta, lock y rollback ACL
+
+- [x] 3G.1 Separar `secureSecretDir` de `stateDir` y resolverlo bajo `ProgramData\\Manus\\PeripheralAgent\\state\\secrets` en Windows; no migrar blobs entre perfiles DPAPI. Evidencia: prueba de limites de plataforma y suite Agent `143/143`.
+- [x] 3G.2 Cerrar la carrera TOCTOU de liberacion del lock con Named Mutex Windows; la prueba adversarial `REPLACEMENT_ALLOWED` queda cubierta al retirar `unlink` del protocolo de autoridad. Evidencia: QA administrado 1B.14B y `secure_secret_mutex_windows.go`.
+- [x] 3G.3 Incluir la ACL de la ruta actualmente fallida en el rollback y cubrir la seleccion de backups con prueba Go. Evidencia: `go test ./...` PASS.
+- [x] 3G.4 Verificar ACL efectiva, DPAPI, persistencia y recuperación bajo instalación QA real `LocalService`. Evidencia externa: `C:\\ManusQA\\evidence\\1B14B-FINAL-20260929-164755-bcc7300e\\REPORT-FINAL.md`; no son secretos ni producción.
+
+### Correccion de evidencia de validacion
+
+La evidencia actualizada de Fase 1B.10 sustituye los conteos historicos: suite
+Agent `143/143 PASS`, SecureSecretStore y rutas `22/22 PASS`, build aislado
+`PASS`, DPAPI CurrentUser real `PASS`, packaging y validador `PASS`, Go
+installer tests `PASS` y OpenSpec strict `PASS`. El manifest queda `6/6 PASS`
+en la copia temporal con sus fixtures disponibles. La evidencia administrada
+1B.14B además certifica LocalService, ACL efectivas, DPAPI, mutex y ausencia de
+huérfanos; no convierte la Scheduled Task en una vía productiva.

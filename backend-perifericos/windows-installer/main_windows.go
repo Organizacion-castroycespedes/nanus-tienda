@@ -31,10 +31,11 @@ import (
 var embeddedAssets embed.FS
 
 const (
-	serviceName  = "ManusPeripheralAgent"
-	displayName  = "Manus Peripheral Agent"
-	publisher    = "Manus"
-	serviceDelay = 30 * time.Second
+	serviceName       = "ManusPeripheralAgent"
+	displayName       = "Manus Peripheral Agent"
+	publisher         = "Manus"
+	serviceDelay      = 30 * time.Second
+	autostartTaskName = "Manus Peripheral Agent"
 )
 
 type installerManifest struct {
@@ -97,6 +98,11 @@ type runtimeLayout struct {
 	POSPreviousPresent bool
 }
 
+type aclBackup struct {
+	path string
+	file string
+}
+
 type statusReport struct {
 	Installed      bool   `json:"installed"`
 	Version        string `json:"version,omitempty"`
@@ -112,6 +118,12 @@ type statusReport struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--secure-secret-mutex" {
+		if err := runSecureSecretMutex(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	if len(os.Args) > 1 && strings.EqualFold(os.Args[1], "--uninstall-cleanup") {
 		manifest, err := loadManifest()
 		if err != nil {
@@ -314,7 +326,10 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		if err := ensureSupportedHost(); err != nil {
 			return err
 		}
-		return ensureElevated()
+		if err := ensureElevated(); err != nil {
+			return err
+		}
+		return preflightInstallCoexistence(manifest, buildLayout(manifest))
 	}); err != nil {
 		if preflightLogger != nil {
 			preflightLogger.Printf("lifecycle phase=PREFLIGHT_FAILURE previousVersion=unknown targetVersion=%s rollbackAttempted=NO error=%v", manifest.Version, err)
@@ -447,6 +462,10 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		}
 		logger.Printf("POS verification success")
 	}
+	// Device discovery/configuration is an interactive post-install stage.
+	// Marking it explicitly skipped keeps the technical Core truthful while
+	// allowing the WebView flow to start it after service health succeeds.
+	skipInteractiveDeviceSteps(observer, &sequence)
 
 	emitCoreStep(observer, &sequence, eventStepStarted, stepFinalize, nil)
 	if err := writeUninstallMetadata(layout, manifest); err != nil {
@@ -952,6 +971,7 @@ func runAsService(manifest installerManifest) {
 type agentService struct {
 	manifest installerManifest
 	layout   runtimeLayout
+	job      windows.Handle
 }
 
 func (a *agentService) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
@@ -963,6 +983,7 @@ func (a *agentService) Execute(args []string, r <-chan svc.ChangeRequest, s chan
 		s <- svc.Status{State: svc.Stopped, Accepts: 0}
 		return false, 1
 	}
+	defer a.closeJob()
 	defer stdoutFile.Close()
 	defer stderrFile.Close()
 
@@ -1039,13 +1060,67 @@ func (a *agentService) startAgentProcess() (*exec.Cmd, *os.File, *os.File, error
 	cmd.Env = env
 	cmd.Stdout = stdoutFile
 	cmd.Stderr = stderrFile
+	job, err := createAgentJob()
+	if err != nil {
+		_ = stdoutFile.Close()
+		_ = stderrFile.Close()
+		return nil, nil, nil, fmt.Errorf("create agent job: %w", err)
+	}
 	if err := cmd.Start(); err != nil {
+		_ = windows.CloseHandle(job)
 		_ = stdoutFile.Close()
 		_ = stderrFile.Close()
 		return nil, nil, nil, err
 	}
 
+	processHandle, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		_ = windows.CloseHandle(job)
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		_ = stdoutFile.Close()
+		_ = stderrFile.Close()
+		return nil, nil, nil, fmt.Errorf("open agent process for job: %w", err)
+	}
+	if err := windows.AssignProcessToJobObject(job, processHandle); err != nil {
+		_ = windows.CloseHandle(processHandle)
+		_ = windows.CloseHandle(job)
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		_ = stdoutFile.Close()
+		_ = stderrFile.Close()
+		return nil, nil, nil, fmt.Errorf("assign agent process to job: %w", err)
+	}
+	_ = windows.CloseHandle(processHandle)
+	a.job = job
+
 	return cmd, stdoutFile, stderrFile, nil
+}
+
+func createAgentJob() (windows.Handle, error) {
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	if _, err := windows.SetInformationJobObject(
+		job,
+		windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&info)),
+		uint32(unsafe.Sizeof(info)),
+	); err != nil {
+		_ = windows.CloseHandle(job)
+		return 0, err
+	}
+	return job, nil
+}
+
+func (a *agentService) closeJob() {
+	if a.job != 0 {
+		_ = windows.CloseHandle(a.job)
+		a.job = 0
+	}
 }
 
 // The installed ProgramData config is the service's authoritative runtime
@@ -1404,24 +1479,348 @@ func installPOSPayload(layout runtimeLayout, manifest installerManifest) error {
 }
 
 func ensureServicePermissions(layout runtimeLayout) error {
-	if err := grantLocalServiceAccess(layout.InstallRoot, "RX"); err != nil {
-		return err
+	type aclSpec struct {
+		path       string
+		permission string
+		broadRead  bool
+		recursive  bool
 	}
-	if err := grantLocalServiceAccess(layout.VersionRoot, "RX"); err != nil {
-		return err
+	specs := []aclSpec{
+		{layout.InstallRoot, "RX", true, false},
+		{layout.VersionRoot, "RX", true, true},
+		{layout.ProgramDataRoot, "RX", false, false},
+		{layout.ConfigRoot, "RX", false, true},
+		{layout.LogsRoot, "M", false, true},
+		{layout.StateRoot, "M", false, true},
 	}
-	if err := grantLocalServiceAccess(layout.ProgramDataRoot, "M"); err != nil {
-		return err
+	backupRoot, err := os.MkdirTemp("", "manus-installer-acl-")
+	if err != nil {
+		return fmt.Errorf("prepare ACL rollback: %w", err)
+	}
+	defer os.RemoveAll(backupRoot)
+	backups := make([]aclBackup, 0, len(specs))
+	for index, spec := range specs {
+		if err := validateManagedDirectory(spec.path); err != nil {
+			return err
+		}
+		backup := filepath.Join(backupRoot, strconv.Itoa(index)+".acl")
+		if err := saveAcl(spec.path, backup, spec.recursive); err != nil {
+			return err
+		}
+		backups = append(backups, aclBackup{path: spec.path, file: backup})
+	}
+	for index, spec := range specs {
+		if err := applyManagedAcl(spec.path, spec.permission, spec.broadRead, spec.recursive); err != nil {
+			rollbackError := restoreAcls(backupsForAclFailure(backups, index))
+			if rollbackError != nil {
+				return fmt.Errorf("apply managed ACL: %w; ACL rollback failed: %v", err, rollbackError)
+			}
+			return fmt.Errorf("apply managed ACL: %w", err)
+		}
 	}
 	return nil
 }
 
-func grantLocalServiceAccess(path string, permission string) error {
-	grant := fmt.Sprintf(`NT AUTHORITY\LocalService:(OI)(CI)%s`, permission)
-	cmd := exec.Command("icacls", path, "/grant", grant, "/T", "/C")
+type serviceSnapshot struct {
+	exists  bool
+	running bool
+	account string
+	pid     uint32
+}
+
+const maxListenerProcessAncestryDepth = 64
+
+type processParentLookup func(pid uint32) (uint32, error)
+
+// listenerBelongsToService accepts the service PID itself and only a provable
+// descendant. A process name or an arbitrary listener PID is never enough.
+func listenerBelongsToService(listenerPID, servicePID uint32, parentOf processParentLookup) (bool, error) {
+	if listenerPID == 0 || servicePID == 0 {
+		return false, errors.New("listener or service PID is unavailable")
+	}
+	if listenerPID == servicePID {
+		return true, nil
+	}
+	seen := make(map[uint32]struct{}, maxListenerProcessAncestryDepth)
+	current := listenerPID
+	for depth := 0; depth < maxListenerProcessAncestryDepth; depth++ {
+		if _, exists := seen[current]; exists {
+			return false, errors.New("listener process ancestry contains a cycle")
+		}
+		seen[current] = struct{}{}
+		parentPID, err := parentOf(current)
+		if err != nil {
+			return false, fmt.Errorf("inspect parent PID %d: %w", current, err)
+		}
+		if parentPID == 0 || parentPID == current {
+			return false, errors.New("listener process ancestry is incomplete")
+		}
+		if parentPID == servicePID {
+			return true, nil
+		}
+		current = parentPID
+	}
+	return false, errors.New("listener process ancestry exceeds safe depth")
+}
+
+func processParentMap() (map[uint32]uint32, error) {
+	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, fmt.Errorf("create process snapshot: %w", err)
+	}
+	defer windows.CloseHandle(snapshot)
+
+	parents := make(map[uint32]uint32)
+	entry := windows.ProcessEntry32{Size: uint32(unsafe.Sizeof(windows.ProcessEntry32{}))}
+	if err := windows.Process32First(snapshot, &entry); err != nil {
+		return nil, fmt.Errorf("enumerate process snapshot: %w", err)
+	}
+	for {
+		parents[entry.ProcessID] = entry.ParentProcessID
+		if err := windows.Process32Next(snapshot, &entry); err != nil {
+			if err == windows.ERROR_NO_MORE_FILES {
+				break
+			}
+			return nil, fmt.Errorf("continue process snapshot: %w", err)
+		}
+	}
+	return parents, nil
+}
+
+func validateListenerOwnership(service serviceSnapshot, listenerPIDs []uint32, parentOf processParentLookup) error {
+	for _, listenerPID := range listenerPIDs {
+		if !service.running {
+			return fmt.Errorf("loopback listener PID %d exists while managed service is not running", listenerPID)
+		}
+		owned, err := listenerBelongsToService(listenerPID, service.pid, parentOf)
+		if err != nil || !owned {
+			if err != nil {
+				return fmt.Errorf("loopback port 4050 listener PID %d is not owned by managed service PID %d: %w", listenerPID, service.pid, err)
+			}
+			return fmt.Errorf("loopback port 4050 listener PID %d is not owned by managed service PID %d", listenerPID, service.pid)
+		}
+	}
+	return nil
+}
+
+func preflightInstallCoexistence(manifest installerManifest, layout runtimeLayout) error {
+	service, err := queryServiceSnapshot(manifest.ServiceName)
+	if err != nil {
+		return fmt.Errorf("cannot inspect managed service: %w", err)
+	}
+	if service.exists && !sameWindowsIdentity(service.account, manifest.ServiceAccount) {
+		return errors.New("managed service identity differs from LocalService; manual recovery required")
+	}
+	if service.running {
+		if service.pid == 0 {
+			return errors.New("managed service PID is unavailable; refusing possible coexistence")
+		}
+	}
+	if taskExists, err := queryAutostartTask(autostartTaskName); err != nil {
+		return err
+	} else if taskExists {
+		return errors.New("Manus Peripheral Agent Scheduled Task exists; remove or review it manually before service installation")
+	}
+	pids, err := queryListeningPids("4050")
+	if err != nil {
+		return fmt.Errorf("cannot inspect loopback port 4050: %w", err)
+	}
+	if len(pids) > 0 {
+		parents, err := processParentMap()
+		if err != nil {
+			return fmt.Errorf("cannot inspect loopback listener ownership: %w", err)
+		}
+		parentOf := func(pid uint32) (uint32, error) {
+			parentPID, ok := parents[pid]
+			if !ok {
+				return 0, fmt.Errorf("PID %d is absent from process snapshot", pid)
+			}
+			return parentPID, nil
+		}
+		if err := validateListenerOwnership(service, pids, parentOf); err != nil {
+			return err
+		}
+	}
+	for _, path := range []string{layout.InstallRoot, layout.ProgramDataRoot} {
+		if exists(path) {
+			if err := validateManagedDirectory(path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func sameWindowsIdentity(left, right string) bool {
+	normalize := func(value string) string {
+		return strings.ToLower(strings.Join(strings.Fields(value), " "))
+	}
+	left = normalize(left)
+	right = normalize(right)
+	return left == right || (left == "localservice" && right == "nt authority\\localservice") || (right == "localservice" && left == "nt authority\\localservice")
+}
+
+func queryServiceSnapshot(name string) (serviceSnapshot, error) {
+	query, err := exec.Command("sc.exe", "queryex", name).CombinedOutput()
+	if err != nil {
+		if strings.Contains(string(query), "1060") || strings.Contains(strings.ToLower(string(query)), "does not exist") {
+			return serviceSnapshot{}, nil
+		}
+		return serviceSnapshot{}, errors.New("service query failed")
+	}
+	config, err := exec.Command("sc.exe", "qc", name).CombinedOutput()
+	if err != nil {
+		return serviceSnapshot{}, errors.New("service configuration query failed")
+	}
+	return serviceSnapshot{
+		exists:  true,
+		running: strings.Contains(strings.ToUpper(string(query)), "RUNNING"),
+		account: parseScField(string(config), "SERVICE_START_NAME"),
+		pid:     parseScPid(string(query)),
+	}, nil
+}
+
+func parseScField(output, field string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.Contains(strings.ToUpper(line), strings.ToUpper(field)) {
+			continue
+		}
+		if index := strings.Index(line, ":"); index >= 0 {
+			return strings.TrimSpace(strings.TrimRight(line[index+1:], "\r"))
+		}
+	}
+	return ""
+}
+
+func parseScPid(output string) uint32 {
+	value := parseScField(output, "PID")
+	parsed, _ := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+	return uint32(parsed)
+}
+
+func queryAutostartTask(name string) (bool, error) {
+	output, err := exec.Command("schtasks.exe", "/Query", "/TN", name, "/FO", "LIST", "/V").CombinedOutput()
+	if err != nil {
+		text := strings.ToLower(string(output))
+		if strings.Contains(text, "cannot find") || strings.Contains(text, "does not exist") || strings.Contains(text, "1060") {
+			return false, nil
+		}
+		return false, errors.New("scheduled task query failed")
+	}
+	return len(strings.TrimSpace(string(output))) > 0, nil
+}
+
+func queryListeningPids(port string) ([]uint32, error) {
+	output, err := exec.Command("netstat.exe", "-ano", "-p", "tcp").CombinedOutput()
+	if err != nil {
+		return nil, errors.New("netstat query failed")
+	}
+	return parseListeningPids(string(output), port), nil
+}
+
+func parseListeningPids(output, port string) []uint32 {
+	seen := map[uint32]bool{}
+	result := make([]uint32, 0)
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 5 || !strings.EqualFold(fields[0], "TCP") || !strings.EqualFold(fields[3], "LISTENING") {
+			continue
+		}
+		if !strings.HasSuffix(fields[1], ":"+port) {
+			continue
+		}
+		pid, parseErr := strconv.ParseUint(fields[4], 10, 32)
+		if parseErr == nil && !seen[uint32(pid)] {
+			seen[uint32(pid)] = true
+			result = append(result, uint32(pid))
+		}
+	}
+	return result
+}
+
+func validateManagedDirectory(path string) error {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve managed path: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return fmt.Errorf("resolve managed path safely: %w", err)
+	}
+	resolvedAbsolute, err := filepath.Abs(resolved)
+	if err != nil || !strings.EqualFold(absolute, resolvedAbsolute) {
+		return fmt.Errorf("managed path is a reparse point: %s", path)
+	}
+	info, err := os.Stat(absolute)
+	if err != nil {
+		return fmt.Errorf("inspect managed path: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("managed path is not a directory: %s", path)
+	}
+	return nil
+}
+
+func saveAcl(path, backup string, recursive bool) error {
+	args := []string{path, "/save", backup}
+	if recursive {
+		args = append(args, "/T")
+	}
+	args = append(args, "/C")
+	cmd := exec.Command("icacls.exe", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("save ACL for managed path: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func restoreAcls(backups []aclBackup) error {
+	for index := len(backups) - 1; index >= 0; index-- {
+		cmd := exec.Command("icacls.exe", backups[index].path, "/restore", backups[index].file, "/C")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("restore ACL: %w (%s)", err, strings.TrimSpace(string(output)))
+		}
+	}
+	return nil
+}
+
+func backupsForAclFailure(backups []aclBackup, failedIndex int) []aclBackup {
+	if failedIndex < 0 {
+		return nil
+	}
+	if failedIndex >= len(backups) {
+		return backups
+	}
+	return backups[:failedIndex+1]
+}
+
+func applyManagedAcl(path, permission string, broadRead, recursive bool) error {
+	grants := []string{
+		`*S-1-5-18:(OI)(CI)(F)`,
+		`*S-1-5-32-544:(OI)(CI)(F)`,
+		fmt.Sprintf(`*S-1-5-19:(OI)(CI)(%s)`, permission),
+	}
+	if broadRead {
+		grants = append(grants, `*S-1-5-11:(OI)(CI)(RX)`)
+	}
+	args := []string{
+		path,
+		"/inheritance:r",
+		"/remove:g",
+		"*S-1-1-0",
+		"*S-1-5-32-545",
+		"*S-1-5-11",
+		"/grant:r",
+	}
+	args = append(args, grants...)
+	if recursive {
+		args = append(args, "/T")
+	}
+	args = append(args, "/C")
+	cmd := exec.Command("icacls.exe", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("icacls %s: %w: %s", path, err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("icacls managed path: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }

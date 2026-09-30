@@ -14,6 +14,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestEmbeddedAssetsIncludeLeadingUnderscoreFiles(t *testing.T) {
@@ -56,6 +59,132 @@ func TestBuildAgentEnvironmentUsesPersistedConfigOverInheritedPeripheralValues(t
 	}
 	if !strings.Contains(joined, "PATH=C:\\Windows\\System32") {
 		t.Fatal("unrelated environment must be preserved")
+	}
+}
+
+func TestServiceIdentityAcceptsLocalServiceFormsOnly(t *testing.T) {
+	if !sameWindowsIdentity(`NT AUTHORITY\LocalService`, `LocalService`) {
+		t.Fatal("LocalService aliases must match")
+	}
+	if sameWindowsIdentity(`NT AUTHORITY\LocalService`, `SYSTEM`) {
+		t.Fatal("SYSTEM must not match LocalService")
+	}
+}
+
+func TestListenerBelongsToServiceAcceptsServicePID(t *testing.T) {
+	owned, err := listenerBelongsToService(100, 100, func(uint32) (uint32, error) {
+		t.Fatal("parent lookup must not run for the service PID")
+		return 0, nil
+	})
+	if err != nil || !owned {
+		t.Fatalf("service PID must be accepted: owned=%v err=%v", owned, err)
+	}
+}
+
+func TestListenerBelongsToServiceAcceptsDirectChild(t *testing.T) {
+	parents := map[uint32]uint32{200: 100}
+	owned, err := listenerBelongsToService(200, 100, mapParentLookup(parents))
+	if err != nil || !owned {
+		t.Fatalf("direct child must be accepted: owned=%v err=%v", owned, err)
+	}
+}
+
+func TestListenerBelongsToServiceAcceptsDeeperDescendant(t *testing.T) {
+	parents := map[uint32]uint32{300: 200, 200: 100}
+	owned, err := listenerBelongsToService(300, 100, mapParentLookup(parents))
+	if err != nil || !owned {
+		t.Fatalf("deeper descendant must be accepted: owned=%v err=%v", owned, err)
+	}
+}
+
+func TestListenerBelongsToServiceRejectsUnrelatedPID(t *testing.T) {
+	parents := map[uint32]uint32{300: 250}
+	owned, err := listenerBelongsToService(300, 100, mapParentLookup(parents))
+	if err == nil || owned {
+		t.Fatalf("unrelated process must fail closed: owned=%v err=%v", owned, err)
+	}
+}
+
+func TestListenerBelongsToServiceRejectsBrokenAncestryAndCycles(t *testing.T) {
+	for name, parents := range map[string]map[uint32]uint32{
+		"missing parent": {300: 0},
+		"cycle":          {300: 200, 200: 300},
+	} {
+		t.Run(name, func(t *testing.T) {
+			owned, err := listenerBelongsToService(300, 100, mapParentLookup(parents))
+			if err == nil || owned {
+				t.Fatalf("broken ancestry must fail closed: owned=%v err=%v", owned, err)
+			}
+		})
+	}
+}
+
+func TestValidateListenerOwnershipRequiresRunningService(t *testing.T) {
+	err := validateListenerOwnership(serviceSnapshot{pid: 100}, []uint32{100}, nil)
+	if err == nil {
+		t.Fatal("listener with stopped service must fail closed")
+	}
+}
+
+func TestValidateListenerOwnershipRejectsUnrelatedListener(t *testing.T) {
+	service := serviceSnapshot{running: true, pid: 100}
+	err := validateListenerOwnership(service, []uint32{300}, mapParentLookup(map[uint32]uint32{300: 250}))
+	if err == nil {
+		t.Fatal("unrelated listener must fail closed")
+	}
+}
+
+func mapParentLookup(parents map[uint32]uint32) processParentLookup {
+	return func(pid uint32) (uint32, error) {
+		parent, ok := parents[pid]
+		if !ok {
+			return 0, fmt.Errorf("missing PID %d", pid)
+		}
+		return parent, nil
+	}
+}
+
+func TestParseListeningPidsOnlyReturnsPort4050Listeners(t *testing.T) {
+	output := "" +
+		"  TCP    127.0.0.1:4050    0.0.0.0:0    LISTENING    1234\r\n" +
+		"  TCP    127.0.0.1:4051    0.0.0.0:0    LISTENING    5678\r\n" +
+		"  TCP    127.0.0.1:4050    0.0.0.0:0    TIME_WAIT    9999\r\n"
+	pids := parseListeningPids(output, "4050")
+	if len(pids) != 1 || pids[0] != 1234 {
+		t.Fatalf("unexpected 4050 listeners: %#v", pids)
+	}
+}
+
+func TestBackupsForAclFailureIncludesPartiallyChangedPath(t *testing.T) {
+	backups := []aclBackup{
+		{path: `C:\one`, file: `C:\backup\one.acl`},
+		{path: `C:\two`, file: `C:\backup\two.acl`},
+		{path: `C:\three`, file: `C:\backup\three.acl`},
+	}
+
+	rollback := backupsForAclFailure(backups, 1)
+	if len(rollback) != 2 || rollback[1].path != `C:\two` {
+		t.Fatalf("rollback must include failing path: %#v", rollback)
+	}
+}
+
+func TestAgentJobLimitInformationUsesFullWindowsLayout(t *testing.T) {
+	var info windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+	if got := unsafe.Sizeof(info); got != 144 {
+		t.Fatalf("JOBOBJECT_EXTENDED_LIMIT_INFORMATION size = %d, want 144", got)
+	}
+	if got := unsafe.Offsetof(info.BasicLimitInformation.LimitFlags); got != 16 {
+		t.Fatalf("LimitFlags offset = %d, want 16", got)
+	}
+}
+
+func TestParseServiceFields(t *testing.T) {
+	output := "SERVICE_START_NAME : NT AUTHORITY\\LocalService\r\nPID : 1234\r\n"
+	if got := parseScField(output, "SERVICE_START_NAME"); got != `NT AUTHORITY\LocalService` {
+		t.Fatalf("service account = %q", got)
+	}
+	if got := parseScPid(output); got != 1234 {
+		t.Fatalf("service pid = %d", got)
 	}
 }
 

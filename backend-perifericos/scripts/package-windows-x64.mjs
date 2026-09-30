@@ -11,8 +11,21 @@ const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "
 const artifactName = `ManusPeripheralAgent-win-x64-${packageJson.version}`;
 const artifactRoot = join(projectRoot, "dist-terminal", "windows-x64", artifactName);
 const stagingRoot = mkdtempSync(join(tmpdir(), "manus-peripheral-agent-runtime-"));
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const environment = getEnvironment(process.env.MANUS_ENVIRONMENT ?? "qa");
+const requiredNode = [24, 21, 0];
+const runtimeVersion = process.versions.node.split(".").map(Number);
+const runtimeIsCompatible = runtimeVersion[0] > requiredNode[0]
+  || (runtimeVersion[0] === requiredNode[0] && runtimeVersion[1] >= requiredNode[1]);
+
+if (!runtimeIsCompatible) {
+  throw new Error(`Windows packaging requires Node >=24.21.0; current runtime is v${process.versions.node}`);
+}
+
+const npmCliPath = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+const npmPackagePath = join(dirname(npmCliPath), "..", "package.json");
+if (!existsSync(npmCliPath) || !existsSync(npmPackagePath)) {
+  throw new Error(`Compatible npm-cli.js is missing beside runtime: ${npmCliPath}`);
+}
 
 const clearReadonlyWindows = (path) => {
   if (process.platform !== "win32") {
@@ -317,13 +330,11 @@ try {
   // repository files, npm, or Git are copied to the workstation artifact.
   cpSync(join(projectRoot, "package.json"), join(stagingRoot, "package.json"));
   cpSync(join(projectRoot, "package-lock.json"), join(stagingRoot, "package-lock.json"));
-  execFileSync(npmCommand, ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], {
+  execFileSync(process.execPath, [npmCliPath, "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], {
     cwd: stagingRoot,
     stdio: "inherit",
     windowsHide: true,
-    // npm.cmd is a Windows command shim; the build host shell is required
-    // only while composing the artifact, never by the target workstation.
-    shell: process.platform === "win32",
+    shell: false,
   });
 
   cpSync(join(projectRoot, "dist"), join(artifactRoot, "app"), {

@@ -125,6 +125,7 @@ test("agent installation identity is persisted through platform paths", () => {
 test("platform paths isolate Windows paths outside portable core", () => {
   const paths = resolvePlatformPaths("win32", { PROGRAMDATA: "C:\\ProgramData" });
   assert.equal(paths.stateDir, "C:\\ProgramData\\Manus\\PeripheralAgent\\state");
+  assert.equal(paths.secureSecretDir, "C:\\ProgramData\\Manus\\PeripheralAgent\\state\\secrets");
 });
 
 test("agent installation id persists in the local state directory", () => {
