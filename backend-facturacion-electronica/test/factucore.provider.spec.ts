@@ -16,6 +16,8 @@ import {
   FactuCoreProviderBootstrap,
 } from "../src/modules/electronic-billing/providers/factucore";
 import { FactuCoreClient } from "../src/modules/electronic-billing/providers/factucore";
+import { resolveFactuCoreIssueTime } from "../src/modules/electronic-billing/providers/factucore/factucore.mapper";
+import { resolveDocumentIssueTime } from "../src/modules/electronic-billing/services/electronic-billing-processing.service";
 import { FakeElectronicBillingProvider } from "../src/modules/electronic-billing/providers";
 import type {
   FactuCoreBinaryResponse,
@@ -185,6 +187,20 @@ class RecordingFactuCoreClient {
     return buildDoc({ id: "factu-credit-1", providerDocumentId: "factu-credit-1" });
   }
 
+  async issueCreditNote(context: FactuCoreRuntimeContext, request: unknown) {
+    this.calls.push({ op: "issueCreditNote", context, request });
+    return buildDoc({
+      id: "factu-credit-1",
+      providerDocumentId: "factu-credit-1",
+      status: "REJECTED",
+      providerStatus: "REJECTED",
+      failureClass: "DIAN_REJECTED",
+      reason: "DIAN rechazó el documento",
+      probableCause: "OUR_PAYLOAD_REJECTED",
+      errors: [{ code: "CBA06", message: "Regla: CBA06, Rechazo: referencia", path: null, severity: "REJECTION" }],
+    });
+  }
+
   async generateXml(context: FactuCoreRuntimeContext, documentId: string) {
     this.calls.push({ op: "generateXml", context, documentId });
     return buildDoc({ id: documentId, providerDocumentId: documentId, status: "XML_GENERATED", providerStatus: "XML_GENERATED" });
@@ -341,9 +357,37 @@ test("resumeInvoice continues a validated provider document without create", asy
 
   const result = await provider.resumeInvoice(command, "factu-existing-1");
 
-  assert.deepEqual(client.calls.map((call) => call.op), ["generateXml", "sign", "transmit"]);
+  assert.deepEqual(client.calls.map((call) => call.op), ["getStatus", "generateXml", "sign", "transmit"]);
   assert.equal(result.providerDocumentId, "factu-existing-1");
   assert.deepEqual(stages, ["XML_GENERATE_INTENT", "XML_GENERATED", "SIGN_INTENT", "SIGNED", "TRANSMISSION_INTENT", "TRANSMITTED"]);
+});
+
+test("resumeInvoice continues a SIGNED provider document by skipping generateXml and sign", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
+
+  // mock getStatus to return SIGNED
+  client.getStatus = async (context, documentId) => {
+    client.calls.push({ op: "getStatus", context, documentId });
+    return {
+      id: documentId,
+      providerDocumentId: documentId,
+      status: "SIGNED",
+      providerStatus: "SIGNED",
+      xml: { attachmentId: "att-xml-1", fileName: "doc.xml", path: "doc.xml" },
+      signedXml: { attachmentId: "att-signed-1", fileName: "doc.signed.xml", path: "doc.signed.xml" },
+    } as never;
+  };
+
+  const result = await provider.resumeInvoice(command, "factu-existing-1");
+
+  assert.deepEqual(client.calls.map((call) => call.op), ["getStatus", "transmit"]);
+  assert.equal(result.providerDocumentId, "factu-existing-1");
+  assert.deepEqual(stages, ["XML_GENERATED", "SIGNED", "TRANSMISSION_INTENT", "TRANSMITTED"]);
 });
 
 test("getDocument reads the linked provider document by id", async () => {
@@ -471,6 +515,35 @@ test("mapper matches FactuCore tax DTO for taxed and excluded lines", () => {
 
   assert.equal(excludedRequest.lines[0].taxes, undefined);
   assert.equal(excludedRequest.lines[0].taxTreatment, "EXCLUDED");
+});
+
+test("document issue time is the Bogota creation time and stays stable for retries", () => {
+  const document = { issue_time: null, created_at: new Date("2026-09-30T03:15:09.000Z") };
+
+  assert.equal(resolveDocumentIssueTime(document), "22:15:09");
+  assert.equal(resolveDocumentIssueTime(document), resolveDocumentIssueTime({ ...document }));
+  assert.equal(resolveDocumentIssueTime({ issue_time: "10:20:30", created_at: document.created_at }), "10:20:30");
+  assert.equal(resolveDocumentIssueTime({ issue_time: null, created_at: null }), null);
+});
+
+test("mapper never sends a null issue time to FactuCore", () => {
+  assert.equal(resolveFactuCoreIssueTime("08:05:01"), "08:05:01");
+  assert.equal(resolveFactuCoreIssueTime(null, new Date("2026-09-30T03:15:09.000Z")), "22:15:09");
+});
+
+test("mapper keeps the FactuCore graphic representation only when it is an object", () => {
+  const mapper = new FactuCoreMapper();
+  const graphicRepresentation = { version: 1, fullNumber: "SETP990010028", resolution: { number: "18760000001" } };
+
+  assert.deepEqual(
+    mapper.mapDocumentResult("doc-1", { status: "ACCEPTED", graphicRepresentation }).graphicRepresentation,
+    graphicRepresentation,
+  );
+  assert.equal(
+    mapper.mapDocumentResult("doc-1", { status: "ACCEPTED", graphicRepresentation: [] as never }).graphicRepresentation,
+    null,
+  );
+  assert.equal(mapper.mapDocumentResult("doc-1", { status: "SENT" }).graphicRepresentation, null);
 });
 
 test("mapper normalizes Manus tax labels to the FactuCore tax enum", () => {
@@ -827,22 +900,63 @@ test("issueInvoice reconciles a FactuCore conflict by external reference", async
   assert.deepEqual(stages, ["PROVIDER_LINKED"]);
 });
 
-test("issueCreditNote maps origin fields and provider line identity", async () => {
+test("issueCreditNote queued mode maps origin fields and provider line identity", async () => {
+  const previousMode = process.env.FACTUCORE_TRANSMISSION_MODE;
+  process.env.FACTUCORE_TRANSMISSION_MODE = "queued";
+  try {
+    const client = new RecordingFactuCoreClient();
+    const { resolver } = buildResolver();
+    const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+
+    const result = await provider.issueCreditNote(makeCreditNoteCommand());
+
+    assert.equal(result.providerStatus, "SENT");
+    const createCall = client.calls.find((call) => call.op === "createCreditNote");
+    const request = createCall?.request as Record<string, unknown>;
+    assert.equal(request.originDocumentId, "factu-origin-tenant-a");
+    assert.equal(request.originFullNumber, "FC-tenant-a");
+    assert.equal(request.originExternalReference, "SALE-tenant-a");
+    assert.equal(request.customerId, null);
+    const firstLine = (request.lines as Array<Record<string, unknown>>)[0];
+    assert.equal(firstLine.originLineId, "factu-line-tenant-a");
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.FACTUCORE_TRANSMISSION_MODE;
+    } else {
+      process.env.FACTUCORE_TRANSMISSION_MODE = previousMode;
+    }
+  }
+});
+
+test("issueCreditNote sync mode uses one issue call and maps DIAN failure detail", async () => {
   const client = new RecordingFactuCoreClient();
   const { resolver } = buildResolver();
   const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
 
   const result = await provider.issueCreditNote(makeCreditNoteCommand());
 
-  assert.equal(result.providerStatus, "SENT");
-  const createCall = client.calls.find((call) => call.op === "createCreditNote");
-  const request = createCall?.request as Record<string, unknown>;
-  assert.equal(request.originDocumentId, "origin-tenant-a");
-  assert.equal(request.originFullNumber, "FC-tenant-a");
-  assert.equal(request.originExternalReference, "SALE-tenant-a");
-  assert.equal(request.customerId, null);
-  const firstLine = (request.lines as Array<Record<string, unknown>>)[0];
-  assert.equal(firstLine.originLineId, "factu-line-tenant-a");
+  assert.deepEqual(client.calls.map((call) => call.op), ["issueCreditNote"]);
+  const request = client.calls[0].request as Record<string, unknown>;
+  assert.equal(request.transmissionMode, "sync");
+  assert.equal(request.originDocumentId, "factu-origin-tenant-a");
+  assert.equal(result.normalizedStatus, "REJECTED");
+  assert.equal(result.failureClass, "DIAN_REJECTED");
+  assert.equal(result.probableCause, "OUR_PAYLOAD_REJECTED");
+  assert.deepEqual(result.providerErrors, [
+    { code: "CBA06", message: "Regla: CBA06, Rechazo: referencia", path: null, severity: "REJECTION" },
+  ]);
+  assert.ok((client.calls[0].context.syncTimeoutMs ?? 0) >= 45_000);
+});
+
+test("issueInvoice sends sync transmission mode by default", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+
+  await provider.issueInvoice(makeInvoiceCommand());
+
+  const request = client.calls[0].request as Record<string, unknown>;
+  assert.equal(request.transmissionMode, "sync");
 });
 
 test("status normalization keeps accepted and processing states", async () => {

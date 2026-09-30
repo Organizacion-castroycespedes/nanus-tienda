@@ -418,14 +418,30 @@ export class SalesReportsService {
     const actor = this.resolveActor(user);
     const ticket = await this.getSaleTicket(saleId, user);
     const document = await this.getElectronicInvoice(saleId, user);
-    if (document.status !== "ACCEPTED" || !document.representationAvailable || !document.fiscalIssuerSnapshot) {
+    const fiscal = document.graphicRepresentation ?? null;
+    const issuerSnapshot = document.fiscalIssuerSnapshot ?? (fiscal
+      ? {
+          name: fiscal.issuer.legalName,
+          identificationType: "NIT",
+          identificationNumber: fiscal.issuer.identificationNumber,
+          verificationDigit: fiscal.issuer.verificationDigit,
+          address: fiscal.issuer.address,
+          country: fiscal.issuer.country,
+          department: fiscal.issuer.department,
+          municipality: fiscal.issuer.city,
+          phone: fiscal.issuer.phone,
+          email: fiscal.issuer.email,
+        }
+      : null);
+    if (document.status !== "ACCEPTED" || !document.representationAvailable || !issuerSnapshot) {
       throw new ConflictException("accepted electronic invoice fiscal issuer snapshot is unavailable");
     }
     const company = await this.salesReportAdapter.getPrintableCompany(actor);
     const representation = buildElectronicInvoiceRepresentation({
       status: document.status,
+      fiscal,
       issuer: {
-        ...document.fiscalIssuerSnapshot,
+        ...issuerSnapshot,
       },
       customer: {
         name: document.customerFiscalSnapshot?.name ?? ticket.header.customer,

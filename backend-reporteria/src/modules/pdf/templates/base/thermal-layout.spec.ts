@@ -109,7 +109,7 @@ test("POS ticket preserves full totals as presentation input", () => {
   )?.table;
   const totalRow = totalsTable?.body?.find((row) => row[0]?.text === "Total");
 
-  assert.equal(totalRow?.[1]?.text, "$ 40.000");
+  assert.equal(totalRow?.[1]?.text, "$ 40.000,00");
 });
 
 test("POS ticket does not contradict a paid aggregate when payment detail is absent", () => {

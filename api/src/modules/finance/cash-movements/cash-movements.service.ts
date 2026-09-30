@@ -78,7 +78,7 @@ export class CashMovementsService {
     if (!branch) {
       throw new BadRequestException("Sucursal invalida");
     }
-    if (this.canAdminCash(actor)) {
+    if (this.canManageTenant(actor)) {
       return;
     }
     const allowed = await this.accessRepository.userHasBranchAccess(
@@ -92,7 +92,7 @@ export class CashMovementsService {
   }
 
   private async resolveAllowedBranchIds(actor: FinanceActor, tenantId: string) {
-    if (this.canAdminCash(actor)) {
+    if (this.canManageTenant(actor)) {
       return undefined;
     }
 
@@ -139,6 +139,14 @@ export class CashMovementsService {
     const totalOut = items
       .filter((item) => item.direction === "OUT")
       .reduce((sum, item) => sum + item.amount, 0);
+    const purchasePayments = items
+      .filter(
+        (item) =>
+          item.movementType === "PAYMENT" &&
+          item.direction === "OUT" &&
+          item.referenceType === "PURCHASE"
+      )
+      .reduce((sum, item) => sum + item.amount, 0);
 
     return plainToInstance(
       CashMovementListSummaryDto,
@@ -147,6 +155,7 @@ export class CashMovementsService {
         totalOut,
         balance: totalIn - totalOut,
         movementCount: items.length,
+        purchasePayments,
       },
       { excludeExtraneousValues: true }
     );
@@ -154,15 +163,19 @@ export class CashMovementsService {
 
   private async buildPaymentMethodSummary(
     tenantId: string,
-    cashSessionId?: string
-  ) {
-    if (!cashSessionId) {
-      return [] as CashMovementPaymentMethodSummaryDto[];
+    filters: {
+      cashSessionId?: string;
+      branchId?: string;
+      branchIds?: string[];
+      cashRegisterId?: string;
+      createdBy?: string;
+      dateFrom?: string;
+      dateTo?: string;
     }
-
-    const rows = await this.paymentsRepository.summarizeByPaymentMethodForCashSession(
+  ) {
+    const rows = await this.paymentsRepository.summarizeByPaymentMethodForFilters(
       tenantId,
-      cashSessionId
+      filters
     );
 
     return rows.map((row) =>
@@ -176,6 +189,10 @@ export class CashMovementsService {
           paymentMethodTipo: row.payment_method_tipo,
           count: Number(row.count),
           total: Number(row.total),
+          sales: Number(row.sales),
+          orders: Number(row.orders),
+          purchasesOut: Number(row.purchases_out),
+          net: Number(row.net),
         },
         { excludeExtraneousValues: true }
       )
@@ -277,6 +294,24 @@ export class CashMovementsService {
     }
 
     const tenantId = this.resolveTenantId(actor, filters.tenantId);
+    const isCurrentSessionQuery = Boolean(filters.cashSessionId);
+    if (Boolean(filters.dateFrom) !== Boolean(filters.dateTo)) {
+      throw new BadRequestException("Fecha desde y fecha hasta deben enviarse juntas");
+    }
+    if (!isCurrentSessionQuery && (!filters.dateFrom || !filters.dateTo)) {
+      throw new BadRequestException("Fecha desde y fecha hasta son obligatorias");
+    }
+    if (filters.dateFrom && filters.dateTo) {
+      const from = new Date(`${filters.dateFrom}T00:00:00Z`);
+      const to = new Date(`${filters.dateTo}T00:00:00Z`);
+      const days = (to.getTime() - from.getTime()) / 86400000;
+      if (!Number.isFinite(days) || days < 0) {
+        throw new BadRequestException("El rango de fechas es invalido");
+      }
+      if (days > 30) {
+        throw new BadRequestException("El rango maximo es de 31 dias");
+      }
+    }
     if (filters.branchId) {
       await this.assertBranchScope(actor, tenantId, filters.branchId);
     }
@@ -285,6 +320,16 @@ export class CashMovementsService {
       const session = await this.sessionsRepository.findById(filters.cashSessionId, tenantId);
       if (!session) {
         throw new NotFoundException("Sesion de caja no encontrada");
+      }
+      if (isCurrentSessionQuery && !filters.dateFrom && session.status !== "OPEN") {
+        throw new BadRequestException("La sesion operativa no esta abierta");
+      }
+      await this.assertBranchScope(actor, tenantId, session.branch_id);
+      if (filters.branchId && filters.branchId !== session.branch_id) {
+        throw new BadRequestException("La sesion no pertenece a la sucursal seleccionada");
+      }
+      if (filters.cashRegisterId && filters.cashRegisterId !== session.cash_register_id) {
+        throw new BadRequestException("La sesion no pertenece a la caja seleccionada");
       }
       if (
         !this.canAdminCash(actor) &&
@@ -318,6 +363,8 @@ export class CashMovementsService {
       movementType: filters.movementType,
       direction: filters.direction,
       createdBy: this.canAdminCash(actor) ? undefined : actor.userId,
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
       limit: filters.limit ?? 100,
       offset: filters.offset ?? 0,
     });
@@ -333,7 +380,15 @@ export class CashMovementsService {
         summary: this.buildSummary(items),
         byPaymentMethod: await this.buildPaymentMethodSummary(
           tenantId,
-          filters.cashSessionId
+          {
+            cashSessionId: filters.cashSessionId,
+            branchId: filters.branchId,
+            branchIds: await this.resolveAllowedBranchIds(actor, tenantId),
+            cashRegisterId: filters.cashRegisterId,
+            createdBy: this.canAdminCash(actor) ? undefined : actor.userId,
+            dateFrom: filters.dateFrom,
+            dateTo: filters.dateTo,
+          }
         ),
         items,
       },

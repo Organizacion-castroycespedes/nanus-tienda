@@ -8,9 +8,9 @@ const retryDocumentId = "00000000-0000-0000-0000-000000010003";
 const maxRetryDocumentId = "00000000-0000-0000-0000-000000010004";
 const initialDocumentId = "00000000-0000-0000-0000-000000010005";
 
-test("background worker stays disabled by default", async () => {
+test("background worker can be switched off explicitly", async () => {
   const originalEnabled = process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED;
-  delete process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED;
+  process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED = "false";
 
   const documentRepository = {
     claimDueForBackgroundSync: async () => {
@@ -150,6 +150,35 @@ test("background worker refreshes processing documents and retries technical err
   assert.deepEqual(claimed[1].statuses, ["PROCESSING"]);
   assert.deepEqual(claimed[2].statuses, ["TECHNICAL_ERROR"]);
   assert.equal(claimed[2].excludePreProviderIntentWithoutProvider, undefined);
+
+  if (originalEnabled === undefined) {
+    delete process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED;
+  } else {
+    process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED = originalEnabled;
+  }
+});
+
+test("background worker runs by default without env configuration", async () => {
+  const originalEnabled = process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED;
+  delete process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED;
+
+  let claimCalls = 0;
+  const documentRepository = {
+    claimDueForBackgroundSync: async () => {
+      claimCalls += 1;
+      return [];
+    },
+    updateStatus: async () => null,
+  };
+  const processingService = {
+    processDocument: async () => null,
+    refreshDocumentStatus: async () => null,
+    retryDocument: async () => null,
+  };
+
+  const service = new ElectronicBillingBackgroundService(documentRepository as never, processingService as never);
+  await service.runOnce();
+  assert.ok(claimCalls > 0);
 
   if (originalEnabled === undefined) {
     delete process.env.ELECTRONIC_BILLING_BACKGROUND_ENABLED;

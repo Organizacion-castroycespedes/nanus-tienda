@@ -72,6 +72,21 @@ test("electronic billing normalizes IVA base and amount for three units", () => 
   assert.deepEqual(normalized, { taxableBase: 300000, amount: 15000 });
 });
 
+test("electronic billing returns zero amount when tax rate is zero", () => {
+  const normalized = normalizeElectronicBillingTaxForQuantity({
+    quantity: 1,
+    lineBase: 52702.7,
+    tax: {
+      dianCode: "30",
+      taxRate: 0,
+      taxBase: 52702.7,
+      taxAmount: 25297.3,
+    },
+  });
+
+  assert.deepEqual(normalized, { taxableBase: 52702.7, amount: 0 });
+});
+
 type Scenario = {
   saleStatus?: "DRAFT" | "CONFIRMED" | "CANCELLED" | "REFUNDED";
   requiresLot?: boolean;

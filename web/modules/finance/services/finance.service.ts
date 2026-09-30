@@ -155,6 +155,9 @@ export const listCashSessionHistory = (
       tenantId: filters.tenantId,
       branchId: filters.branchId,
       cashRegisterId: filters.cashRegisterId,
+      openedByUserId: filters.openedByUserId,
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
       status: filters.status,
       limit: filters.limit ? String(filters.limit) : undefined,
       offset: filters.offset ? String(filters.offset) : undefined,
@@ -189,6 +192,8 @@ export const createCashSessionAudit = (
 export const listCashMovements = (filters: CashMovementFilters = {}) =>
   apiClient<CashMovement[] | CashMovementListResponse>(
     `/finance/cash-movements${buildQuery({
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
       tenantId: filters.tenantId,
       branchId: filters.branchId,
       cashRegisterId: filters.cashRegisterId,

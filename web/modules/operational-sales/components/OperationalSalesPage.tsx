@@ -52,7 +52,7 @@ import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { downloadBlob } from "../../reporteria/utils";
 import { getOperationalSalesReportExcel, getOperationalSalesReportPdf } from "../services/operational-sales-report.service";
 import { useAppSelector } from "../../../store/hooks";
-import { useOperationalSales } from "../hooks/use-operational-sales";
+import { useOperationalSales, getDefaultOperationalSalesFilters } from "../hooks/use-operational-sales";
 
 const statusLabel = (value: string) => labels[value.toUpperCase()] ?? value;
 const StatusBadge = ({ value }: { value: string }) => <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">{statusLabel(value)}</span>;
@@ -65,7 +65,8 @@ export const OperationalSalesPage = () => {
   const router = useRouter();
   const posContext = usePosContext();
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
-  const { data, filters, appliedFilters, loading, error, page, pageSize, setPage, setPageSize, search, resetFilters, updateFilter, toggleSort, reload } = useOperationalSales();
+  const initialFilters = useMemo(() => getDefaultOperationalSalesFilters(role), [role]);
+  const { data, filters, appliedFilters, loading, error, page, pageSize, setPage, setPageSize, search, resetFilters, updateFilter, toggleSort, reload } = useOperationalSales(initialFilters);
 
   const [actionSaleId, setActionSaleId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);

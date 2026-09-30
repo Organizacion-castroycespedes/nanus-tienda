@@ -50,6 +50,14 @@ export const useCashMovements = () => {
                   .filter((item) => item.direction === "OUT")
                   .reduce((sum, item) => sum + item.amount, 0),
               movementCount: response.length,
+              purchasePayments: response
+                .filter(
+                  (item) =>
+                    item.movementType === "PAYMENT" &&
+                    item.direction === "OUT" &&
+                    item.referenceType === "PURCHASE"
+                )
+                .reduce((sum, item) => sum + item.amount, 0),
             },
             byPaymentMethod: [],
             items: response,
@@ -82,6 +90,14 @@ export const useCashMovements = () => {
     }
   }, []);
 
+  const clearResults = useCallback(() => {
+    setMovements([]);
+    setSummary(null);
+    setByPaymentMethod([]);
+    setErrorMessage(null);
+    setHasLoaded(false);
+  }, []);
+
   return {
     movements,
     summary,
@@ -93,5 +109,6 @@ export const useCashMovements = () => {
     setErrorMessage,
     loadMovements,
     createItem,
+    clearResults,
   };
 };

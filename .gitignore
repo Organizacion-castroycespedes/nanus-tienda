@@ -74,3 +74,4 @@ scripts/config/db.env
 
 # Local QA/build/runtime scratch content
 /tmp/
+/.tmp/

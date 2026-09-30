@@ -33,6 +33,7 @@ import { OperationalSalesReportsController } from "./operational-sales-reports.c
 import { OperationalSalesReportsService } from "./operational-sales-reports.service";
 import { OperationalSalesReportScopeService } from "./operational-sales-report-scope.service";
 import { OperationalSalesReportAdapter } from "./sql-adapters/operational-sales-report.adapter";
+import { OperationalControlService } from "./operational-control.service";
 
 @Module({
   imports: [AuthModule, DatabaseModule, PdfModule],
@@ -70,6 +71,7 @@ import { OperationalSalesReportAdapter } from "./sql-adapters/operational-sales-
     OperationalSalesReportsService,
     OperationalSalesReportScopeService,
     OperationalSalesReportAdapter,
+    OperationalControlService,
   ],
 })
 export class ReportsModule {}

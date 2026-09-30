@@ -524,6 +524,9 @@ export class SalesReportAdapter {
               CASE WHEN document.metadata #> '{electronicBilling,fiscalIssuerSnapshot}' IS NOT NULL THEN
                 document.metadata #> '{electronicBilling,fiscalIssuerSnapshot}'
               ELSE NULL END AS "fiscalIssuerSnapshot",
+              CASE WHEN jsonb_typeof(document.metadata #> '{electronicBilling,graphicRepresentation}') = 'object' THEN
+                document.metadata #> '{electronicBilling,graphicRepresentation}'
+              ELSE NULL END AS "graphicRepresentation",
               COALESCE((SELECT jsonb_agg(jsonb_build_object('type', tax.tax_type, 'code', tax.tax_code, 'rate', tax.rate, 'taxableBase', tax.taxable_base, 'amount', tax.tax_amount) ORDER BY tax.created_at, tax.id) FROM electronic_document_taxes tax WHERE tax.electronic_document_id = document.id), '[]'::jsonb) AS "taxLines",
               COALESCE(
                 document.metadata #>> '{electronicBilling,qrPayload}',
@@ -532,7 +535,8 @@ export class SalesReportAdapter {
               ) AS "qrPayload",
               (document.status = 'ACCEPTED'
                AND COALESCE(document.full_number, CONCAT(COALESCE(document.prefix, ''), document.number::TEXT)) IS NOT NULL
-               AND document.metadata #> '{electronicBilling,fiscalIssuerSnapshot}' IS NOT NULL) AS "representationAvailable"
+               AND (document.metadata #> '{electronicBilling,fiscalIssuerSnapshot}' IS NOT NULL
+                 OR jsonb_typeof(document.metadata #> '{electronicBilling,graphicRepresentation}') = 'object')) AS "representationAvailable"
          FROM sales AS s
          INNER JOIN electronic_documents AS document
            ON document.tenant_id = s.tenant_id
@@ -573,6 +577,7 @@ export class SalesReportAdapter {
             email: document.fiscalIssuerSnapshot.email ?? null,
           }
         : null,
+      graphicRepresentation: document.graphicRepresentation ?? null,
       taxLines: Array.isArray(document.taxLines)
         ? document.taxLines.map((tax) => ({
             type: String(tax.type ?? "TAX"),

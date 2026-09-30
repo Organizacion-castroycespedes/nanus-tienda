@@ -12,26 +12,22 @@ export type HeaderPeripheralStatusProps = {
   pulse?: boolean;
 };
 
-const toneStyles: Record<HeaderPeripheralTone, { icon: string; dot: string; text: string }> = {
+const toneStyles: Record<HeaderPeripheralTone, { icon: string; dot: string }> = {
   ok: {
     icon: "text-slate-700 dark:text-slate-200",
     dot: "bg-emerald-500",
-    text: "text-emerald-600 dark:text-emerald-400",
   },
   warning: {
     icon: "text-amber-600 dark:text-amber-400",
     dot: "bg-amber-400",
-    text: "text-amber-600 dark:text-amber-400",
   },
   error: {
     icon: "text-rose-600 dark:text-rose-400",
     dot: "bg-rose-500",
-    text: "text-rose-600 dark:text-rose-400",
   },
   idle: {
     icon: "text-slate-400 dark:text-slate-500",
     dot: "bg-slate-300 dark:bg-slate-600",
-    text: "text-slate-400 dark:text-slate-500",
   },
 };
 
@@ -58,7 +54,7 @@ export const HeaderPeripheralStatus = ({
 
   return (
     <span
-      className="inline-flex h-11 min-w-[3.5rem] shrink-0 flex-col items-center justify-center px-1.5"
+      className="inline-flex h-8 w-10 shrink-0 items-center justify-center"
       title={description}
       aria-label={description}
       role="status"
@@ -73,10 +69,6 @@ export const HeaderPeripheralStatus = ({
           className={`absolute -right-1.5 -top-1 h-2 w-2 rounded-full ring-2 ring-white dark:ring-slate-900 ${styles.dot}`}
           aria-hidden="true"
         />
-      </span>
-      <span className="mt-0.5 block text-center text-[9px] font-medium leading-[1.15]">
-        <span className="block text-slate-600 dark:text-slate-300">{label}</span>
-        <span className={`block font-semibold ${styles.text}`}>{status}</span>
       </span>
     </span>
   );

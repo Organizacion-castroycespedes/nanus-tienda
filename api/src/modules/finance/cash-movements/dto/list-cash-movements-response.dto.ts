@@ -13,6 +13,9 @@ export class CashMovementListSummaryDto {
 
   @Expose()
   movementCount!: number;
+
+  @Expose()
+  purchasePayments!: number;
 }
 
 export class CashMovementPaymentMethodSummaryDto {
@@ -36,6 +39,18 @@ export class CashMovementPaymentMethodSummaryDto {
 
   @Expose()
   total!: number;
+
+  @Expose()
+  sales!: number;
+
+  @Expose()
+  orders!: number;
+
+  @Expose()
+  purchasesOut!: number;
+
+  @Expose()
+  net!: number;
 }
 
 export class CashMovementListResponseDto {
