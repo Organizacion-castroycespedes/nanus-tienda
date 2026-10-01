@@ -149,6 +149,13 @@
 - [x] 3H.3 Exponer el candidato mediante el discovery existente sin persistencia, apertura COM, configuracion, autorizacion, `ScaleService` o `REAL_AVAILABLE`.
 - [x] 3H.4 Cubrir parser, perfil, identidad, deduplicacion, no-mutacion y regresion de impresora. Smoke fisico queda separado y requiere confirmar el dispositivo en el host.
 
+## 3I. Fase 1B.17C - configuracion local ROCHI
+
+- [x] 3I.1 Reutilizar create/update genericos para configurar `SCALE` + `SERIAL` + `ROCHI_A01E` con serial completo y PnP preservado.
+- [x] 3I.2 Persistir la configuracion mediante el registro JSON atomico, conservar schema 1 y cargar estados anteriores sin serial.
+- [x] 3I.3 Reconciliar el mismo PnP con cambio de COM sin duplicar el device ni borrar la configuracion.
+- [x] 3I.4 Verificar que configurar no abre COM ni activa `ScaleService`, `connected`, `authorized`, `unitVerified` o `REAL_AVAILABLE`.
+
 - [x] 3G.1 Separar `secureSecretDir` de `stateDir` y resolverlo bajo `ProgramData\\Manus\\PeripheralAgent\\state\\secrets` en Windows; no migrar blobs entre perfiles DPAPI. Evidencia: prueba de limites de plataforma y suite Agent `143/143`.
 - [x] 3G.2 Cerrar la carrera TOCTOU de liberacion del lock con Named Mutex Windows; la prueba adversarial `REPLACEMENT_ALLOWED` queda cubierta al retirar `unlink` del protocolo de autoridad. Evidencia: QA administrado 1B.14B y `secure_secret_mutex_windows.go`.
 - [x] 3G.3 Incluir la ACL de la ruta actualmente fallida en el rollback y cubrir la seleccion de backups con prueba Go. Evidencia: `go test ./...` PASS.

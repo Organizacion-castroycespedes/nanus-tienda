@@ -647,6 +647,21 @@ no abre COM, no lee/escribe frames, no configura el Agent, no marca
 La ausencia de candidatos y el error de enumeracion son resultados distintos;
 un error serial no corrompe ni reemplaza la lista de impresoras.
 
+### Fase 1B.17C - configuracion y reconciliacion local
+
+La configuracion reutiliza `DevicesService.create` y `DevicesService.update`.
+`resolveProfileId` valida la compatibilidad de `ROCHI_A01E` con `SCALE` y
+`SERIAL`; `resolveSerialOptionsForConnection` exige el objeto completo y
+preserva `pnp`. El `FileDeviceRegistryStateStore` mantiene `schemaVersion=1`
+con `serial` opcional y su reemplazo atomico existente.
+
+Un candidato se convierte en configurado solo por una operacion explicita. En
+la siguiente carga del servicio, el estado persistido se une con discovery.
+La identidad logica permanece estable porque el ID deriva de PnP, mientras el
+puerto puede cambiar de COM3 a otro COM. El reencuentro no crea duplicados ni
+abre el puerto. `connected`, `unitVerified`, `authorized` y `realAvailable`
+siguen falsos; no se instancia el driver ROCHI ni `ScaleService`.
+
 
 La ruta productiva de secretos se separa de `stateDir` interactivo mediante
 `PlatformPaths.secureSecretDir`. En Windows se resuelve bajo

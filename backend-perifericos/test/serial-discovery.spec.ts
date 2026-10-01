@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import { DevicesController } from "../src/modules/devices/devices.controller";
 import { DevicesService } from "../src/modules/devices/devices.service";
 import { EventsService } from "../src/modules/events/events.service";
 import { LogsService } from "../src/modules/logs/logs.service";
+import { FileDeviceRegistryStateStore } from "../src/platform/device-registry-state.store";
 import { buildRochiSerialDescriptor } from "../src/shared/usb/usb-printer-discovery";
 import {
   extractUsbVidPid,
@@ -110,4 +114,57 @@ test("serial discovery is side-effect free, deduplicated, and keeps printers", (
     if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
     else process.env.PERIPHERALS_MODE = previousMode;
   }
+});
+
+test("discovered ROCHI configures, reloads, and follows PnP identity across COM changes", () => {
+  const root = mkdtempSync(join(tmpdir(), "manus-rochi-config-"));
+  const paths = {
+    configDir: join(root, "config"),
+    stateDir: join(root, "state"),
+    logDir: join(root, "logs"),
+  };
+  const store = new FileDeviceRegistryStateStore();
+  const descriptor = (port: string) => buildRochiSerialDescriptor({
+    ...rawRochi(port),
+    pnpDeviceId: "USB\\VID_1A86&PID_7523\\ROCHI-CONFIG-QA",
+    nativeIdentifier: "USB\\VID_1A86&PID_7523\\ROCHI-CONFIG-QA",
+    fingerprint: {
+      source: "WINDOWS_SERIAL_PNP",
+      values: { pnpDeviceId: "USB\\VID_1A86&PID_7523\\ROCHI-CONFIG-QA" },
+    },
+  })!;
+  const firstService = new DevicesService(
+    new LogsService(),
+    new EventsService(),
+    { list: () => [], listSerialDevices: () => [descriptor("COM3")] },
+    store,
+    paths
+  );
+  const firstController = new DevicesController(firstService);
+  const candidate = firstController.discover().devices.find(
+    (device) => device.profileId === "ROCHI_A01E"
+  );
+  assert.ok(candidate);
+  assert.equal(candidate?.metadata?.configured, false);
+  const configured = firstController.update(candidate!.id, {});
+  assert.equal(configured.serial?.port, "COM3");
+  assert.equal(configured.status, DeviceStatus.DISCONNECTED);
+  assert.equal(configured.metadata?.authorized, false);
+  assert.equal(configured.metadata?.realAvailable, false);
+
+  const secondService = new DevicesService(
+    new LogsService(),
+    new EventsService(),
+    { list: () => [], listSerialDevices: () => [descriptor("COM4")] },
+    store,
+    paths
+  );
+  const reconciled = new DevicesController(secondService).discover().devices.filter(
+    (device) => device.profileId === "ROCHI_A01E"
+  );
+  assert.equal(reconciled.length, 1);
+  assert.equal(reconciled[0].id, candidate!.id);
+  assert.equal(reconciled[0].serial?.port, "COM4");
+  assert.equal(reconciled[0].serial?.pnp?.deviceId, "USB\\VID_1A86&PID_7523\\ROCHI-CONFIG-QA");
+  assert.equal(secondService.getHealthSnapshot().configuredDevices, 1);
 });

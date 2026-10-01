@@ -167,6 +167,16 @@ el candidato. Los estados `physicalDetected`, `configured`, `connected`,
 `authorized` y `REAL_AVAILABLE` permanecen separados. Dispositivos seriales
 ajenos no se convierten en ROCHI.
 
+### Fase 1B.17C: configuracion local explicita
+
+El candidato descubierto se configura mediante el contrato generico existente
+de devices (`POST /devices` o `PATCH /devices/:id`), no mediante una ruta ROCHI
+paralela. La operacion exige `SCALE` + `SERIAL` + `ROCHI_A01E` y opciones
+seriales completas, conserva la identidad PnP y persiste en el registro JSON
+local usando la escritura atomica existente. Discovery sigue sin persistir.
+La configuracion local no implica conexion, unidad verificada, autorizacion ni
+`REAL_AVAILABLE`.
+
 El store usa una ruta de secretos explicita bajo el estado administrado de
 `ProgramData` para el servicio `LocalService`; `stateDir` de otros consumidores
 no se modifica indiscriminadamente. No existe migracion automatica entre
