@@ -25,6 +25,7 @@ import { Select } from "../../../components/design-system/Select";
 import { Textarea } from "../../../components/design-system/Textarea";
 import { TenantListItem } from "../../../components/design-system/TenantListItem";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
+import { WizardModal } from "../../../components/design-system/WizardModal";
 import { defaultTheme } from "../../../components/design-system/theme";
 import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
@@ -220,6 +221,11 @@ const normalizeDateInputValue = (value?: string | null) => {
   return value.length >= 10 ? value.slice(0, 10) : value;
 };
 
+const getRequestErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message && error.message !== "Request failed"
+    ? error.message
+    : fallback;
+
 const ConfiguracionPage = () => {
   const dispatch = useAppDispatch();
   const branding = useAppSelector((state) => state.branding.config);
@@ -239,6 +245,10 @@ const ConfiguracionPage = () => {
   const [tenantModalMode, setTenantModalMode] = useState<"create" | "edit">(
     "create"
   );
+  const [tenantWizardStep, setTenantWizardStep] = useState(0);
+  const [tenantWizardError, setTenantWizardError] = useState<string | null>(null);
+  const [tenantWizardSubmitting, setTenantWizardSubmitting] = useState(false);
+  const tenantWizardOpenRef = useRef(false);
   const [tenantFormsVisible, setTenantFormsVisible] = useState(false);
   const [tenantEditingId, setTenantEditingId] = useState<string | null>(null);
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
@@ -293,7 +303,7 @@ const ConfiguracionPage = () => {
       text: resolveColorFormValue(branding.colors.text, defaultTheme.colors.text),
     },
     font: branding.font,
-    logo: branding.logo ?? "",
+    logo: branding.logo ?? branding.logoUrl ?? "",
     spacing: {
       sm: branding.spacing.sm,
       md: branding.spacing.md,
@@ -326,7 +336,15 @@ const ConfiguracionPage = () => {
   const isSuperUser = authUser?.role === "SUPER_USER";
   const isCurrentTenant =
     Boolean(selectedTenantId) && selectedTenantId === currentTenantId;
+  tenantWizardOpenRef.current = tenantModalOpen && tenantModalMode === "edit";
   const setStatusMessage = useCallback((message: string, variant: ToastVariant) => {
+    if (
+      tenantWizardOpenRef.current &&
+      (variant === "error" || variant === "warning")
+    ) {
+      setTenantWizardError(message);
+      return;
+    }
     setStatus({ message, variant });
   }, []);
   const setStatusSuccess = useCallback(
@@ -551,11 +569,11 @@ const ConfiguracionPage = () => {
   ]);
 
   useEffect(() => {
-    if (!isSuperAdmin) {
+    if (!isSuperAdmin || tenantModalOpen) {
       return;
     }
     setTenantFormsVisible(false);
-  }, [isSuperAdmin, selectedTenantId]);
+  }, [isSuperAdmin, selectedTenantId, tenantModalOpen]);
 
   useEffect(() => {
     if (isSuperAdmin) {
@@ -664,11 +682,20 @@ const ConfiguracionPage = () => {
   }, [branchForm.departamentoId, branchModalOpen, loadMunicipalities]);
 
   useEffect(() => {
-    if (activeTab !== "sucursales" || !tenantFormsVisible) {
+    const wizardShowsBranches =
+      tenantModalOpen && tenantModalMode === "edit" && tenantWizardStep === 2;
+    if ((activeTab !== "sucursales" && !wizardShowsBranches) || !tenantFormsVisible) {
       return;
     }
     void loadBranches();
-  }, [activeTab, loadBranches, tenantFormsVisible]);
+  }, [
+    activeTab,
+    loadBranches,
+    tenantFormsVisible,
+    tenantModalMode,
+    tenantModalOpen,
+    tenantWizardStep,
+  ]);
 
   useEffect(() => {
     if (!isCurrentTenant) {
@@ -878,15 +905,20 @@ const ConfiguracionPage = () => {
         setBranchDocumentModes(branchValues);
       }
     } catch {
-      setStatus({
-        message: "No fue posible cargar los parámetros documentales.",
-        variant: "error",
-      });
+      setStatusError("No fue posible cargar los parámetros documentales.");
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, setStatusError]);
 
   useEffect(() => {
-    if (activeTab !== "parametros" && activeTab !== "sucursales") {
+    const wizardShowsSettings =
+      tenantModalOpen &&
+      tenantModalMode === "edit" &&
+      (tenantWizardStep === 2 || tenantWizardStep === 3);
+    if (
+      activeTab !== "parametros" &&
+      activeTab !== "sucursales" &&
+      !wizardShowsSettings
+    ) {
       return;
     }
     const tenantId = isSuperAdmin ? selectedTenantId : currentTenantId;
@@ -904,6 +936,9 @@ const ConfiguracionPage = () => {
     loadDocumentSettings,
     selectedSettingsBranchId,
     selectedTenantId,
+    tenantModalMode,
+    tenantModalOpen,
+    tenantWizardStep,
   ]);
 
   const handleCompanyChange = (field: string, value: string | boolean) => {
@@ -1059,10 +1094,14 @@ const ConfiguracionPage = () => {
     setBranchForm({ ...emptyBranchForm });
   };
 
-  const EmpresaForm = () => (
+  const EmpresaForm = ({ embedded = false }: { embedded?: boolean }) => (
     <div
       ref={companyFormRef}
-      className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
+      className={
+        embedded
+          ? "space-y-6"
+          : "space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
+      }
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -1073,7 +1112,7 @@ const ConfiguracionPage = () => {
             Datos legales, tributarios y de contacto para facturación e impuestos.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        {!embedded ? <div className="flex flex-wrap gap-3">
           <Button
             variant="secondary"
             onClick={() => void handleConfirmSaveCompany()}
@@ -1095,7 +1134,7 @@ const ConfiguracionPage = () => {
               Cerrar
             </Button>
           ) : null}
-        </div>
+        </div> : null}
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1417,8 +1456,14 @@ const ConfiguracionPage = () => {
     </div>
   );
 
-  const BrandingForm = () => (
-    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+  const BrandingForm = ({ embedded = false }: { embedded?: boolean }) => (
+    <div
+      className={
+        embedded
+          ? "space-y-6"
+          : "space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -1428,7 +1473,7 @@ const ConfiguracionPage = () => {
             Define colores, tipografía y logo visibles en todo el sistema.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        {!embedded ? <div className="flex flex-wrap gap-3">
           {isSuperAdmin ? (
             <Button variant="ghost" onClick={closeTenantModal}>
               Cerrar
@@ -1442,7 +1487,7 @@ const ConfiguracionPage = () => {
             <Save className="h-4 w-4" />
             Guardar branding
           </Button>
-        </div>
+        </div> : null}
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1530,8 +1575,14 @@ const ConfiguracionPage = () => {
     </div>
   );
 
-  const SucursalesForm = () => (
-    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+  const SucursalesForm = ({ embedded = false }: { embedded?: boolean }) => (
+    <div
+      className={
+        embedded
+          ? "space-y-6"
+          : "space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Sucursales</h3>
@@ -1540,7 +1591,7 @@ const ConfiguracionPage = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          {isSuperAdmin ? (
+          {isSuperAdmin && !embedded ? (
             <Button variant="ghost" onClick={closeTenantModal}>
               Cerrar
             </Button>
@@ -1730,8 +1781,14 @@ const ConfiguracionPage = () => {
     </div>
   );
 
-  const ParametrosForm = () => (
-    <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+  const ParametrosForm = ({ embedded = false }: { embedded?: boolean }) => (
+    <div
+      className={
+        embedded
+          ? "space-y-6"
+          : "space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700"
+      }
+    >
       <div>
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
           Parámetros documentales
@@ -2031,11 +2088,13 @@ const ConfiguracionPage = () => {
     }
   };
 
-  const handleSaveCompany = async () => {
+  const handleSaveCompany = async (feedback: "global" | "wizard" = "global") => {
     setStatus(null);
     if (!selectedTenantId) {
-      setStatusWarning("No hay un tenant activo para guardar la información.");
-      return;
+      const message = "No hay un tenant activo para guardar la información.";
+      if (feedback === "wizard") setTenantWizardError(message);
+      else setStatusWarning(message);
+      return false;
     }
     try {
       const response = await updateTenantDetails(selectedTenantId, companyForm);
@@ -2079,9 +2138,18 @@ const ConfiguracionPage = () => {
           })
         );
       }
-      setStatusSuccess("Información de empresa actualizada.");
-    } catch {
-      setStatusError("No fue posible guardar la información de la empresa.");
+      if (feedback === "global") {
+        setStatusSuccess("Información de empresa actualizada.");
+      }
+      return true;
+    } catch (error) {
+      const message = getRequestErrorMessage(
+        error,
+        "No fue posible guardar la información de la empresa."
+      );
+      if (feedback === "wizard") setTenantWizardError(`Empresa: ${message}`);
+      else setStatusError(message);
+      return false;
     }
   };
 
@@ -2103,16 +2171,20 @@ const ConfiguracionPage = () => {
     }
   };
 
-  const handleSaveBranding = async () => {
+  const handleSaveBranding = async (feedback: "global" | "wizard" = "global") => {
     
     setStatus(null);
     if (!selectedTenantId) {
-      setStatusWarning("No hay un tenant activo para guardar el branding.");
-      return;
+      const message = "No hay un tenant activo para guardar el branding.";
+      if (feedback === "wizard") setTenantWizardError(message);
+      else setStatusWarning(message);
+      return false;
     }
     if (hasBrandingColorErrors) {
-      setStatusWarning("Corrige los colores invalidos antes de guardar.");
-      return;
+      const message = "Corrige los colores inválidos antes de guardar.";
+      if (feedback === "wizard") setTenantWizardError(message);
+      else setStatusWarning(message);
+      return false;
     }
     try {
       const brandingOnly: BrandingConfig = {
@@ -2148,6 +2220,7 @@ const ConfiguracionPage = () => {
         },
         font: savedConfig.font || normalizedBrandingConfig.font,
         logo: savedConfig.logo || normalizedBrandingConfig.logo,
+        logoUrl: undefined,
         spacing: {
           sm: savedConfig.spacing.sm || normalizedBrandingConfig.spacing.sm,
           md: savedConfig.spacing.md || normalizedBrandingConfig.spacing.md,
@@ -2162,9 +2235,61 @@ const ConfiguracionPage = () => {
       if (isCurrentTenant) {
         dispatch(setBranding(savedBranding));
       }
-      setStatusSuccess("Branding actualizado.");
-    } catch {
-      setStatusError("No fue posible guardar el branding.");
+      if (feedback === "global") {
+        setStatusSuccess("Branding actualizado.");
+      }
+      return true;
+    } catch (error) {
+      const message = getRequestErrorMessage(
+        error,
+        "No fue posible guardar el branding."
+      );
+      if (feedback === "wizard") setTenantWizardError(`Branding: ${message}`);
+      else setStatusError(message);
+      return false;
+    }
+  };
+
+  const handleTenantWizardNext = () => {
+    setTenantWizardError(null);
+    if (tenantWizardStep === 0 && !isCompanyFormComplete) {
+      setTenantWizardError(
+        "Completa todos los campos obligatorios de la empresa antes de continuar."
+      );
+      return;
+    }
+    if (tenantWizardStep === 1 && !isBrandingFormComplete) {
+      setTenantWizardError(
+        "Completa el branding y corrige los colores inválidos antes de continuar."
+      );
+      return;
+    }
+    setTenantWizardStep((step) => Math.min(step + 1, 4));
+  };
+
+  const handleSubmitTenantWizard = async () => {
+    setTenantWizardError(null);
+    if (!isCompanyFormComplete || !isBrandingFormComplete) {
+      setTenantWizardError(
+        "La información de empresa y branding debe estar completa antes de guardar."
+      );
+      return;
+    }
+
+    setTenantWizardSubmitting(true);
+    try {
+      const companySaved = await handleSaveCompany("wizard");
+      if (!companySaved) return;
+      const brandingSaved = await handleSaveBranding("wizard");
+      if (!brandingSaved) return;
+
+      setTenantModalOpen(false);
+      setTenantFormsVisible(false);
+      setTenantEditingId(null);
+      setTenantWizardStep(0);
+      setStatusSuccess("Tenant actualizado correctamente.");
+    } finally {
+      setTenantWizardSubmitting(false);
     }
   };
 
@@ -2495,6 +2620,7 @@ const ConfiguracionPage = () => {
     setTenantForm({ slug: "", nombre: "" });
     setTenantModalMode("create");
     setTenantEditingId(null);
+    setTenantWizardError(null);
     setTenantFormsVisible(true);
     setTenantModalOpen(true);
   };
@@ -2509,12 +2635,16 @@ const ConfiguracionPage = () => {
     setSelectedTenantId(tenant.id);
     setTenantFormsVisible(true);
     setActiveTab("empresa");
-    setShouldScrollToCompanyForm(true);
-    //setTenantModalOpen(true);
+    setTenantWizardStep(0);
+    setTenantWizardError(null);
+    setTenantModalOpen(true);
   };
 
   const closeTenantModal = () => {
     setTenantModalOpen(false);
+    setTenantWizardStep(0);
+    setTenantWizardError(null);
+    setTenantEditingId(null);
     if (isSuperAdmin) {
       setTenantFormsVisible(false);
     }
@@ -2751,14 +2881,13 @@ const ConfiguracionPage = () => {
         </div>
       )}
 
-      {tenantModalOpen ? (
-        <Modal title={tenantModalMode === "create" ? "Crear tenant" : "Editar tenant"}>
+      {tenantModalOpen && tenantModalMode === "create" ? (
+        <Modal title="Crear tenant">
           <div className="space-y-4">
             <Input
               label="Nombre"
               required
               value={tenantForm.nombre}
-              disabled={tenantModalMode === "edit"}
               onChange={(event) =>
                 setTenantForm((prev) => ({ ...prev, nombre: event.target.value }))
               }
@@ -2766,7 +2895,6 @@ const ConfiguracionPage = () => {
             <Input
               label="Slug (opcional)"
               value={tenantForm.slug}
-              disabled={tenantModalMode === "edit"}
               placeholder={
                 previewTenantSlug(tenantForm.nombre) || "se genera desde el nombre"
               }
@@ -2774,19 +2902,17 @@ const ConfiguracionPage = () => {
                 setTenantForm((prev) => ({ ...prev, slug: event.target.value }))
               }
             />
-            {tenantModalMode === "create" ? (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Vista previa:{" "}
-                <span className="font-mono">
-                  /
-                  {tenantForm.slug.trim()
-                    ? previewTenantSlug(tenantForm.slug) || "…"
-                    : previewTenantSlug(tenantForm.nombre) || "…"}
-                  /dashboard
-                </span>
-                . El backend garantiza unicidad.
-              </p>
-            ) : null}
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Vista previa:{" "}
+              <span className="font-mono">
+                /
+                {tenantForm.slug.trim()
+                  ? previewTenantSlug(tenantForm.slug) || "…"
+                  : previewTenantSlug(tenantForm.nombre) || "…"}
+                /dashboard
+              </span>
+              . El backend garantiza unicidad.
+            </p>
             <div className="flex flex-wrap justify-end gap-3">
               <Button variant="ghost" onClick={closeTenantModal}>
                 Cerrar
@@ -2795,12 +2921,97 @@ const ConfiguracionPage = () => {
                 variant="primary"
                 onClick={() => void handleConfirmSubmitTenant()}
               >
-                {tenantModalMode === "create" ? "Crear tenant" : "Actualizar tenant"}
+                Crear tenant
               </Button>
             </div>
           </div>
         </Modal>
       ) : null}
+
+      <WizardModal
+        open={tenantModalOpen && tenantModalMode === "edit"}
+        title={`Modificar ${tenantForm.nombre || "tenant"}`}
+        description="Actualiza la información de la empresa y su branding paso a paso."
+        steps={[
+          { key: "empresa", label: "Empresa", icon: Building2 },
+          { key: "branding", label: "Branding", icon: Paintbrush },
+          { key: "sucursales", label: "Sucursales", icon: MapPin },
+          { key: "parametros", label: "Parámetros", icon: Settings2 },
+          { key: "revision", label: "Revisión", icon: Save },
+        ]}
+        currentStepIndex={tenantWizardStep}
+        onStepClick={(step) => {
+          setTenantWizardError(null);
+          setTenantWizardStep(step);
+        }}
+        onClose={closeTenantModal}
+        onBack={() => {
+          setTenantWizardError(null);
+          setTenantWizardStep((step) => Math.max(step - 1, 0));
+        }}
+        onNext={handleTenantWizardNext}
+        onSubmit={() => void handleSubmitTenantWizard()}
+        canProceed
+        canSubmit={isCompanyFormComplete && isBrandingFormComplete}
+        isSubmitting={tenantWizardSubmitting}
+        submitText="Guardar cambios"
+        error={tenantWizardError}
+        onDismissError={() => setTenantWizardError(null)}
+        size="full"
+      >
+        {tenantLoading ? (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            Cargando información del tenant...
+          </div>
+        ) : tenantWizardStep === 0 ? (
+          <EmpresaForm embedded />
+        ) : tenantWizardStep === 1 ? (
+          <BrandingForm embedded />
+        ) : tenantWizardStep === 2 ? (
+          <SucursalesForm embedded />
+        ) : tenantWizardStep === 3 ? (
+          <ParametrosForm embedded />
+        ) : (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900/40">
+              <h4 className="font-semibold text-slate-900 dark:text-white">
+                Revisa antes de guardar
+              </h4>
+              <dl className="mt-4 grid gap-4 text-sm md:grid-cols-2">
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">Tenant</dt>
+                  <dd className="font-medium text-slate-900 dark:text-white">
+                    {tenantForm.nombre} ({tenantForm.slug})
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">Razón social</dt>
+                  <dd className="font-medium text-slate-900 dark:text-white">
+                    {companyForm.razonSocial || "Sin definir"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">NIT</dt>
+                  <dd className="font-medium text-slate-900 dark:text-white">
+                    {companyForm.nit || "Sin definir"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500 dark:text-slate-400">Logo</dt>
+                  <dd className="font-medium text-slate-900 dark:text-white">
+                    {brandingForm.logo ? "Nuevo logo listo" : "Sin logo"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <BrandingThemePreview
+              theme={previewTheme}
+              companyName={previewCompanyName}
+              logo={normalizedBrandingConfig.logo}
+            />
+          </div>
+        )}
+      </WizardModal>
 
       {branchModalOpen ? (
         <Modal
