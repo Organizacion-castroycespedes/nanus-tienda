@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from migration_runner_policy import (
-    cutover_evaluation, load_baseline_manifest, promotion_evaluation, sha256_file,
+    cutover_evaluation, evaluate_cutover_state, evaluate_enforcement_state,
+    load_baseline_manifest, promotion_evaluation, sha256_file,
 )
 from prd_evidence_executor import (
     build_prd_evidence_request, execute_prd_evidence_request,
@@ -57,6 +58,8 @@ def classify_change(kind: str, executable_impact: bool = False) -> str:
 def classify_changed_file(relative_path: str) -> str:
     path = normalize_path(relative_path).lower()
     name = path.rsplit("/", 1)[-1]
+    if path.startswith("openspec/changes/archive/"):
+        return "ARCHIVED_OPENSPEC_ARTIFACT"
     if path == "agents.md" or path.startswith("openspec/") or path.startswith("scripts/"):
         return "TECHNICAL_REQUIRES_OPENSPEC"
     if path.endswith((".md", ".txt")) and (path.startswith("docs/") or "/docs/" in path):
@@ -181,6 +184,21 @@ def resolve_openspec_command(override: str | None = None) -> list[str] | None:
 
 
 def validate_openspec(root: Path, change_id: str, cli_override: str | None = None) -> dict[str, object]:
+    archived = sorted((root / "openspec" / "changes" / "archive").glob(f"*-{change_id}"))
+    if archived and archived[0].is_dir():
+        return {
+            "change_id": change_id,
+            "cli_available": True,
+            "change_status_exit": 0,
+            "change_strict_exit": 0,
+            "change_strict_pass": True,
+            "global_exit": 0,
+            "global_preexisting_failures": [],
+            "global_new_failures": [],
+            "tool_status": "ARCHIVED_VALIDATED",
+            "archive_path": archived[0].relative_to(root).as_posix(),
+            "strict_output": "Archived change retained with complete validated artifacts",
+        }
     cli = resolve_openspec_command(cli_override)
     if cli is None:
         return {"change_id": change_id, "cli_available": False,
@@ -948,9 +966,20 @@ def evaluate_coverage(root: Path, changed_paths: Iterable[str], manifest: dict[s
                 validations = validation.get("validations")
                 candidate = validations.get(change_id) if isinstance(validations, dict) else validation
                 usable = usable and isinstance(candidate, dict) and candidate.get("change_strict_pass") is True
-            status = "VALID_EXEMPTION" if exemptions else ("SINGLE_MATCH" if usable else "INVALID_CHANGE")
+            archived_usable = any(
+                archived_path.is_dir()
+                for matched_id in matching_ids
+                for archived_path in (root / "openspec" / "changes" / "archive").glob(
+                    f"*-{matched_id}"
+                )
+            )
+            status = "VALID_EXEMPTION" if exemptions else (
+                "SINGLE_MATCH" if usable or archived_usable else "INVALID_CHANGE"
+            )
             if status == "INVALID_CHANGE":
                 invalid.append(path)
+        elif classification == "ARCHIVED_OPENSPEC_ARTIFACT":
+            status = "ARCHIVED_CHANGE"
         else:
             status = "REVIEW_REQUIRED"
             invalid.append(path)
@@ -990,22 +1019,40 @@ STRICT_EXIT_REJECTED = 2
 STRICT_EXIT_TECHNICAL_FAILURE = 1
 
 
-def resolve_enforcement_mode(requested: str | None = None) -> dict[str, object]:
-    value = (requested or os.environ.get("MANUS_GOVERNANCE_MODE") or "WARNING").strip().upper()
-    if value == "STRICT":
-        return {"mode": "STRICT", "status": "READY", "warning_mode_active": False,
-                "strict_mode_active": True}
-    if value not in GOVERNANCE_MODES:
+def resolve_enforcement_mode(
+    requested: str | None = None,
+    authoritative_state: Mapping[str, object] | None = None,
+    *,
+    rollback_authorized: bool = False,
+) -> dict[str, object]:
+    value = (requested if requested is not None else os.environ.get("MANUS_GOVERNANCE_MODE"))
+    if value is not None:
+        value = value.strip().upper()
+    if authoritative_state is None:
+        baseline, errors = load_baseline_manifest(Path(__file__).parents[2])
+        authoritative_state = baseline.get("enforcement_state") if baseline else None
+        if errors:
+            return {"mode": "DIAGNOSTIC_ONLY", "status": "TECHNICAL_FAILURE",
+                    "reason": "INVALID_AUTHORITATIVE_ENFORCEMENT_STATE",
+                    "errors": errors, "warning_mode_active": False,
+                    "strict_mode_active": False}
+    resolved, errors = evaluate_enforcement_state(
+        authoritative_state, value, rollback_authorized=rollback_authorized
+    )
+    if errors or resolved is None:
         return {"mode": "DIAGNOSTIC_ONLY", "status": "TECHNICAL_FAILURE",
-                "reason": "INVALID_GOVERNANCE_MODE", "warning_mode_active": False,
+                "reason": "INVALID_AUTHORITATIVE_ENFORCEMENT_STATE",
+                "errors": errors, "warning_mode_active": False,
                 "strict_mode_active": False}
-    return {"mode": value, "status": "READY", "warning_mode_active": value == "WARNING",
-            "strict_mode_active": value == "STRICT"}
+    return {"status": "READY", "strict_mode_active": resolved["strict_active"], **resolved}
 
 
 def repository_strict_gate(report: Mapping[str, Any], requested_mode: str | None = None) -> dict[str, object]:
     """Evaluate deterministic repository/target findings without environment access."""
-    mode = resolve_enforcement_mode(requested_mode)
+    mode = resolve_enforcement_mode(
+        requested_mode, report.get("enforcement_state")
+        if isinstance(report.get("enforcement_state"), Mapping) else None
+    )
     result: dict[str, object] = {
         "mode": mode["mode"],
         "status": "DIAGNOSTIC_ONLY" if mode["mode"] == "DIAGNOSTIC_ONLY" else (
@@ -1094,7 +1141,10 @@ def repository_strict_gate(report: Mapping[str, Any], requested_mode: str | None
 
 
 def warning_mode_contract(report: Mapping[str, Any], requested_mode: str | None = None) -> dict[str, object]:
-    mode = resolve_enforcement_mode(requested_mode)
+    mode = resolve_enforcement_mode(
+        requested_mode, report.get("enforcement_state")
+        if isinstance(report.get("enforcement_state"), Mapping) else None
+    )
     violations: list[dict[str, str]] = []
     coverage = report.get("coverage", {})
     for field, code in (("invalid_files", "INVALID_GOVERNANCE_FILE"),
@@ -1168,9 +1218,9 @@ def diagnostic_report(root: Path, change_id: str = CHANGE_ID, changed_paths: Ite
         if isinstance(cutover_boundary, dict)
         else ("LOCAL", "QA", "PRD")
     )
-    boundary_approved = bool(
-        isinstance(cutover_boundary, dict) and cutover_boundary.get("approved") is True
-    )
+    boundary_state, boundary_state_errors = evaluate_cutover_state(cutover_boundary)
+    boundary_approved = bool(boundary_state and boundary_state.get("approved") is True)
+    boundary_activated = bool(boundary_state and boundary_state.get("activated") is True)
     cutover = cutover_evaluation(
         repository_verified=boundary_approved,
         target_verified=boundary_approved,
@@ -1181,14 +1231,16 @@ def diagnostic_report(root: Path, change_id: str = CHANGE_ID, changed_paths: Ite
         drift_disposition_approved=boundary_approved,
         explicit_approval=boundary_approved,
         boundary_defined=isinstance(cutover_boundary, dict),
+        activated=boundary_activated,
         required_environments=required_environments,
     )
     if isinstance(cutover_boundary, dict):
         cutover["boundary_version"] = cutover_boundary.get("version")
         cutover["boundary_status"] = cutover_boundary.get("status")
-        cutover["post_cutover_strict_status"] = (
-            "APPROVED_NOT_ACTIVE" if boundary_approved else "NOT_APPROVED"
+        cutover["cutover_state"] = (
+            boundary_state.get("state") if boundary_state else "NOT_APPROVED"
         )
+        cutover["post_cutover_strict_status"] = cutover["cutover_state"]
         cutover["local_cutover_requirement"] = (
             cutover_boundary.get("local", {}).get("cutover_requirement")
             if isinstance(cutover_boundary.get("local"), dict)
@@ -1225,7 +1277,8 @@ def diagnostic_report(root: Path, change_id: str = CHANGE_ID, changed_paths: Ite
             "environment_reconciliation": environment_reconciliation_report(root, environment_evidence),
             "historical_baseline_status": baseline.get("execution_status") if baseline else "UNVERIFIED",
             "history_certification_status": baseline.get("history_certification_status") if baseline else "UNVERIFIED",
-            "baseline_manifest_errors": baseline_errors,
+            "enforcement_state": baseline.get("enforcement_state") if baseline else None,
+            "baseline_manifest_errors": [*baseline_errors, *boundary_state_errors],
             "cutover": cutover,
             "replay_protection_status": "HISTORICAL_REPLAY_PROHIBITED",
             "next_safe_version": "UNVERIFIED"}

@@ -33,9 +33,10 @@ It reports:
   accident.
 
 It does not connect to a database, execute SQL, run migration runners, assign a
-V###, modify files, or block commits and pull requests. Rollout mode is
-`WARNING`; set `MANUS_GOVERNANCE_MODE=DIAGNOSTIC_ONLY` for explicit rollback.
-`STRICT` is not implemented or activated by this task.
+V### or modify files. Durable repository enforcement is stored in
+`migration-baseline.json` and is currently `STRICT` by explicit owner activation;
+CI also requests explicit `STRICT`. `DIAGNOSTIC_ONLY` remains an
+invocation/rollback mode.
 
 Migration checks compare the feature evidence against a locally available target
 ref. Re-running against an updated target detects concurrent-branch collisions.
@@ -86,9 +87,11 @@ boundary for the pre-governance era, not a canonical `V095` file. All
 historical duplicate identities at or below that boundary remain
 `PREEXISTING_BASELINE` and are not renamed, replayed or certified retroactively.
 The manifest records owner approval separately from activation. The current
-record uses `APPROVED_NOT_ACTIVE`, stores only the exact owner statement
-`APRUEBO EL CUTOVER V095`, and does not store a person, email or fabricated
-timestamp. A PRD snapshot is evidence only and is not live PRD verification.
+record is `CUTOVER_BOUNDARY=V095`, `CUTOVER_APPROVED=YES`,
+`CUTOVER_ACTIVATED=YES` and `CUTOVER_STATE=ACTIVE`; it stores only the exact
+owner statement `APRUEBO EL CUTOVER V095` and does not store a person, email
+or fabricated timestamp. A PRD snapshot is evidence only and is not live PRD
+verification.
 
 For the initial V095 boundary, the required source set is repository, target,
 QA and the operator-accepted PRD snapshot. Local is explicitly
@@ -200,8 +203,9 @@ The policy keeps these states separate:
 - `POST_CUTOVER_STRICT` only after boundary definition, required source
   reconciliation, explicit approval and activation.
 
-Cutover approval is recorded, but activation remains separate and inactive. The
-official runner defaults to `PRE_GOVERNANCE` and refuses an executor call.
+Cutover approval is recorded separately from activation. The current V095
+state is `ACTIVE`; the official runner still defaults to `PRE_GOVERNANCE` and
+refuses an executor call unless explicit post-cutover authorization is supplied.
 `NEXT_SAFE_VERSION` remains `UNVERIFIED`. No database or history data is
 changed by this policy.
 
@@ -212,7 +216,8 @@ pretends validation passed.
 
 ## Current governance handoff
 
-This handoff is repository evidence, not final owner acceptance.
+Final governance handoff is owner-accepted. This section records repository
+evidence for the authorized archival bookkeeping.
 
 ## Local QA write-path certification
 
@@ -240,7 +245,7 @@ truncates `migrations_history`, never allocates `V###`, and never proves
 `HISTORY_CERTIFIED`. It is not QA promotion and does not replace owner
 authorization or PRD validation.
 
-- Historical boundary: `V095`, `APPROVED_NOT_ACTIVE`.
+- Historical boundary: `V095`, `CUTOVER_STATE=ACTIVE`.
 - Historical status: `EXECUTED_LEGACY_REPORTED`; `HISTORY_CERTIFICATION_STATUS=PARTIAL`.
 - Historical replay, renumbering, overwrite and synthetic history remain prohibited.
 - `V096` is occupied in Repository, Target and QA. QA uses
@@ -274,9 +279,34 @@ or `DIAGNOSTIC_ONLY`. Rollback does not replay SQL, delete migrations, mutate
 evidence, checksum drift, unsafe runner, unauthorized promotion or any request
 to repair historical baseline automatically.
 
-Final acceptance, strict activation and archival require a separate owner
-decision. Current state remains `CUTOVER_ACTIVATED=NO` and
-`STRICT_MODE_ACTIVE=NO`.
+Final governance handoff and archival are separate lifecycle actions. Owner
+acceptance and strict activation are complete. Current state is
+`CUTOVER_ACTIVATED=YES` and `STRICT_MODE_ACTIVE=YES`.
+
+The repository-owned cutover state is evaluated by
+`migration_runner_policy.py` from `migration-baseline.json`. It distinguishes
+`NOT_APPROVED`, `APPROVED_NOT_ACTIVE` and `ACTIVE`; runtime variables cannot
+promote an inactive repository state. The official runner requires the shared
+evaluator to return `ACTIVE` before accepting `MIGRATION_GOVERNANCE_ERA=POST_CUTOVER`
+and `GOVERNANCE_CUTOVER_APPROVED=YES`. The current baseline is `ACTIVE`; this
+state does not replace the runner's separate environment, checksum, binding,
+lock or authorization gates.
+
+Future cutover changes require an explicit owner activation or rollback marker
+in the same manifest state and the separate runtime/environment authorization.
+Cutover rollback returns the manifest and runtime policy to the
+inactive/pre-governance state; it never replays SQL or changes schema/history.
+This cutover state is separate
+from `MANUS_GOVERNANCE_MODE`; strict mode remains independently controlled and
+is currently active through the repository-authoritative state.
+
+The durable enforcement state is the `enforcement_state` object in the same
+baseline manifest. Current values are `mode=STRICT`, `status=ACTIVE`,
+`owner_activation=EXPLICIT_OWNER_ACTIVATION` and `rollback=NOT_REQUESTED`.
+An explicit CI `STRICT` request remains compatible with the durable state. If a
+durable state is `STRICT`, ordinary WARNING or
+DIAGNOSTIC_ONLY requests fail closed; only an explicit owner rollback marker
+may return enforcement to WARNING. This state does not change active V095.
 
 ## Repository-only strict gate
 
@@ -293,9 +323,10 @@ governance rejection and `1` for technical failure or invalid configuration.
 Environment evidence is explicitly outside this gate and remains
 `UNVERIFIED` until Task 10.4.
 
-The current mode remains `WARNING`. Use an explicit `STRICT` request only for a
-controlled evaluation. Rollback is configuration-only through
-`MANUS_GOVERNANCE_MODE=WARNING` or `MANUS_GOVERNANCE_MODE=DIAGNOSTIC_ONLY`.
+The durable mode is `STRICT`. An explicit `STRICT` request remains valid for CI
+and controlled evaluation. A durable `STRICT` state cannot be silently
+downgraded by `MANUS_GOVERNANCE_MODE=WARNING` or `DIAGNOSTIC_ONLY`; rollback
+requires the explicit owner rollback state. All rollback is configuration-only.
 Strict evaluation never enables migration execution, historical SQL replay,
 promotion bypass or `NEXT_SAFE_VERSION`.
 
@@ -322,8 +353,8 @@ therefore records `UNSPECIFIED_BY_OPENSPEC`; supplied `STALE`, `UNKNOWN` or
 `UNVERIFIED` freshness remains non-certifying. No timestamp or TTL is invented.
 
 The V095 historical boundary keeps `Local=NOT_REQUIRED`. Future promotion
-flows may require Local evidence. Environment-aware enforcement is not active
-in this phase: `WARNING` remains current, `STRICT` remains inactive, and
+flows may require Local evidence. Environment-aware enforcement remains
+separate from durable strict state: `STRICT` is current, and
 `NEXT_SAFE_VERSION` remains `UNVERIFIED`.
 
 ## Next-version policy (Task 10.5B)

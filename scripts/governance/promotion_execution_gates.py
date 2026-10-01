@@ -10,7 +10,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from migration_runner_policy import OFFICIAL_RUNNER, classify_runner, validate_versioned_request
+from migration_runner_policy import (
+    OFFICIAL_RUNNER, classify_runner, evaluate_enforcement_state,
+    validate_versioned_request,
+)
 
 
 def _identity(evidence: Mapping[str, Any]) -> str | None:
@@ -104,13 +107,27 @@ def promotion_execution_gate(
     authorization: Mapping[str, Any] | None = None,
     runner_path: str = OFFICIAL_RUNNER,
     same_operation_required: bool = False,
-    strict_active: bool = False,
+    strict_active: bool | None = None,
+    enforcement_state: Mapping[str, Any] | None = None,
+    enforcement_request: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate all pre-execution policy gates without performing I/O."""
 
     authorization = authorization or {}
     stage = str(destination_stage).upper()
     issues: list[str] = []
+    if enforcement_state is not None:
+        requested = enforcement_request
+        if requested is None and strict_active is True:
+            requested = "STRICT"
+        resolved, enforcement_errors = evaluate_enforcement_state(enforcement_state, requested)
+        if enforcement_errors or resolved is None:
+            issues.extend(f"ENFORCEMENT_STATE_INVALID:{error}" for error in enforcement_errors)
+            strict_active = True
+        else:
+            strict_active = bool(resolved["strict_active"])
+    elif strict_active is None:
+        strict_active = False
     if str(plan.get("status", "")).upper() != "VERIFIED" or str(plan.get("decision", "")).upper() != "VERIFIED_ORDERED_PLAN":
         issues.append("VERIFIED_ORDERED_PLAN_REQUIRED")
     issues.extend(_target_issues(plan, current_target_evidence))
@@ -154,9 +171,31 @@ def promotion_execution_gate(
     }
 
 
-def governance_mode_evaluation(mode: str | None) -> dict[str, Any]:
+def governance_mode_evaluation(
+    mode: str | None,
+    authoritative_state: Mapping[str, Any] | None = None,
+    *,
+    rollback_authorized: bool = False,
+) -> dict[str, Any]:
     """Return default-off enforcement state and configuration-only rollback."""
 
+    if authoritative_state is not None:
+        resolved, errors = evaluate_enforcement_state(
+            authoritative_state, mode, rollback_authorized=rollback_authorized
+        )
+        if errors or resolved is None:
+            return {"status": "BLOCKED", "mode": mode, "strict_active": False,
+                    "reasons": [f"ENFORCEMENT_STATE_INVALID:{error}" for error in errors]}
+        return {
+            "status": "STRICT_ACTIVE" if resolved["strict_active"] else "DIAGNOSTIC",
+            "mode": resolved["mode"],
+            "strict_active": resolved["strict_active"],
+            "durable_mode": resolved["durable_mode"],
+            "rollback_mode": "WARNING",
+            "rollback_mutates_database": False,
+            "rollback_mutates_history": False,
+            "reasons": ["AUTHORITATIVE_ENFORCEMENT_STATE"],
+        }
     normalized = str(mode or "WARNING").upper()
     if normalized not in {"WARNING", "DIAGNOSTIC_ONLY", "STRICT"}:
         return {"status": "BLOCKED", "mode": normalized, "strict_active": False, "reasons": ["UNKNOWN_GOVERNANCE_MODE"]}

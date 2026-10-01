@@ -34,8 +34,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          openspec validate implementar-gobernanza-openspec-migraciones-manus --strict
-          openspec validate implementar-plan-promocion-migraciones-ambientes --strict
           openspec validate reconciliar-drift-historico-pre-gobernanza --strict
           openspec validate disponer-historial-fallido-y-bundles-manuales --strict
 

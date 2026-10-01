@@ -34,6 +34,20 @@
         "openspec/changes/disponer-historial-fallido-y-bundles-manuales/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "conectar-cutover-gobernanza-v095",
+      "paths": [
+        "openspec/changes/conectar-cutover-gobernanza-v095/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "autorizar-estado-estricto-gobernanza",
+      "paths": [
+        "openspec/changes/autorizar-estado-estricto-gobernanza/**"
+      ],
+      "exemptions": []
     }
   ]
 }

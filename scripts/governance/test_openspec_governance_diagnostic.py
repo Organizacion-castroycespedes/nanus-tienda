@@ -36,6 +36,8 @@ from migration_runner_policy import (
     simulated_execution,
     classify_history_checksum,
     cutover_evaluation,
+    evaluate_cutover_state,
+    evaluate_enforcement_state,
     promotion_evaluation,
     evaluate_migration_era,
     environment_gate_evaluation,
@@ -166,7 +168,11 @@ class GovernanceDiagnosticTests(unittest.TestCase):
     def test_warning_mode_reports_without_blocking_and_is_owner_visible(self):
         report = {"coverage": {"uncovered_files": ["scripts/example.py"]},
                   "promotion_policy": {"decision": "PROMOTION_UNVERIFIED", "reasons": ["QA_SOURCE_UNVERIFIED"]},
-                  "sources": {"authorized_environments": {}}}
+                  "sources": {"authorized_environments": {}},
+                  "enforcement_state": {
+                      "mode": "WARNING", "status": "DEFAULT_ACTIVE",
+                      "owner_activation": "NOT_GRANTED", "rollback": "NOT_REQUESTED",
+                  }}
         warning = warning_mode_contract(report, "WARNING")
         self.assertEqual(warning["mode"], "WARNING")
         self.assertEqual(warning["status"], "WARNINGS_PRESENT")
@@ -176,7 +182,11 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertIn("GOVERNANCE_WARNING", render_warning_console({"warning_mode": warning}))
 
     def test_warning_mode_rolls_back_to_diagnostic_only(self):
-        report = {"coverage": {}, "promotion_policy": {}, "sources": {}}
+        report = {"coverage": {}, "promotion_policy": {}, "sources": {},
+                  "enforcement_state": {
+                      "mode": "WARNING", "status": "DEFAULT_ACTIVE",
+                      "owner_activation": "NOT_GRANTED", "rollback": "NOT_REQUESTED",
+                  }}
         warning = warning_mode_contract(report, "DIAGNOSTIC_ONLY")
         self.assertEqual(warning["mode"], "DIAGNOSTIC_ONLY")
         self.assertFalse(warning["warning_mode_active"])
@@ -230,8 +240,12 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertEqual(result["exit_code"], 1)
 
     def test_strict_rolls_back_to_warning_or_diagnostic_without_replay(self):
+        warning_state = {
+            "mode": "WARNING", "status": "DEFAULT_ACTIVE",
+            "owner_activation": "NOT_GRANTED", "rollback": "NOT_REQUESTED",
+        }
         for mode in ("WARNING", "DIAGNOSTIC_ONLY"):
-            result = repository_strict_gate({}, mode)
+            result = repository_strict_gate({"enforcement_state": warning_state}, mode)
             self.assertEqual(result["status"], "WARNING_ACTIVE" if mode == "WARNING" else "DIAGNOSTIC_ONLY")
             self.assertFalse(result["historical_sql_replay_allowed"])
 
@@ -821,9 +835,9 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertEqual(manifest["history_certification_status"], "PARTIAL")
         self.assertFalse(manifest["owner_statement"]["per_file_certification"])
         self.assertEqual(manifest["cutover_boundary"]["version"], "V095")
-        self.assertEqual(manifest["cutover_boundary"]["status"], "APPROVED_NOT_ACTIVE")
+        self.assertEqual(manifest["cutover_boundary"]["status"], "ACTIVE")
         self.assertTrue(manifest["cutover_boundary"]["approved"])
-        self.assertFalse(manifest["cutover_boundary"]["activated"])
+        self.assertTrue(manifest["cutover_boundary"]["activated"])
         self.assertEqual(
             manifest["cutover_boundary"]["owner_approval"]["statement"],
             "APRUEBO EL CUTOVER V095",
@@ -860,6 +874,86 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         source = runner.read_text(encoding="utf-8")
         self.assertIn("HISTORICAL_REPLAY_PROHIBITED", source)
         self.assertIn("CUTOVER_NOT_APPROVED", source)
+
+    def test_authoritative_cutover_state_requires_activation(self):
+        manifest, errors = load_baseline_manifest(Path(__file__).parents[2])
+        self.assertEqual(errors, [])
+        inactive_boundary = json.loads(json.dumps(manifest["cutover_boundary"]))
+        inactive_boundary["status"] = "APPROVED_NOT_ACTIVE"
+        inactive_boundary["activated"] = False
+        inactive_boundary["owner_approval"]["activation"] = "NOT_GRANTED"
+        inactive_state, inactive_errors = evaluate_cutover_state(inactive_boundary)
+        self.assertEqual(inactive_errors, [])
+        self.assertEqual(inactive_state["state"], "APPROVED_NOT_ACTIVE")
+        self.assertFalse(inactive_state["activated"])
+
+        active_state, active_errors = evaluate_cutover_state(manifest["cutover_boundary"])
+        self.assertEqual(active_errors, [])
+        self.assertEqual(active_state["state"], "ACTIVE")
+
+    def test_authoritative_cutover_state_rejects_contradictions(self):
+        manifest, errors = load_baseline_manifest(Path(__file__).parents[2])
+        self.assertEqual(errors, [])
+        boundary = json.loads(json.dumps(manifest["cutover_boundary"]))
+        boundary["status"] = "APPROVED_NOT_ACTIVE"
+        boundary["owner_approval"]["activation"] = "NOT_GRANTED"
+        state, state_errors = evaluate_cutover_state(boundary)
+        self.assertIsNone(state)
+        self.assertIn("CUTOVER_BOUNDARY_STATUS_MISMATCH", state_errors)
+        self.assertIn("OWNER_APPROVAL_ACTIVATION_INVALID", state_errors)
+
+        malformed = {"version": "V096", "approved": True, "activated": True}
+        state, state_errors = evaluate_cutover_state(malformed)
+        self.assertIsNone(state)
+        self.assertTrue(state_errors)
+
+    def test_authoritative_enforcement_state_is_strict_after_owner_activation(self):
+        manifest, errors = load_baseline_manifest(Path(__file__).parents[2])
+        self.assertEqual(errors, [])
+        state = manifest["enforcement_state"]
+        strict_default, strict_errors = evaluate_enforcement_state(state)
+        self.assertEqual(strict_errors, [])
+        self.assertEqual(strict_default["mode"], "STRICT")
+        self.assertTrue(strict_default["strict_active"])
+        strict, strict_errors = evaluate_enforcement_state(state, "STRICT")
+        self.assertEqual(strict_errors, [])
+        self.assertEqual(strict["mode"], "STRICT")
+        self.assertTrue(strict["strict_active"])
+        warning_state = {
+            "mode": "WARNING", "status": "DEFAULT_ACTIVE",
+            "owner_activation": "NOT_GRANTED", "rollback": "NOT_REQUESTED",
+        }
+        warning, warning_errors = evaluate_enforcement_state(warning_state)
+        self.assertEqual(warning_errors, [])
+        self.assertEqual(warning["mode"], "WARNING")
+        self.assertFalse(warning["strict_active"])
+
+    def test_authoritative_enforcement_state_rejects_downgrade_and_malformed_state(self):
+        strict_state = {
+            "mode": "STRICT", "status": "ACTIVE",
+            "owner_activation": "EXPLICIT_OWNER_ACTIVATION",
+            "rollback": "NOT_REQUESTED",
+        }
+        downgraded, downgrade_errors = evaluate_enforcement_state(strict_state, "WARNING")
+        self.assertIsNone(downgraded)
+        self.assertIn("STRICT_DOWNGRADE_NOT_AUTHORIZED", downgrade_errors)
+        rolled_back = dict(strict_state)
+        rolled_back["rollback"] = "EXPLICIT_OWNER_ROLLBACK"
+        authorized, authorized_errors = evaluate_enforcement_state(
+            rolled_back, "WARNING", rollback_authorized=True
+        )
+        self.assertEqual(authorized_errors, [])
+        self.assertEqual(authorized["mode"], "WARNING")
+        malformed, malformed_errors = evaluate_enforcement_state({"mode": "DIAGNOSTIC_ONLY"})
+        self.assertIsNone(malformed)
+        self.assertTrue(malformed_errors)
+
+    def test_cutover_diagnostic_reports_authoritative_state(self):
+        report = diagnostic_report(Path(__file__).parents[2], validate_changes=False)
+        self.assertEqual(report["cutover"]["cutover_state"], "ACTIVE")
+        self.assertTrue(report["cutover"]["activated_cutover"])
+        self.assertEqual(report["cutover"]["post_cutover_strict_status"], "ACTIVE")
+        self.assertEqual(report["next_safe_version"], "UNVERIFIED")
 
     def test_cutover_requires_sources_and_explicit_approval(self):
         pending = cutover_evaluation()
@@ -907,8 +1001,8 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertEqual(report["historical_baseline_status"], "EXECUTED_LEGACY_REPORTED")
         self.assertEqual(report["history_certification_status"], "PARTIAL")
         self.assertEqual(report["cutover"]["governance_cutover_status"], "GOVERNANCE_CUTOVER_APPROVED")
-        self.assertFalse(report["cutover"]["activated_cutover"])
-        self.assertEqual(report["cutover"]["post_cutover_strict_status"], "APPROVED_NOT_ACTIVE")
+        self.assertTrue(report["cutover"]["activated_cutover"])
+        self.assertEqual(report["cutover"]["post_cutover_strict_status"], "ACTIVE")
         self.assertEqual(report["next_safe_version"], "UNVERIFIED")
         self.assertEqual(report["promotion_policy"]["decision"], "PROMOTION_UNVERIFIED")
         self.assertFalse(report["promotion_policy"]["migration_execution_allowed"])
