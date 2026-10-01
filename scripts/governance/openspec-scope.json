@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "changes": [
+    {
+      "change_id": "implementar-gobernanza-openspec-migraciones-manus",
+      "paths": [
+        "AGENTS.md",
+        "scripts/governance/**",
+        "scripts/database/apply_single_migration.sh",
+        "scripts/database/migrations/**",
+        "scripts/database/test_apply_single_migration.sh",
+        "openspec/changes/implementar-gobernanza-openspec-migraciones-manus/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "implementar-plan-promocion-migraciones-ambientes",
+      "paths": [
+        ".github/workflows/manus-governance-ci.yml",
+        "openspec/changes/implementar-plan-promocion-migraciones-ambientes/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "reconciliar-drift-historico-pre-gobernanza",
+      "paths": [
+        "openspec/changes/reconciliar-drift-historico-pre-gobernanza/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "disponer-historial-fallido-y-bundles-manuales",
+      "paths": [
+        "openspec/changes/disponer-historial-fallido-y-bundles-manuales/**"
+      ],
+      "exemptions": []
+    }
+  ]
+}
