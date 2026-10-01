@@ -10,7 +10,7 @@ export class ScaleController {
   getCurrentWeight(
     @Query("terminalId") terminalId?: string,
     @Query("deviceId") deviceId?: string
-  ): ScaleWeightResponse {
+  ): ScaleWeightResponse | Promise<ScaleWeightResponse> {
     return this.scaleService.getCurrentWeight({ terminalId, deviceId });
   }
 }

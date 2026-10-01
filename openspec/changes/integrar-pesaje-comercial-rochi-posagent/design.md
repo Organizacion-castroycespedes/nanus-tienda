@@ -647,6 +647,23 @@ no abre COM, no lee/escribe frames, no configura el Agent, no marca
 La ausencia de candidatos y el error de enumeracion son resultados distintos;
 un error serial no corrompe ni reemplaza la lista de impresoras.
 
+### Fase 1B.17D - runtime local y ScaleService
+
+En modo `REAL`, `ScaleService` consulta solo `DevicesService` configurados.
+Selecciona el `deviceId` solicitado o una unica escala configurada; cero
+escalas y multiples escalas sin selector fallan cerrado. El perfil y la
+conexion deben ser `ROCHI_A01E` y `SERIAL`. No se usa discovery como autoridad
+de configuracion.
+
+Cada lectura crea un `RochiA01eSerialScale` con el puerto y parametros
+persistidos, usa `sourceUnit=UNKNOWN`, espera una trama y cierra en `finally`.
+Solicitudes concurrentes del mismo dispositivo comparten la promesa activa;
+una solicitud posterior abre una nueva lectura. El parser conserva KG/LB
+explicitos para usos existentes, pero UNKNOWN no calcula kilogramos. La
+respuesta REAL mantiene el numero recibido y declara unidad/estabilidad no
+verificadas. No hay fallback REAL a MOCK, daemon de reconexion ni mutacion del
+registro durante la lectura.
+
 ### Fase 1B.17C - configuracion y reconciliacion local
 
 La configuracion reutiliza `DevicesService.create` y `DevicesService.update`.

@@ -1,10 +1,10 @@
-export type RochiA01eUnit = "KG" | "LB";
+export type RochiA01eUnit = "KG" | "LB" | "UNKNOWN";
 
 export type RochiA01eReading = {
   rawValue: string;
   value: number;
   sourceUnit: RochiA01eUnit;
-  kilograms: number;
+  kilograms?: number;
 };
 
 export type RochiA01eParserErrorCode =
@@ -38,8 +38,8 @@ export class RochiA01eParser {
   private readonly maxBufferLength: number;
 
   constructor(options: RochiA01eParserOptions) {
-    if (options.sourceUnit !== "KG" && options.sourceUnit !== "LB") {
-      throw new Error("ROCHI sourceUnit must be explicitly configured as KG or LB");
+    if (options.sourceUnit !== "KG" && options.sourceUnit !== "LB" && options.sourceUnit !== "UNKNOWN") {
+      throw new Error("ROCHI sourceUnit must be explicitly configured as KG, LB or UNKNOWN");
     }
 
     this.sourceUnit = options.sourceUnit;
@@ -111,7 +111,9 @@ export class RochiA01eParser {
     }
 
     const value = Number(frame);
-    const kilograms = this.sourceUnit === "LB" ? value * 0.5 : value;
+    const kilograms = this.sourceUnit === "UNKNOWN"
+      ? undefined
+      : this.sourceUnit === "LB" ? value * 0.5 : value;
     output.readings.push({
       rawValue: frame,
       value,

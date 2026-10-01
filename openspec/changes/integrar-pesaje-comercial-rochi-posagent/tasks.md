@@ -156,6 +156,13 @@
 - [x] 3I.3 Reconciliar el mismo PnP con cambio de COM sin duplicar el device ni borrar la configuracion.
 - [x] 3I.4 Verificar que configurar no abre COM ni activa `ScaleService`, `connected`, `authorized`, `unitVerified` o `REAL_AVAILABLE`.
 
+## 3J. Fase 1B.17D - runtime local ROCHI
+
+- [x] 3J.1 Resolver solo escalas configuradas y reutilizar `/scale/current-weight` con MOCK sin cambios.
+- [x] 3J.2 Conectar `RochiA01eSerialScale` al puerto persistido con `sourceUnit=UNKNOWN`, sin comandos seriales.
+- [x] 3J.3 Cubrir lectura REAL, timeout/error cleanup, desconexion, reapertura posterior y concurrencia sin readers duplicados.
+- [x] 3J.4 Exponer unidad/estabilidad no verificadas y mantener `AUTHORIZED`/`REAL_AVAILABLE` deshabilitados.
+
 - [x] 3G.1 Separar `secureSecretDir` de `stateDir` y resolverlo bajo `ProgramData\\Manus\\PeripheralAgent\\state\\secrets` en Windows; no migrar blobs entre perfiles DPAPI. Evidencia: prueba de limites de plataforma y suite Agent `143/143`.
 - [x] 3G.2 Cerrar la carrera TOCTOU de liberacion del lock con Named Mutex Windows; la prueba adversarial `REPLACEMENT_ALLOWED` queda cubierta al retirar `unlink` del protocolo de autoridad. Evidencia: QA administrado 1B.14B y `secure_secret_mutex_windows.go`.
 - [x] 3G.3 Incluir la ACL de la ruta actualmente fallida en el rollback y cubrir la seleccion de backups con prueba Go. Evidencia: `go test ./...` PASS.

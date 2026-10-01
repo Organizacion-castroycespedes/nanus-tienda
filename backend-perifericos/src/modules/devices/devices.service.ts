@@ -932,6 +932,12 @@ export class DevicesService {
     };
   }
 
+  getConfiguredScales(terminalId: string): PeripheralDevice[] {
+    return [...this.configuredDevices.values()]
+      .filter((device) => device.type === DeviceType.SCALE && device.terminalId === terminalId)
+      .map((device) => this.cloneDevice(device));
+  }
+
   private buildDiscoveredSerialDevice(
     descriptor: SerialDeviceDescriptor
   ): PeripheralDevice {

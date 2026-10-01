@@ -477,8 +477,11 @@ export type PeripheralDiscoverResponse = {
 export type PeripheralScaleWeight = {
   deviceId: string;
   weight: number;
-  unit: string;
-  stable: boolean;
+  unit: string | null;
+  stable: boolean | null;
+  source?: "MOCK" | "REAL";
+  unitVerified?: boolean;
+  stabilityVerified?: boolean;
   timestamp: string;
 };
 

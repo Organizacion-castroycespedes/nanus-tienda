@@ -167,6 +167,16 @@ el candidato. Los estados `physicalDetected`, `configured`, `connected`,
 `authorized` y `REAL_AVAILABLE` permanecen separados. Dispositivos seriales
 ajenos no se convierten en ROCHI.
 
+### Fase 1B.17D: runtime local ROCHI
+
+El `ScaleService` reutiliza `RochiA01eSerialScale` para una escala `SCALE`+
+`SERIAL`+`ROCHI_A01E` ya configurada localmente. La lectura usa el endpoint
+existente `/scale/current-weight`, abre y cierra bajo demanda y comparte una
+lectura en solicitudes concurrentes. El valor numerico de la trama se expone
+como `source=REAL`, pero `unit=null`, `stable=null`, `unitVerified=false` y
+`stabilityVerified=false`: una lectura fisica no autoriza ventas ni declara KG.
+El modo MOCK conserva su respuesta historica.
+
 ### Fase 1B.17C: configuracion local explicita
 
 El candidato descubierto se configura mediante el contrato generico existente
