@@ -86,7 +86,7 @@
 - [x] 11.1 Create a separate OpenSpec for V082/V083, V089, repo-only/DB-only and checksum drift reconciliation.
 - [x] 11.2 Create a separate OpenSpec for any `success=false` or manual bundle disposition.
 - [x] 11.3 Prove that historical remediation does not reexecute SQL, rename applied files, reuse meanings or insert artificial history.
-- [ ] 11.4 Archive this governance change only after policy, gates, cutover evidence and rollback procedures are accepted.
+- [x] 11.4 Archive this governance change only after policy, gates, cutover evidence and rollback procedures are accepted.
 
 ## 12. Verification and handoff
 

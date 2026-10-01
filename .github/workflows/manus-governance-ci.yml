@@ -38,6 +38,8 @@ jobs:
           openspec validate implementar-plan-promocion-migraciones-ambientes --strict
           openspec validate reconciliar-drift-historico-pre-gobernanza --strict
           openspec validate disponer-historial-fallido-y-bundles-manuales --strict
+          openspec validate conectar-cutover-gobernanza-v095 --strict
+          openspec validate autorizar-estado-estricto-gobernanza --strict
 
       - name: Run repository strict governance gate
         shell: bash

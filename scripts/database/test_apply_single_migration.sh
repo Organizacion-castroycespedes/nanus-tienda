@@ -8,12 +8,19 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 
 RUNNER_ROOT="${TEST_ROOT}/scripts/database"
 MIGRATIONS_DIR="${RUNNER_ROOT}/migrations"
+GOVERNANCE_ROOT="${TEST_ROOT}/scripts/governance"
 MOCK_BIN="${TEST_ROOT}/bin"
 ENV_FILE="${TEST_ROOT}/qa.env"
 PSQL_LOG="${TEST_ROOT}/psql.log"
 
-mkdir -p "$MIGRATIONS_DIR" "$MOCK_BIN"
+mkdir -p "$MIGRATIONS_DIR" "$GOVERNANCE_ROOT" "$MOCK_BIN"
 cp "${REPO_ROOT}/scripts/database/apply_single_migration.sh" "${RUNNER_ROOT}/apply_single_migration.sh"
+cp "${REPO_ROOT}/scripts/governance/migration_runner_policy.py" \
+  "${GOVERNANCE_ROOT}/migration_runner_policy.py"
+cp "${REPO_ROOT}/scripts/governance/migration-baseline.json" \
+  "${GOVERNANCE_ROOT}/migration-baseline.json"
+sed -i 's/"status": "ACTIVE"/"status": "APPROVED_NOT_ACTIVE"/; s/"activated": true/"activated": false/; s/"activation": "EXPLICIT_OWNER_ACTIVATION"/"activation": "NOT_GRANTED"/' \
+  "${GOVERNANCE_ROOT}/migration-baseline.json"
 cp "${REPO_ROOT}/scripts/database/migrations/V096__electronic_billing_failure_detail.sql" \
   "${MIGRATIONS_DIR}/V096__electronic_billing_failure_detail.sql"
 printf '%s\n' 'BEGIN;' 'SELECT 1;' 'COMMIT;' > "${MIGRATIONS_DIR}/V097__transaction_control.sql"
@@ -109,6 +116,21 @@ run_runner() {
     "${override[@]}" \
     bash "${RUNNER_ROOT}/apply_single_migration.sh" "$ENV_FILE" "$migration_name" "$migration_checksum" "$binding"
 }
+
+: > "$PSQL_LOG"
+if run_runner V096__electronic_billing_failure_detail.sql "$V096_CHECKSUM" > "${TEST_ROOT}/inactive-cutover.out" 2>&1; then
+  echo 'FAIL inactive repository cutover was accepted' >&2
+  exit 1
+fi
+grep -Fq -- 'CUTOVER_NOT_ACTIVE_OR_INVALID' "${TEST_ROOT}/inactive-cutover.out"
+if [[ -s "$PSQL_LOG" ]]; then
+  echo 'FAIL inactive cutover reached DB client' >&2
+  exit 1
+fi
+
+# Activate only the disposable fixture. Production baseline remains inactive.
+sed -i 's/"status": "APPROVED_NOT_ACTIVE"/"status": "ACTIVE"/; s/"activated": false/"activated": true/; s/"activation": "NOT_GRANTED"/"activation": "EXPLICIT_OWNER_ACTIVATION"/' \
+  "${GOVERNANCE_ROOT}/migration-baseline.json"
 
 : > "$PSQL_LOG"
 run_runner V096__electronic_billing_failure_detail.sql "$V096_CHECKSUM" > "${TEST_ROOT}/success.out"

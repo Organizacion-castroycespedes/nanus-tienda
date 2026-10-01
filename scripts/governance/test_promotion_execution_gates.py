@@ -117,6 +117,32 @@ class PromotionGateTests(unittest.TestCase):
         self.assertFalse(strict["rollback_mutates_database"])
         self.assertFalse(strict["rollback_mutates_history"])
 
+    def test_gate_consumes_authoritative_enforcement_state(self) -> None:
+        warning_state = {
+            "mode": "WARNING", "status": "DEFAULT_ACTIVE",
+            "owner_activation": "NOT_GRANTED", "rollback": "NOT_REQUESTED",
+        }
+        result = promotion_execution_gate(
+            plan(), current_target_evidence=target(),
+            current_environment_evidence=environment(), destination_stage="QA",
+            enforcement_state=warning_state,
+        )
+        self.assertEqual(result["status"], "PASS")
+        self.assertFalse(result["strict_active"])
+
+        strict_state = {
+            "mode": "STRICT", "status": "ACTIVE",
+            "owner_activation": "EXPLICIT_OWNER_ACTIVATION",
+            "rollback": "NOT_REQUESTED",
+        }
+        rejected = promotion_execution_gate(
+            plan(), current_target_evidence=target(),
+            current_environment_evidence=environment(), destination_stage="QA",
+            enforcement_state=strict_state, enforcement_request="WARNING",
+        )
+        self.assertEqual(rejected["status"], "BLOCKED")
+        self.assertTrue(any(reason.startswith("ENFORCEMENT_STATE_INVALID") for reason in rejected["reasons"]))
+
     def test_orchestrator_gate_blocks_before_executor(self) -> None:
         calls: list[str] = []
 

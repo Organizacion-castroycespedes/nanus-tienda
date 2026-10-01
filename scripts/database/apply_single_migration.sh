@@ -95,6 +95,14 @@ MIGRATION_EXPECTED_PREDECESSOR_CHECKSUM="${MIGRATION_EXPECTED_PREDECESSOR_CHECKS
 ENVIRONMENT_NORMALIZED="${ENVIRONMENT:-QA}"
 ENVIRONMENT_NORMALIZED="${ENVIRONMENT_NORMALIZED^^}"
 
+if [[ "$MIGRATION_GOVERNANCE_ERA" == "POST_CUTOVER" ]]; then
+  python -B "$ROOT_DIR/scripts/governance/migration_runner_policy.py" \
+    --root "$ROOT_DIR" --require-active >/dev/null 2>&1 || {
+    echo "[apply_single_migration] CUTOVER_NOT_ACTIVE_OR_INVALID; no executor call." >&2
+    exit 1
+  }
+fi
+
 case "$TARGET_ENV" in
   QA)
     [[ "${DB_NAME:-}" == "manus_tienda_qa" && "$DB_SCHEMA" == "public" && "$ENVIRONMENT_NORMALIZED" == "QA" ]] || {

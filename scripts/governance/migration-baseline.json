@@ -10,18 +10,24 @@
     "per_file_certification": false,
     "environment_specific_execution_assertions": false
   },
+  "enforcement_state": {
+    "mode": "STRICT",
+    "status": "ACTIVE",
+    "owner_activation": "EXPLICIT_OWNER_ACTIVATION",
+    "rollback": "NOT_REQUESTED"
+  },
   "cutover_boundary": {
     "version": "V095",
     "semantics": "NUMERIC_HISTORICAL_BOUNDARY_NOT_CANONICAL_FILE",
     "decision_source": "RESPONSIBLE_PROJECT_OWNER_CURRENT_INSTRUCTION",
-    "status": "APPROVED_NOT_ACTIVE",
+    "status": "ACTIVE",
     "approved": true,
-    "activated": false,
+    "activated": true,
     "owner_approval": {
       "status": "EXPLICIT_OWNER_APPROVAL",
       "statement": "APRUEBO EL CUTOVER V095",
       "scope": "CUTOVER_BOUNDARY_ONLY",
-      "activation": "NOT_GRANTED"
+      "activation": "EXPLICIT_OWNER_ACTIVATION"
     },
     "drift_disposition": "PREEXISTING_BASELINE_RETAINED",
     "evidence": {

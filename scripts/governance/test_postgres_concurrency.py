@@ -8,6 +8,7 @@ reads project environment files and never connects to QA or PRD.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import socket
@@ -96,7 +97,18 @@ class DisposablePostgresTests(unittest.TestCase):
 
         cls.fixture_root = cls.root / "runner"
         (cls.fixture_root / "scripts" / "database" / "migrations").mkdir(parents=True)
+        (cls.fixture_root / "scripts" / "governance").mkdir(parents=True)
         shutil.copy2(RUNNER, cls.fixture_root / "scripts" / "database" / "apply_single_migration.sh")
+        shutil.copy2(ROOT / "scripts" / "governance" / "migration_runner_policy.py",
+                     cls.fixture_root / "scripts" / "governance" / "migration_runner_policy.py")
+        baseline_path = ROOT / "scripts" / "governance" / "migration-baseline.json"
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        baseline["cutover_boundary"]["status"] = "ACTIVE"
+        baseline["cutover_boundary"]["activated"] = True
+        baseline["cutover_boundary"]["owner_approval"]["activation"] = "EXPLICIT_OWNER_ACTIVATION"
+        (cls.fixture_root / "scripts" / "governance" / "migration-baseline.json").write_text(
+            json.dumps(baseline, indent=2) + "\n", encoding="utf-8"
+        )
         cls.env_file = cls.root / "local.env"
         cls.env_file.write_text(
             "\n".join([

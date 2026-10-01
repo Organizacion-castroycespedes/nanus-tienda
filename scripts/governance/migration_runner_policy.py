@@ -7,9 +7,11 @@ by the official runner tests.
 
 from __future__ import annotations
 
+import argparse
 import re
 import hashlib
 import json
+import sys
 from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Mapping
@@ -22,6 +24,9 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CUTOVER_BOUNDARY_VERSION_RE = re.compile(r"^V[0-9]{3}$")
 NUMERIC_VERSION_RE = re.compile(r"^V([0-9]{3})$", re.IGNORECASE)
 NEXT_VERSION_ALGORITHM = "FIRST_FREE_VERSION_ABOVE_CUTOVER_FROM_AUTHORITATIVE_UNION"
+CUTOVER_STATES = ("NOT_APPROVED", "APPROVED_NOT_ACTIVE", "ACTIVE")
+ENFORCEMENT_MODES = ("WARNING", "STRICT")
+ENFORCEMENT_STATE_STATUSES = ("DEFAULT_ACTIVE", "ACTIVE", "ROLLED_BACK")
 
 RUNNER_CLASSES = {
     OFFICIAL_RUNNER: "OFFICIAL_VERSIONED_ATOMIC",
@@ -152,6 +157,131 @@ def runner_inventory() -> list[dict[str, str]]:
     ]
 
 
+def evaluate_cutover_state(boundary: object) -> tuple[dict[str, object] | None, list[str]]:
+    """Evaluate the repository-owned V095 approval/activation state."""
+
+    errors: list[str] = []
+    if not isinstance(boundary, dict):
+        return None, ["CUTOVER_BOUNDARY_MUST_BE_OBJECT"]
+
+    if boundary.get("version") != "V095":
+        errors.append("CUTOVER_BOUNDARY_VERSION_UNEXPECTED")
+    if boundary.get("semantics") != "NUMERIC_HISTORICAL_BOUNDARY_NOT_CANONICAL_FILE":
+        errors.append("CUTOVER_BOUNDARY_SEMANTICS_INVALID")
+
+    approved = boundary.get("approved")
+    activated = boundary.get("activated")
+    if type(approved) is not bool:
+        errors.append("CUTOVER_APPROVED_MUST_BE_BOOLEAN")
+    if type(activated) is not bool:
+        errors.append("CUTOVER_ACTIVATED_MUST_BE_BOOLEAN")
+    if errors:
+        return None, errors
+
+    if activated and not approved:
+        errors.append("CUTOVER_ACTIVATED_WITHOUT_APPROVAL")
+    state = "ACTIVE" if activated else ("APPROVED_NOT_ACTIVE" if approved else "NOT_APPROVED")
+    expected_status = {
+        "NOT_APPROVED": "DEFINED_NOT_APPROVED",
+        "APPROVED_NOT_ACTIVE": "APPROVED_NOT_ACTIVE",
+        "ACTIVE": "ACTIVE",
+    }[state]
+    if boundary.get("status") != expected_status:
+        errors.append("CUTOVER_BOUNDARY_STATUS_MISMATCH")
+
+    if approved:
+        owner_approval = boundary.get("owner_approval")
+        if not isinstance(owner_approval, dict):
+            errors.append("OWNER_APPROVAL_MISSING")
+        else:
+            if owner_approval.get("status") != "EXPLICIT_OWNER_APPROVAL":
+                errors.append("OWNER_APPROVAL_STATUS_INVALID")
+            if owner_approval.get("statement") != "APRUEBO EL CUTOVER V095":
+                errors.append("OWNER_APPROVAL_STATEMENT_INVALID")
+            if owner_approval.get("scope") != "CUTOVER_BOUNDARY_ONLY":
+                errors.append("OWNER_APPROVAL_SCOPE_INVALID")
+            expected_activation = "EXPLICIT_OWNER_ACTIVATION" if activated else "NOT_GRANTED"
+            if owner_approval.get("activation") != expected_activation:
+                errors.append("OWNER_APPROVAL_ACTIVATION_INVALID")
+
+    if errors:
+        return None, errors
+    return {
+        "state": state,
+        "version": "V095",
+        "approved": approved,
+        "activated": activated,
+        "owner_activation": (
+            boundary.get("owner_approval", {}).get("activation")
+            if isinstance(boundary.get("owner_approval"), dict)
+            else None
+        ),
+    }, []
+
+
+def evaluate_enforcement_state(
+    state: object,
+    requested: str | None = None,
+    *,
+    rollback_authorized: bool = False,
+) -> tuple[dict[str, object] | None, list[str]]:
+    """Resolve repository-owned enforcement state and explicit requests."""
+
+    errors: list[str] = []
+    if not isinstance(state, dict):
+        return None, ["ENFORCEMENT_STATE_MUST_BE_OBJECT"]
+    mode = state.get("mode")
+    status = state.get("status")
+    owner_activation = state.get("owner_activation")
+    rollback = state.get("rollback")
+    if mode not in ENFORCEMENT_MODES:
+        errors.append("ENFORCEMENT_MODE_INVALID")
+    if status not in ENFORCEMENT_STATE_STATUSES:
+        errors.append("ENFORCEMENT_STATUS_INVALID")
+    if type(owner_activation) is not str or type(rollback) is not str:
+        errors.append("ENFORCEMENT_METADATA_INVALID")
+    if not errors:
+        if mode == "WARNING":
+            if status == "DEFAULT_ACTIVE" and owner_activation != "NOT_GRANTED":
+                errors.append("WARNING_ACTIVATION_METADATA_INVALID")
+            if status == "ROLLED_BACK" and owner_activation != "EXPLICIT_OWNER_ROLLBACK":
+                errors.append("ROLLBACK_ACTIVATION_METADATA_INVALID")
+            if status == "ACTIVE":
+                errors.append("WARNING_STATUS_CANNOT_BE_ACTIVE")
+        if mode == "STRICT":
+            if status != "ACTIVE" or owner_activation != "EXPLICIT_OWNER_ACTIVATION":
+                errors.append("STRICT_ACTIVATION_METADATA_INVALID")
+        if rollback not in {"NOT_REQUESTED", "EXPLICIT_OWNER_ROLLBACK"}:
+            errors.append("ENFORCEMENT_ROLLBACK_METADATA_INVALID")
+        if mode == "WARNING" and rollback == "EXPLICIT_OWNER_ROLLBACK" and status != "ROLLED_BACK":
+            errors.append("ROLLBACK_STATUS_INVALID")
+        if mode == "STRICT" and rollback not in {"NOT_REQUESTED", "EXPLICIT_OWNER_ROLLBACK"}:
+            errors.append("STRICT_ROLLBACK_METADATA_INVALID")
+
+    requested_mode = None if requested is None else str(requested).upper()
+    if requested_mode not in {None, "WARNING", "DIAGNOSTIC_ONLY", "STRICT"}:
+        errors.append("ENFORCEMENT_REQUEST_INVALID")
+    if errors:
+        return None, errors
+
+    effective = requested_mode or mode
+    if mode == "STRICT" and requested_mode in {"WARNING", "DIAGNOSTIC_ONLY"}:
+        if not (rollback_authorized and rollback == "EXPLICIT_OWNER_ROLLBACK"):
+            errors.append("STRICT_DOWNGRADE_NOT_AUTHORIZED")
+        else:
+            effective = "WARNING"
+    if errors:
+        return None, errors
+    return {
+        "durable_mode": mode,
+        "durable_status": status,
+        "mode": effective,
+        "strict_active": effective == "STRICT",
+        "warning_mode_active": effective == "WARNING",
+        "rollback_authorized": bool(rollback_authorized and rollback == "EXPLICIT_OWNER_ROLLBACK"),
+    }, []
+
+
 def load_baseline_manifest(root: Path) -> tuple[dict[str, object] | None, list[str]]:
     """Load the non-certifying owner baseline declaration defensively."""
 
@@ -194,12 +324,8 @@ def load_baseline_manifest(root: Path) -> tuple[dict[str, object] | None, list[s
                 errors.append("CUTOVER_BOUNDARY_VERSION_UNEXPECTED")
             if boundary.get("semantics") != "NUMERIC_HISTORICAL_BOUNDARY_NOT_CANONICAL_FILE":
                 errors.append("CUTOVER_BOUNDARY_SEMANTICS_INVALID")
-            if boundary.get("status") not in {"DEFINED_NOT_APPROVED", "APPROVED_NOT_ACTIVE"}:
-                errors.append("CUTOVER_BOUNDARY_STATUS_INVALID")
-            if boundary.get("approved") is not (boundary.get("status") == "APPROVED_NOT_ACTIVE"):
-                errors.append("CUTOVER_BOUNDARY_APPROVAL_STATUS_MISMATCH")
-            if boundary.get("activated") is not False:
-                errors.append("CUTOVER_BOUNDARY_MUST_NOT_ACTIVATE_CUTOVER")
+            _, cutover_errors = evaluate_cutover_state(boundary)
+            errors.extend(cutover_errors)
             if boundary.get("approved") is True:
                 owner_approval = boundary.get("owner_approval")
                 if not isinstance(owner_approval, dict):
@@ -211,7 +337,12 @@ def load_baseline_manifest(root: Path) -> tuple[dict[str, object] | None, list[s
                         errors.append("OWNER_APPROVAL_STATEMENT_INVALID")
                     if owner_approval.get("scope") != "CUTOVER_BOUNDARY_ONLY":
                         errors.append("OWNER_APPROVAL_SCOPE_INVALID")
-                    if owner_approval.get("activation") != "NOT_GRANTED":
+                    expected_activation = (
+                        "EXPLICIT_OWNER_ACTIVATION"
+                        if boundary.get("activated") is True
+                        else "NOT_GRANTED"
+                    )
+                    if owner_approval.get("activation") != expected_activation:
                         errors.append("OWNER_APPROVAL_ACTIVATION_INVALID")
             if boundary.get("drift_disposition") != "PREEXISTING_BASELINE_RETAINED":
                 errors.append("CUTOVER_BOUNDARY_DRIFT_DISPOSITION_INVALID")
@@ -232,6 +363,8 @@ def load_baseline_manifest(root: Path) -> tuple[dict[str, object] | None, list[s
                     errors.append("HISTORICAL_DISPOSITION_CERTIFICATION_INVALID")
                 if historical_disposition.get("remediation") != "SEPARATE_OPENSPEC_HISTORICAL_DRIFT":
                     errors.append("HISTORICAL_DISPOSITION_REMEDIATION_INVALID")
+    _, enforcement_errors = evaluate_enforcement_state(data.get("enforcement_state"))
+    errors.extend(enforcement_errors)
     return (data if not errors else None), errors
 
 
@@ -649,3 +782,28 @@ def evaluate_migration_era(
     if requested_era == "POST_CUTOVER" and checksum_status != "VERIFIED_MATCH":
         return {"era": "POST_CUTOVER_STRICT", "replay_protection": "CHECKSUM_PREREQUISITE_MISSING", "executor_allowed": False, "status": "REVIEW_REQUIRED"}
     return {"era": "PRE_GOVERNANCE", "replay_protection": "CUTOVER_NOT_APPROVED", "executor_allowed": False, "status": "UNVERIFIED"}
+
+
+def cutover_state_cli(argv: list[str] | None = None) -> int:
+    """Expose only the fixed repository cutover-state check to shell callers."""
+
+    parser = argparse.ArgumentParser(description="Validate repository V095 cutover state")
+    parser.add_argument("--root", required=True)
+    parser.add_argument("--require-active", action="store_true")
+    args = parser.parse_args(argv)
+    manifest, manifest_errors = load_baseline_manifest(Path(args.root))
+    boundary = manifest.get("cutover_boundary") if manifest else None
+    state, state_errors = evaluate_cutover_state(boundary)
+    errors = [*manifest_errors, *state_errors]
+    if errors or state is None:
+        print("CUTOVER_STATE_INVALID", file=sys.stderr)
+        return 1
+    print(f"CUTOVER_STATE={state['state']}")
+    if args.require_active and state["state"] != "ACTIVE":
+        print("CUTOVER_NOT_ACTIVE", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(cutover_state_cli())
