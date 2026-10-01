@@ -26,6 +26,7 @@ import {
   IdCard,
   KeyRound,
   LayoutDashboard,
+  LayoutGrid,
   Loader2,
   LogOut,
   Menu,
@@ -99,6 +100,8 @@ const normalizeIconName = (value: string) =>
 const iconByName: Record<string, LucideIcon> = {
   menu: Menu,
   layoutdashboard: LayoutDashboard,
+  layoutgrid: LayoutGrid,
+  grid: LayoutGrid,
   settings: Settings,
   user: User,
   users: Users,
@@ -1405,21 +1408,19 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-              {!isPosRoute ? (
-                <Link
-                  href={`/${tenantSlug}/dashboard`}
-                  className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
-                  style={{
-                    borderColor: tenantTheme.header.iconButtonBorder,
-                    backgroundColor: tenantTheme.header.iconButtonBackground,
-                    color: tenantTheme.header.iconButtonText,
-                  }}
-                  aria-label="Ir al dashboard"
-                  title="Ir al dashboard"
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                </Link>
-              ) : null}
+              <Link
+                href={`/${tenantSlug}/dashboard`}
+                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color: tenantTheme.header.iconButtonText,
+                }}
+                aria-label="Ir al dashboard"
+                title="Ir al dashboard"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Link>
               <button
                 type="button"
                 className="relative grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
