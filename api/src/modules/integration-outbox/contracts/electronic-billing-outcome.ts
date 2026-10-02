@@ -24,11 +24,19 @@ export type BillingElectronicDocumentOutcome = {
   failures: BillingElectronicDocumentFailure[];
 };
 
+export const ELECTRONIC_BILLING_STATUSES = {
+  ACCEPTED: "ACCEPTED",
+  REJECTED: "REJECTED",
+  QUEUED_NETWORK: "QUEUED_NETWORK",
+  PROCESSING: "PROCESSING",
+  TECHNICAL_ERROR: "TECHNICAL_ERROR",
+} as const;
+
 export type ElectronicBillingOnlineStatus =
-  | "ACCEPTED"
-  | "REJECTED"
-  | "QUEUED_NETWORK"
-  | "PROCESSING";
+  | typeof ELECTRONIC_BILLING_STATUSES.ACCEPTED
+  | typeof ELECTRONIC_BILLING_STATUSES.REJECTED
+  | typeof ELECTRONIC_BILLING_STATUSES.QUEUED_NETWORK
+  | typeof ELECTRONIC_BILLING_STATUSES.PROCESSING;
 
 export type ElectronicBillingOnlineResult = {
   status: ElectronicBillingOnlineStatus;
@@ -59,10 +67,10 @@ export type ElectronicBillingInlineDelivery = {
 };
 
 const MESSAGES: Record<ElectronicBillingOnlineStatus, string> = {
-  ACCEPTED: "Factura electrónica aceptada por la DIAN.",
-  REJECTED: "La factura electrónica fue rechazada. Revise el código y la solución sugerida.",
-  QUEUED_NETWORK: "Sin conexión con facturación electrónica. El documento quedó en cola y se enviará automáticamente.",
-  PROCESSING: "El documento electrónico se sigue procesando. Consulte el estado en unos minutos.",
+  [ELECTRONIC_BILLING_STATUSES.ACCEPTED]: "Factura electrónica aceptada por la DIAN.",
+  [ELECTRONIC_BILLING_STATUSES.REJECTED]: "La factura electrónica fue rechazada. Revise el código y la solución sugerida.",
+  [ELECTRONIC_BILLING_STATUSES.QUEUED_NETWORK]: "Sin conexión con facturación electrónica. El documento quedó en cola y se enviará automáticamente.",
+  [ELECTRONIC_BILLING_STATUSES.PROCESSING]: "El documento electrónico se sigue procesando. Consulte el estado en unos minutos.",
 };
 
 const INELIGIBLE_SOLUTION =
@@ -85,16 +93,18 @@ const emptyResult = (status: ElectronicBillingOnlineStatus): ElectronicBillingOn
 export const resolveOnlineStatusFromDocument = (
   document: BillingElectronicDocumentOutcome,
 ): ElectronicBillingOnlineStatus => {
-  if (document.status === "ACCEPTED") {
-    return "ACCEPTED";
+  if (document.status === ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
+    return ELECTRONIC_BILLING_STATUSES.ACCEPTED;
   }
-  if (document.status === "REJECTED") {
-    return "REJECTED";
+  if (document.status === ELECTRONIC_BILLING_STATUSES.REJECTED) {
+    return ELECTRONIC_BILLING_STATUSES.REJECTED;
   }
-  if (document.status === "TECHNICAL_ERROR") {
-    return document.retryable ? "QUEUED_NETWORK" : "REJECTED";
+  if (document.status === ELECTRONIC_BILLING_STATUSES.TECHNICAL_ERROR) {
+    return document.retryable
+      ? ELECTRONIC_BILLING_STATUSES.QUEUED_NETWORK
+      : ELECTRONIC_BILLING_STATUSES.REJECTED;
   }
-  return "PROCESSING";
+  return ELECTRONIC_BILLING_STATUSES.PROCESSING;
 };
 
 export const buildOnlineResultFromDocument = (

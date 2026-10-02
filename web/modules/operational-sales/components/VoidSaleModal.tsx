@@ -9,6 +9,7 @@ import {
 } from "../services/operational-sales.service";
 import type { OperationalSaleDetail } from "../types";
 import { ApiError } from "../../../lib/request";
+import { ELECTRONIC_DOCUMENT_STATUSES } from "../../reporteria/types";
 
 type VoidSaleError = {
   message: string;
@@ -36,7 +37,7 @@ export const buildVoidSaleSuccessMessage = (result: VoidOperationalSaleResult) =
   if (result.voidRequest) {
     return result.voidRequest.message;
   }
-  if (result.creditNote?.status === "ACCEPTED") {
+  if (result.creditNote?.status === ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED) {
     const number = result.creditNote.fullNumber ? ` ${result.creditNote.fullNumber}` : "";
     return `Venta anulada. Nota crédito${number} aceptada por la DIAN.`;
   }
@@ -70,7 +71,8 @@ export const VoidSaleModal = ({
 
   if (!isOpen) return null;
 
-  const hasElectronicInvoice = sale.electronicBilling?.status === "ACCEPTED";
+  const hasElectronicInvoice =
+    sale.electronicBilling?.status === ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

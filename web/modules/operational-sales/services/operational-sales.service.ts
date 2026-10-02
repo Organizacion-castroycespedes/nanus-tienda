@@ -1,5 +1,6 @@
 import { apiClient } from "../../../lib/http";
 import type { ElectronicBillingOnlineResult } from "../../reporteria/services/electronic-billing.service";
+import { ELECTRONIC_DOCUMENT_STATUSES } from "../../reporteria/types";
 import type {
   OperationalSaleDetail,
   OperationalSaleListItem,
@@ -98,11 +99,11 @@ export type OperationalSaleVoidAvailability =
   | { kind: "BLOCKED_ELECTRONIC"; message: string };
 
 const electronicBillingStatusLabels: Record<string, string> = {
-  PENDING: "pendiente",
-  PROCESSING: "en procesamiento",
-  REJECTED: "rechazada",
-  TECHNICAL_ERROR: "con error técnico",
-  CANCELLED: "cancelada",
+  [ELECTRONIC_DOCUMENT_STATUSES.PENDING]: "pendiente",
+  [ELECTRONIC_DOCUMENT_STATUSES.PROCESSING]: "en procesamiento",
+  [ELECTRONIC_DOCUMENT_STATUSES.REJECTED]: "rechazada",
+  [ELECTRONIC_DOCUMENT_STATUSES.TECHNICAL_ERROR]: "con error técnico",
+  [ELECTRONIC_DOCUMENT_STATUSES.CANCELLED]: "cancelada",
 };
 
 export const resolveOperationalSaleVoidAvailability = (
@@ -114,7 +115,7 @@ export const resolveOperationalSaleVoidAvailability = (
   if (!sale.electronicBilling) {
     return { kind: "LOCAL", message: null };
   }
-  if (sale.electronicBilling.status === "ACCEPTED") {
+  if (sale.electronicBilling.status === ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED) {
     return { kind: "CREDIT_NOTE", message: null };
   }
 

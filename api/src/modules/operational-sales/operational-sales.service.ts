@@ -8,6 +8,7 @@ import {
 import {
   buildOnlineResultFromDelivery,
   buildOnlineResultFromDocument,
+  ELECTRONIC_BILLING_STATUSES,
   type ElectronicBillingOnlineResult,
 } from "../integration-outbox/contracts/electronic-billing-outcome";
 import { normalizeOperationalSalesQuery, type OperationalSalesQueryDto } from "./dto/operational-sales-query.dto";
@@ -678,14 +679,18 @@ export class OperationalSalesService {
         [tenantId, saleId]
       );
       const invoice = invoiceResult.rows[0] ?? null;
-      if (invoice && invoice.status !== "ACCEPTED") {
+      if (invoice && invoice.status !== ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
         throw new BadRequestException(
           `No se puede anular la venta porque su factura electrónica está en estado ${invoice.status}. Primero actualice o reconcilie el estado fiscal; solo una factura aceptada puede anularse mediante nota crédito.`
         );
       }
 
       await client.query("COMMIT");
-      return { invoice: invoice?.status === "ACCEPTED" ? invoice : null };
+      return {
+        invoice: invoice?.status === ELECTRONIC_BILLING_STATUSES.ACCEPTED
+          ? invoice
+          : null,
+      };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -720,7 +725,7 @@ export class OperationalSalesService {
           electronicDocument: null,
         });
 
-    if (creditNote.status === "ACCEPTED") {
+    if (creditNote.status === ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
       await this.applySaleVoid(actor, tenantId, saleId, dto, creditNote);
       await this.closeVoidRequest(tenantId, saleId, "COMPLETED", creditNote);
       return { ...(await this.detail(actor, saleId)), creditNote, voidRequest: null };
@@ -896,7 +901,7 @@ export class OperationalSalesService {
           this.buildCreditNotePayload(dto),
         );
         const creditNote = issue.kind === "OUTCOME" ? buildOnlineResultFromDocument(issue.electronicDocument) : null;
-        if (creditNote?.status === "ACCEPTED") {
+        if (creditNote?.status === ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
           await this.applySaleVoid(actor, request.tenant_id, request.sale_id, dto, creditNote);
           await this.closeVoidRequest(request.tenant_id, request.sale_id, "COMPLETED", creditNote);
           continue;
@@ -1251,7 +1256,7 @@ export class OperationalSalesService {
         [tenantId, saleId]
       );
       const billingDoc = billingDocResult.rows[0];
-      if (!billingDoc || billingDoc.status !== "ACCEPTED") {
+      if (!billingDoc || billingDoc.status !== ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
         throw new BadRequestException(
           "No se puede emitir una Nota Débito sin una factura electrónica aceptada previa."
         );
