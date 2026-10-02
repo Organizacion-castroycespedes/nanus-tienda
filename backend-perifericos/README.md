@@ -273,16 +273,19 @@ CORS del shell Electron y del agente local:
 - Windows x64.
 - Node.js `>=24.21.0` para `backend-perifericos`.
 - Node.js `>=22.12.0` para `desktop/electron`.
-- npm disponible en `PATH`.
+- Una distribución oficial completa de Node `>=24.21.0` para build, con npm de
+  la misma distribución. Puede fijarse con `MANUS_NODE_TOOLCHAIN_ROOT`; no se
+  debe mezclar con el runtime Node slim del artefacto POS.
 - Go `1.24.x` disponible en `PATH` para compilar el instalador Windows.
 - Microsoft Edge WebView2 Runtime para ejecutar la interfaz del instalador.
 - PowerShell como administrador para instalar en `C:\Program Files`.
 - El equipo POS debe tener acceso a la URL del ambiente y, si se usa USB,
   tener instalada la impresora o cola de Windows correspondiente.
 
-El Node detectado durante la compilación fue `v24.20.0`. Compiló, pero npm
-mostró un warning porque el requisito es `>=24.21.0`; conviene actualizar a
-`24.21.0` o superior.
+El packaging valida `node.exe`, `npm-cli.js` y la versión desde una sola raíz de
+toolchain. Para una certificación reproducible se puede fijar además
+`MANUS_NODE_TOOLCHAIN_SHA256` con el SHA-256 de `node.exe`, verificado contra el
+`SHASUMS256.txt` de la distribución oficial Node usada.
 
 El equipo que recibe el instalador no necesita npm, Git, Node.js ni Go: el
 agente lleva su runtime Node embebido. Sí necesita Windows x64 y WebView2.

@@ -1,5 +1,9 @@
 ## Purpose
 
+Define a safe, on-demand commercial weighing capability between Manus POS and the authorized Peripheral Agent, reusing the existing product sale model and excluding metrological certification.
+
+## ADDED Requirements
+
 ### Requirement: Installer technical completion and interactive peripherals
 
 The installer Core SHALL report technical completion only after service health
@@ -19,10 +23,6 @@ SHALL remain a subsequent interactive WebView stage.
 - **THEN** the WebView SHALL expose its existing retry or continue-without-device
   behavior, SHALL NOT claim a physical test passed, and SHALL NOT roll back the
   technically healthy service.
-
-Define a safe, on-demand commercial weighing capability between Manus POS and the authorized Peripheral Agent, reusing the existing product sale model and excluding metrological certification.
-
-## ADDED Requirements
 
 ### Requirement: Administrative credential records never issue secrets
 
@@ -272,6 +272,14 @@ The implementation SHALL support acceptance testing with an explicit fixture nam
 
 The system SHALL distinguish commercial tenant, branch, terminal, Agent installation, logical SCALE device and physical ROCHI identity. A non-empty `scaleDeviceId`, `source=CONFIGURED` or `features.scale=true` SHALL NOT prove REAL hardware or connection.
 
+#### Scenario: Windows friendly name survives configuration and reload
+
+- **WHEN** discovery produces the display name `USB-SERIAL CH340 (COM5)`
+- **THEN** device configuration and persisted-state reload SHALL preserve that
+  name without sanitization, while identity and reconciliation remain based on
+  the existing device/PnP fields. Device names SHALL remain bounded to 160
+  characters and SHALL reject control characters and unsafe markup.
+
 #### Scenario: Configuration points to the documented MOCK fixture
 - **WHEN** `scaleDeviceId=mock-scale-001` is resolved for an otherwise configured terminal
 - **THEN** POS SHALL classify the assignment as MOCK for commercial visibility, hide permanent physical-scale UI and SHALL NOT permit REAL capture.
@@ -484,10 +492,30 @@ Managed executable and secret paths SHALL remove inherited broad write access.
 - **THEN** the installer SHALL accept the listener without relying only on the
   executable name or an arbitrary PID
 
+#### Scenario: Installed executable ACLs remain executable
+
+- **WHEN** fresh install or repair hardens the extracted Agent distribution
+- **THEN** the installer SHALL assign and verify a complete file-appropriate DACL before service startup, granting SYSTEM and Administrators management access and LocalService read/execute without broad Users or Everyone write
+- **AND** executable and runtime files SHALL never retain a protected empty DACL
+- **AND** an ACL failure SHALL restore every changed file descriptor and fail closed while preserving the separate restrictive secrets policy
+
+#### Scenario: Uninstall accepts an already stopped or absent service
+
+- **WHEN** the managed service is already stopped or absent during uninstall
+- **THEN** the installer SHALL continue official cleanup without requiring service startup
+- **AND** access denial, query failure and unknown stop errors SHALL remain failures
+
+#### Scenario: Scheduled Task coexistence is independent of display language
+
+- **WHEN** Scheduled Task coexistence is queried on any Windows display language
+- **THEN** the installer SHALL classify presence or absence only from a successful structured Windows query, never localized human messages
+- **AND** access denial, unavailable query helpers, malformed responses and timeouts SHALL fail closed before installation
+
 #### Scenario: Unsafe coexistence is rejected
 
 - **WHEN** a known Agent Scheduled Task exists, the managed service identity differs, or an unexpected process owns `127.0.0.1:4050`
 - **THEN** the installer SHALL stop before changing service state or managed data and SHALL report a sanitized recovery reason.
+- **AND** service identity, state and PID SHALL be read from native SCM data rather than localized `sc.exe` field labels; incomplete or failed native queries SHALL fail closed.
 ### Requirement: Local secret operations are serialized across processes
 
 The Agent secure store SHALL create an exclusive, per-secret Windows Named Mutex
@@ -535,3 +563,40 @@ currently processed path in rollback when ACL application fails partially.
 - **WHEN** applying a managed ACL fails after changing the current path
 - **THEN** rollback SHALL restore the current path and all previously affected paths,
   reporting the original error and any rollback error separately.
+
+### Requirement: Repair preserves operational ProgramData ACLs
+
+Repair, upgrade, staging and rollback SHALL preserve or restore the effective ACL
+policy of pre-existing operational files under `ProgramData`. Configuration and
+log files written or read by `NT AUTHORITY\\LocalService` SHALL inherit from
+their validated parent directory or use the existing equivalent ACL helper; this
+policy SHALL NOT apply to `state\\secrets`.
+
+#### Scenario: Protected operational child is restored
+
+- **WHEN** repair or rollback restores a pre-existing configuration or log file
+  whose DACL is protected and empty
+- **THEN** the installer SHALL repair inheritance for that file only, preserve
+  SYSTEM and Administrators administration, grant only required LocalService
+  access, and SHALL NOT grant write access to `Everyone` or `Users`.
+
+#### Scenario: Operational ACL repair needs ownership
+
+- **WHEN** Windows denies changing inheritance because the pre-existing file is
+  owned by the service account
+- **THEN** the installer SHALL use a bounded administrative ownership transition
+  for that file, restore the original owner, and report operation and rollback
+  errors separately.
+
+#### Scenario: Secret ACL policy remains isolated
+
+- **WHEN** repair normalizes ACLs for configuration, logs or state
+- **THEN** it SHALL exclude `state\\secrets` and preserve the stricter
+  SecureSecretStore/DPAPI ACL policy.
+
+#### Scenario: Repair failure leaves service-start paths usable
+
+- **WHEN** repair or rollback fails after touching an operational ACL
+- **THEN** per-file ACL snapshots SHALL be available for rollback, and failure
+  handling SHALL NOT leave required configuration or log paths inaccessible to
+  LocalService.

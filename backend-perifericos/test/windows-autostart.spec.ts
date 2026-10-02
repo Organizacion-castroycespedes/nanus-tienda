@@ -45,3 +45,14 @@ test("windows autostart runner targets portable node and health gate", () => {
   assert.ok(packageScript.includes('Autostart health check: FAIL'));
   assert.ok(!packageScript.includes('Start-Process -FilePath "cmd.exe"'));
 });
+
+test("windows packaging separates complete build toolchain from slim runtime", () => {
+  assert.ok(packageScript.includes("MANUS_NODE_TOOLCHAIN_ROOT"));
+  assert.ok(packageScript.includes("MANUS_NODE_TOOLCHAIN_SHA256"));
+  assert.ok(packageScript.includes('join(toolchainRoot, "node.exe")'));
+  assert.ok(packageScript.includes('join(toolchainRoot, "node_modules", "npm", "bin", "npm-cli.js")'));
+  assert.ok(packageScript.includes("Complete Node build toolchain is missing npm-cli.js"));
+  assert.ok(packageScript.includes("execFileSync(toolchainNodePath, [npmCliPath"));
+  assert.ok(packageScript.includes('cpSync(toolchainNodePath, join(artifactRoot, "runtime", "node.exe"))'));
+  assert.ok(!packageScript.includes("execFileSync(process.execPath, [npmCliPath"));
+});

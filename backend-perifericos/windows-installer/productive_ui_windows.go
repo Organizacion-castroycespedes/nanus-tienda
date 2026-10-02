@@ -123,6 +123,14 @@ func runProductiveInstallerUI(manifest installerManifest) error {
 		showWebViewFallback(err)
 		return nil
 	}
+	if err := w.Bind("testScaleReading", deviceBridge.testScaleReading); err != nil {
+		showWebViewFallback(err)
+		return nil
+	}
+	if err := w.Bind("confirmScaleKilograms", deviceBridge.confirmScaleKilograms); err != nil {
+		showWebViewFallback(err)
+		return nil
+	}
 	if err := w.Bind("launchPOS", func() bool {
 		if manifest.PosRoot == "" || !exists(layout.POSExecutable) {
 			return false

@@ -84,6 +84,15 @@ export const validateShortText = (value: string, field: string): string => {
 const isSupportedShortText = (value: string): boolean =>
   /^[\p{L}\p{N} ._:/#-]{1,160}$/u.test(value);
 
+// Device display names include Windows friendly-name port suffixes, e.g. (COM5).
+// Identity remains in the device/PnP fields; other short-text contracts stay unchanged.
+export const validateDeviceName = (value: string): string => {
+  if (!/^[\p{L}\p{N} ._:/#()-]{1,160}$/u.test(value)) {
+    throw new BadRequestException("name contains unsupported characters or is too long");
+  }
+  return value;
+};
+
 export const validateCode = (value: string, field = "code"): string => {
   if (!CODE_PATTERN.test(value)) {
     throw new BadRequestException(

@@ -647,6 +647,25 @@ no abre COM, no lee/escribe frames, no configura el Agent, no marca
 La ausencia de candidatos y el error de enumeracion son resultados distintos;
 un error serial no corrompe ni reemplaza la lista de impresoras.
 
+### Fase 1B.17E - setup Windows y confirmacion local KG
+
+El instalador mantiene al Agent como source of truth. El bridge existente
+descubre candidatos, envia la configuracion generica con `serial` y PnP
+completos, y no escribe `ProgramData` directamente. Para una escala
+`ROCHI_A01E` configurada, `Probar lectura` usa unicamente GET
+`/scale/current-weight`; la respuesta debe ser `source=REAL`. La UI muestra el
+valor numerico, pero no convierte `unit=null` o `stable=null` en afirmaciones
+de KG o estabilidad.
+
+La confirmacion `Confirmo display en kilogramos` solo aparece despues de una
+lectura REAL exitosa. Su PATCH conserva metadata previa y anade
+`unitVerification={unit:KG,method:OPERATOR_CONFIRMATION,verifiedAt}`. El
+runtime usa esta provenance para responder `unit=kg` y `unitVerified=true` en
+lecturas posteriores; `stable` sigue siendo `null` y
+`stabilityVerified=false`. Cambiar perfil, conexion o identidad PnP invalida
+la verificacion. COM/PnP fisico, configuracion local, lectura tecnica, unidad
+confirmada, autorizacion y `REAL_AVAILABLE` permanecen separados.
+
 ### Fase 1B.17D - runtime local y ScaleService
 
 En modo `REAL`, `ScaleService` consulta solo `DevicesService` configurados.
@@ -699,3 +718,48 @@ la evidencia administrada 1B.14B certificó ACL efectiva y DPAPI bajo
 `LocalService`. La validación de ownership del listener 4050 acepta el PID del
 servicio o un descendiente demostrable de ese PID, y falla cerrado ante un PID
 ajeno, inexistente o con ancestry incompleta.
+
+### Hallazgo QA 1B.17E: preservación de ACL en repair/rollback
+
+La ventana QA reprodujo que archivos operativos preexistentes bajo
+`ProgramData\\Manus\\PeripheralAgent\\logs` y
+`config\\agent.config.local.json` podían terminar con DACL protegida y vacía
+(`D:PAI`). El wrapper falló después con `EPERM` al abrir la configuración y el
+servicio quedó sin poder iniciar como `NT AUTHORITY\\LocalService`. La causa no
+fue `state\\secrets`, DPAPI, el payload ni el puerto 4050.
+
+La corrección mantiene la separación de políticas: el directorio padre conserva
+la ACL administrada; solo los hijos operativos de config/logs/state se guardan
+con snapshots individuales y reciben herencia. `state\\secrets` queda excluido.
+Si un hijo existente rechaza el cambio por ownership, el installer usa una
+transición administrativa acotada, aplica herencia y restaura el owner original.
+El rollback usa snapshots por archivo, por lo que una falla posterior no deja
+los archivos operativos inaccesibles. No se agregan ACE de `Everyone` o `Users`,
+ni se ejecuta un reset ACL recursivo sobre todo `ProgramData`.
+
+### Fase 1B.17E-R3: toolchain de packaging separado del runtime
+
+El empaquetado Windows distingue dos artefactos. El BUILD TOOLCHAIN es una
+distribución oficial completa de Node `>=24.21.0`, con `node.exe` y el
+`node_modules/npm/bin/npm-cli.js` de la misma raíz. Puede seleccionarse con
+`MANUS_NODE_TOOLCHAIN_ROOT` y verificarse con
+`MANUS_NODE_TOOLCHAIN_SHA256`. El runtime productivo sigue siendo slim: solo
+se copia `node.exe` al bundle y el Agent no depende de npm en la máquina POS.
+
+El fallo R2 fue `BUILD_USES_RUNTIME_NPM_INCORRECTLY`: el script buscaba npm al
+lado de `process.execPath`, pero el runtime embebido `v24.21.0` no contiene npm.
+R3 corrige el path y valida versión, presencia de npm y SHA opcional antes de
+crear staging. No mezcla npm global ni npm de otra versión. La certificación
+final se ejecutó en el host QA desechable `DESKTOP-U0QRCAT` con la distribución
+oficial completa Node `v24.21.0`; el installer resultante e inmutable tiene
+SHA256 `C4D6720BEDA9B5237E6D9A5A6AAABEFFD887ED7963678F019F50C5976571A17C`.
+
+La evidencia R4 certifica fresh install, servicio `LocalService`, health,
+repair, ACL, seguridad y uninstall. La evidencia física R5.1 certifica el flujo
+local ROCHI RC-A01E/CH340: discovery, configuración y recarga persistida,
+lectura `REAL`, confirmación KG por operador, secuencia de display y lectura
+0.000 -> 0.245 -> 0.000 kg, desconexión fail-closed sin MOCK, reconexión y
+reconciliación PnP sin duplicados. Esta evidencia no es una certificación
+metrológica y no habilita operación comercial: `AUTHORIZED=NO`,
+`REAL_AVAILABLE=NOT_AUTHORIZED`, `METROLOGY_CERTIFICATION=NOT_CLAIMED`,
+`DB_DEPLOYABLE=NO` y `MIGRATIONS_EXECUTED=NO` permanecen vigentes.

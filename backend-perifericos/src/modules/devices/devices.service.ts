@@ -12,6 +12,7 @@ import {
   LogLevel,
   PeripheralEventName,
   type PeripheralDevice,
+  type ScaleUnitVerification,
   type UsbPrinterConnectionOptions,
 } from "../../shared/types/peripheral.types";
 import { createId } from "../../shared/utils/id.util";
@@ -28,7 +29,7 @@ import {
   parseDeviceType,
   resolveSerialOptionsForConnection,
   validateIdentifier,
-  validateShortText,
+  validateDeviceName,
 } from "../../shared/utils/request-validation.util";
 import { resolveNetworkOptionsForConnection } from "../../shared/utils/network-device-validation.util";
 import {
@@ -57,6 +58,22 @@ import type {
 
 const LOCAL_TERMINAL_ID = "local-terminal";
 const portableDiscoverySource = (descriptor: UsbPrinterDescriptor): string => descriptor.descriptor.fingerprint.source;
+
+const hasSameSerialIdentity = (
+  left: PeripheralDevice["serial"],
+  right: PeripheralDevice["serial"]
+): boolean => {
+  const leftPnp = left?.pnp?.deviceId?.trim().toUpperCase();
+  const rightPnp = right?.pnp?.deviceId?.trim().toUpperCase();
+  return Boolean(leftPnp && rightPnp && leftPnp === rightPnp);
+};
+
+const isUnitVerification = (value: unknown): value is ScaleUnitVerification => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return record.unit === "KG" && record.method === "OPERATOR_CONFIRMATION" &&
+    typeof record.verifiedAt === "string" && Boolean(record.verifiedAt.trim());
+};
 
 const MOCK_DEVICES: PeripheralDevice[] = [
   {
@@ -408,9 +425,8 @@ export class DevicesService {
       record.connectionType,
       ConnectionType.MOCK
     );
-    const name = validateShortText(
-      optionalString(record, "name", `${type} ${connectionType}`),
-      "name"
+    const name = validateDeviceName(
+      optionalString(record, "name", `${type} ${connectionType}`)
     );
     const status = parseDeviceStatus(record.status, DeviceStatus.CONNECTED);
     const metadata = optionalMetadata(record) ?? {};
@@ -497,9 +513,8 @@ export class DevicesService {
       record.connectionType,
       current.connectionType
     );
-    const name = validateShortText(
-      optionalString(record, "name", current.name),
-      "name"
+    const name = validateDeviceName(
+      optionalString(record, "name", current.name)
     );
     const terminalId = validateIdentifier(
       optionalString(record, "terminalId", current.terminalId),
@@ -527,6 +542,16 @@ export class DevicesService {
       connectionType,
       current.serial
     );
+    const nextMetadata = optionalMetadata(record) ?? current.metadata;
+    const metadata = nextMetadata ? { ...nextMetadata } : undefined;
+    const identityChanged = current.profileId !== profileId ||
+      current.connectionType !== connectionType ||
+      (current.serial?.pnp?.deviceId && serial?.pnp?.deviceId
+        ? !hasSameSerialIdentity(current.serial, serial)
+        : current.serial?.pnp?.deviceId !== serial?.pnp?.deviceId);
+    if (metadata && isUnitVerification(metadata.unitVerification) && identityChanged) {
+      delete metadata.unitVerification;
+    }
     const updated: PeripheralDevice = {
       ...current,
       name,
@@ -537,7 +562,7 @@ export class DevicesService {
       network,
       usb,
       serial,
-      metadata: optionalMetadata(record) ?? current.metadata,
+      metadata,
     };
 
     const nextConfiguredDevices = new Map(this.configuredDevices);

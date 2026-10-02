@@ -126,6 +126,7 @@ test("discovered ROCHI configures, reloads, and follows PnP identity across COM 
   const store = new FileDeviceRegistryStateStore();
   const descriptor = (port: string) => buildRochiSerialDescriptor({
     ...rawRochi(port),
+    name: `USB-SERIAL CH340 (${port})`,
     pnpDeviceId: "USB\\VID_1A86&PID_7523\\ROCHI-CONFIG-QA",
     nativeIdentifier: "USB\\VID_1A86&PID_7523\\ROCHI-CONFIG-QA",
     fingerprint: {
@@ -136,7 +137,7 @@ test("discovered ROCHI configures, reloads, and follows PnP identity across COM 
   const firstService = new DevicesService(
     new LogsService(),
     new EventsService(),
-    { list: () => [], listSerialDevices: () => [descriptor("COM3")] },
+    { list: () => [], listSerialDevices: () => [descriptor("COM5")] },
     store,
     paths
   );
@@ -146,8 +147,18 @@ test("discovered ROCHI configures, reloads, and follows PnP identity across COM 
   );
   assert.ok(candidate);
   assert.equal(candidate?.metadata?.configured, false);
-  const configured = firstController.update(candidate!.id, {});
-  assert.equal(configured.serial?.port, "COM3");
+  assert.equal(candidate!.name, "USB-SERIAL CH340 (COM5)");
+  const configured = firstController.update(candidate!.id, {
+    terminalId: "local-terminal",
+    profileId: "ROCHI_A01E",
+    connectionType: ConnectionType.SERIAL,
+    serial: candidate!.serial,
+  });
+  assert.equal(configured.name, "USB-SERIAL CH340 (COM5)");
+  assert.equal(configured.serial?.port, "COM5");
+  for (const name of ["bad\u0000name", "bad\nname", "<script>", "bad\\name", "x".repeat(161)]) {
+    assert.throws(() => firstController.update(candidate!.id, { name }), /name contains unsupported/);
+  }
   assert.equal(configured.status, DeviceStatus.DISCONNECTED);
   assert.equal(configured.metadata?.authorized, false);
   assert.equal(configured.metadata?.realAvailable, false);
@@ -159,6 +170,10 @@ test("discovered ROCHI configures, reloads, and follows PnP identity across COM 
     store,
     paths
   );
+  const reloaded = secondService.list().find((device) => device.id === candidate!.id);
+  assert.equal(reloaded?.name, "USB-SERIAL CH340 (COM5)");
+  assert.equal(reloaded?.serial?.port, "COM5");
+  assert.equal(reloaded?.serial?.pnp?.deviceId, configured.serial?.pnp?.deviceId);
   const reconciled = new DevicesController(secondService).discover().devices.filter(
     (device) => device.profileId === "ROCHI_A01E"
   );

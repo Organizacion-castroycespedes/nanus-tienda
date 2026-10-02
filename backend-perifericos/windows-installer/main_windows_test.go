@@ -5,6 +5,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/svc"
 )
 
 func TestEmbeddedAssetsIncludeLeadingUnderscoreFiles(t *testing.T) {
@@ -168,6 +170,96 @@ func TestBackupsForAclFailureIncludesPartiallyChangedPath(t *testing.T) {
 	}
 }
 
+func TestCollectOperationalAclTargetsExcludesSecrets(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "secrets", "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "agent.config.local.json"),
+		filepath.Join(root, "secrets", "nested", "blob.json"),
+	} {
+		if err := os.WriteFile(path, []byte("fixture"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	targets, err := collectOperationalAclTargets(root, filepath.Join(root, "secrets"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(targets, "\n")
+	if !strings.Contains(joined, root) || !strings.Contains(joined, filepath.Join(root, "agent.config.local.json")) {
+		t.Fatalf("operational root/file missing from targets: %#v", targets)
+	}
+	if strings.Contains(joined, "secrets") {
+		t.Fatalf("secret subtree must stay outside operational ACL targets: %#v", targets)
+	}
+}
+
+func TestEnableAclInheritanceRetriesWithTemporaryOwnership(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "service.log")
+	if err := os.WriteFile(path, []byte("fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	originalRunner := runACLCommand
+	t.Cleanup(func() { runACLCommand = originalRunner })
+	var calls []string
+	icaclsCalls := 0
+	runACLCommand = func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		if name == "icacls.exe" {
+			icaclsCalls++
+			if icaclsCalls == 1 {
+				return []byte("Access is denied."), errors.New("exit status 5")
+			}
+		}
+		return nil, nil
+	}
+
+	if err := enableOperationalAclInheritance(filepath.Dir(path), ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 3 || calls[0] != "icacls.exe "+path+" /inheritance:e /C" || calls[1] != "takeown.exe /f "+path+" /a /d Y" || calls[2] != "icacls.exe "+path+" /inheritance:e /C" {
+		t.Fatalf("unexpected ACL recovery command sequence: %#v", calls)
+	}
+}
+
+func TestOperationalAclInheritanceRepairsProtectedEmptyFixture(t *testing.T) {
+	if os.Getenv("MANUS_INSTALLER_ACL_INTEGRATION") != "1" {
+		t.Skip("set MANUS_INSTALLER_ACL_INTEGRATION=1 in an elevated Windows test run")
+	}
+
+	root := t.TempDir()
+	child := filepath.Join(root, "service.log")
+	if err := os.WriteFile(child, []byte("fixture"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) {
+		output, err := runACLCommand("icacls.exe", args...)
+		if err != nil {
+			t.Fatalf("icacls %v failed: %v (%s)", args, err, strings.TrimSpace(string(output)))
+		}
+	}
+	run(root, "/inheritance:e", "/grant:r", "*S-1-5-18:(OI)(CI)(F)", "*S-1-5-32-544:(OI)(CI)(F)", "*S-1-5-19:(OI)(CI)(M)", "/C")
+	run(child, "/inheritance:r", "/grant:r", "*S-1-5-19:(F)", "/C")
+	run(child, "/remove:g", "*S-1-5-19", "/C")
+	run(child, "/setowner", "*S-1-5-19", "/C")
+
+	if err := enableOperationalAclInheritance(root, ""); err != nil {
+		t.Fatal(err)
+	}
+	sd, err := windows.GetNamedSecurityInfo(child, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sddl := sd.String()
+	if !strings.Contains(sddl, "AI") || !strings.Contains(sddl, "LS") || strings.Contains(sddl, "D:PAI") {
+		t.Fatalf("fixture ACL was not safely inherited: %s", sddl)
+	}
+}
+
 func TestAgentJobLimitInformationUsesFullWindowsLayout(t *testing.T) {
 	var info windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
 	if got := unsafe.Sizeof(info); got != 144 {
@@ -178,13 +270,34 @@ func TestAgentJobLimitInformationUsesFullWindowsLayout(t *testing.T) {
 	}
 }
 
-func TestParseServiceFields(t *testing.T) {
-	output := "SERVICE_START_NAME : NT AUTHORITY\\LocalService\r\nPID : 1234\r\n"
-	if got := parseScField(output, "SERVICE_START_NAME"); got != `NT AUTHORITY\LocalService` {
-		t.Fatalf("service account = %q", got)
+func TestNativeServiceSnapshotIsIndependentOfLocalizedSCFields(t *testing.T) {
+	for _, state := range []svc.State{svc.Running, svc.Stopped} {
+		pid := uint32(1234)
+		if state == svc.Stopped {
+			pid = 0
+		}
+		got, err := nativeServiceSnapshot(svc.Status{State: state, ProcessId: pid}, `NT AUTHORITY\LocalService`)
+		if err != nil || !got.exists || got.running != (state == svc.Running) || got.pid != pid || !sameWindowsIdentity(got.account, `NT AUTHORITY\LocalService`) {
+			t.Fatalf("native snapshot: %+v %v", got, err)
+		}
 	}
-	if got := parseScPid(output); got != 1234 {
-		t.Fatalf("service pid = %d", got)
+	if _, err := nativeServiceSnapshot(svc.Status{State: svc.Running}, `NT AUTHORITY\LocalService`); err == nil {
+		t.Fatal("missing running PID must fail closed")
+	}
+	if _, err := nativeServiceSnapshot(svc.Status{State: svc.Stopped}, ""); err == nil {
+		t.Fatal("missing identity must fail closed")
+	}
+	foreign, err := nativeServiceSnapshot(svc.Status{State: svc.Running, ProcessId: 1234}, `NT AUTHORITY\NetworkService`)
+	if err != nil || sameWindowsIdentity(foreign.account, `NT AUTHORITY\LocalService`) {
+		t.Fatal("native query must not normalize foreign identities into LocalService")
+	}
+}
+
+func TestNativeServiceSnapshotAbsent(t *testing.T) {
+	aclFixtureIntegration(t)
+	got, err := queryServiceSnapshot("Manus-QA-absent-" + fmt.Sprint(os.Getpid()))
+	if err != nil || got.exists {
+		t.Fatalf("absent native service snapshot: %+v %v", got, err)
 	}
 }
 
@@ -372,6 +485,61 @@ func TestConfigureBridgeValidatesDiscoveredDeviceAndProfile(t *testing.T) {
 	updated, err := bridge.configureDevice("p1", "THERMAL_58MM")
 	if err != nil || updated["profileId"] != "THERMAL_58MM" {
 		t.Fatalf("configure result = %#v, %v", updated, err)
+	}
+}
+
+func TestScaleBridgeConfiguresReadsAndPersistsOperatorKGConfirmation(t *testing.T) {
+	bridge := newInstallerReadOnlyBridge()
+	bridge.baseURL = "http://test.local"
+	bridge.devices["scale-1"] = map[string]any{
+		"id": "scale-1", "type": "SCALE", "connectionType": "SERIAL", "profileId": "ROCHI_A01E",
+		"terminalId": "local-terminal", "serial": map[string]any{
+			"port": "COM3", "baudRate": float64(9600), "dataBits": float64(8), "stopBits": float64(1),
+			"parity": "none", "flowControl": "none", "pnp": map[string]any{"deviceId": "USB\\\\VID_1A86&PID_7523\\\\ROCHI"},
+		},
+	}
+	bridge.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet && r.URL.Path == "/scale/current-weight" {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"deviceId":"scale-1","weight":0.245,"unit":null,"stable":null,"source":"REAL","unitVerified":false,"stabilityVerified":false,"timestamp":"2026-09-30T00:00:00Z"}`)), Header: make(http.Header)}, nil
+		}
+		if r.Method == http.MethodPatch {
+			body, _ := io.ReadAll(r.Body)
+			if !strings.Contains(string(body), `"unitVerification"`) && !strings.Contains(string(body), `"serial"`) {
+				return nil, fmt.Errorf("expected serial or unit verification in PATCH")
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"id":"scale-1","type":"SCALE","connectionType":"SERIAL","profileId":"ROCHI_A01E","metadata":{"unitVerification":{"unit":"KG","method":"OPERATOR_CONFIRMATION","verifiedAt":"2026-09-30T00:00:00Z"}}}`)), Header: make(http.Header)}, nil
+		}
+		return nil, fmt.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+	})
+	if _, err := bridge.saveDeviceConfiguration("scale-1", "ROCHI_A01E", "ROCHI RC-A01E"); err != nil {
+		t.Fatal(err)
+	}
+	reading, err := bridge.testScaleReading("scale-1")
+	if err != nil || reading["source"] != "REAL" || reading["unit"] != nil {
+		t.Fatalf("REAL reading = %#v err=%v", reading, err)
+	}
+	updated, err := bridge.confirmScaleKilograms("scale-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, _ := updated["metadata"].(map[string]any)
+	verification, _ := metadata["unitVerification"].(map[string]any)
+	if verification["unit"] != "KG" || verification["method"] != "OPERATOR_CONFIRMATION" {
+		t.Fatalf("operator verification = %#v", verification)
+	}
+}
+
+func TestProductiveHarnessRendersROCHIReadAndExplicitKGConfirmation(t *testing.T) {
+	html := appendProductiveDevicesHarness()
+	for _, required := range []string{"ROCHI RC-A01E / USB-SERIAL CH340", "testScaleReading", "confirmScaleKilograms", "unidad no verificada", "Confirmo display en kilogramos"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("productive ROCHI harness missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{"REAL_AVAILABLE=true", "stable=true", "homologada", "venta ponderada habilitada"} {
+		if strings.Contains(html, forbidden) {
+			t.Fatalf("productive ROCHI harness contains unsafe wording %q", forbidden)
+		}
 	}
 }
 

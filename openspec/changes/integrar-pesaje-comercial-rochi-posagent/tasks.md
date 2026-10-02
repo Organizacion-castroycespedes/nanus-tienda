@@ -163,10 +163,25 @@
 - [x] 3J.3 Cubrir lectura REAL, timeout/error cleanup, desconexion, reapertura posterior y concurrencia sin readers duplicados.
 - [x] 3J.4 Exponer unidad/estabilidad no verificadas y mantener `AUTHORIZED`/`REAL_AVAILABLE` deshabilitados.
 
+## 3K. Fase 1B.17E - setup Windows y confirmacion local KG
+
+- [x] 3K.1 Extender el bridge generico para configurar `SCALE` + `SERIAL` + `ROCHI_A01E` con serial/PnP preservados.
+- [x] 3K.2 Anadir `Probar lectura` mediante `/scale/current-weight`, exigir `source=REAL` y renderizar unidad/estabilidad desconocidas sin fallback MOCK.
+- [x] 3K.3 Persistir confirmacion explicita de KG con provenance local e invalidarla ante cambio de perfil, conexion o PnP.
+- [x] 3K.4 Cubrir bridge/UI, backend, Go installer, package/installer validators y mantener `AUTHORIZED`/`REAL_AVAILABLE` bloqueados.
+
 - [x] 3G.1 Separar `secureSecretDir` de `stateDir` y resolverlo bajo `ProgramData\\Manus\\PeripheralAgent\\state\\secrets` en Windows; no migrar blobs entre perfiles DPAPI. Evidencia: prueba de limites de plataforma y suite Agent `143/143`.
 - [x] 3G.2 Cerrar la carrera TOCTOU de liberacion del lock con Named Mutex Windows; la prueba adversarial `REPLACEMENT_ALLOWED` queda cubierta al retirar `unlink` del protocolo de autoridad. Evidencia: QA administrado 1B.14B y `secure_secret_mutex_windows.go`.
 - [x] 3G.3 Incluir la ACL de la ruta actualmente fallida en el rollback y cubrir la seleccion de backups con prueba Go. Evidencia: `go test ./...` PASS.
 - [x] 3G.4 Verificar ACL efectiva, DPAPI, persistencia y recuperación bajo instalación QA real `LocalService`. Evidencia externa: `C:\\ManusQA\\evidence\\1B14B-FINAL-20260929-164755-bcc7300e\\REPORT-FINAL.md`; no son secretos ni producción.
+
+### Fase 1B.17E-R2 - repair ACL seguro
+
+- [x] 3G.5 Reproducir en fixture temporal el fallo de repair/restore sobre archivos operativos preexistentes con DACL protegida y vacía; excluir `state\\secrets`.
+- [x] 3G.6 Corregir la normalización ACL de config/logs/state para restaurar herencia por archivo, usar ownership administrativo acotado cuando Windows lo requiera y conservar owner/ACL de secretos.
+- [x] 3G.7 Cubrir rollback por archivo, error de aplicación parcial y seguridad efectiva de LocalService/SYSTEM/Administrators sin `Everyone`/`Users` write.
+- [x] 3G.8 Ejecutar regresiones Windows/Go, suite Agent, package/installer validators, manifest y OpenSpec strict con Node `v24.21.0`. Evidencia final R4/R5.1: Agent 156 PASS/0 FAIL/2 SKIP legacy, Go 87/87 PASS, security y repair ACL PASS, package validator PASS, POS manifest 75/75 PASS y OpenSpec targeted strict PASS.
+- [x] 3G.9 Reconstruir y certificar un nuevo installer solo después de todas las regresiones PASS; marcar el artefacto `B00EF7E80AC27A00133AA01ED372BAF122D875E14AA4DBBF4530A139CEDA657D` como stale. El installer final certificado e inmutable es `C4D6720BEDA9B5237E6D9A5A6AAABEFFD887ED7963678F019F50C5976571A17C`; R5.1 verificó discovery, configuración/persistencia, lectura REAL, confirmación KG por operador, secuencia 0.000 -> 0.245 -> 0.000 kg, desconexión fail-closed y reconciliación PnP tras reconexión, sin duplicados.
 
 ### Correccion de evidencia de validacion
 

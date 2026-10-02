@@ -166,3 +166,30 @@ test("REAL mode rejects multiple configured scales without an explicit selector"
     else process.env.PERIPHERALS_MODE = previousMode;
   }
 });
+
+test("REAL ROCHI exposes KG only after explicit local operator verification", async () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  const runtime = buildRuntime();
+  try {
+    runtime.controller.update(runtime.configured.id, {
+      metadata: {
+        unitVerification: {
+          unit: "KG",
+          method: "OPERATOR_CONFIRMATION",
+          verifiedAt: "2026-09-30T00:00:00.000Z",
+        },
+      },
+    });
+    const read = runtime.scale.getCurrentWeight({ deviceId: runtime.configured.id });
+    runtime.capture.port!.emitFrame("000.245\r\n");
+    const result = await read;
+    assert.equal(result.unit, "kg");
+    assert.equal(result.unitVerified, true);
+    assert.equal(result.stable, null);
+    assert.equal(result.stabilityVerified, false);
+  } finally {
+    if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
+    else process.env.PERIPHERALS_MODE = previousMode;
+  }
+});

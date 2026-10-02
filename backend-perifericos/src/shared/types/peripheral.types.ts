@@ -81,6 +81,12 @@ export type SerialConnectionOptions = {
   pnp?: SerialPnPIdentity;
 };
 
+export type ScaleUnitVerification = {
+  unit: "KG";
+  method: "OPERATOR_CONFIRMATION";
+  verifiedAt: string;
+};
+
 export type DevicePlatform = "WINDOWS" | "LINUX" | "MACOS" | "UNKNOWN";
 
 export type DeviceFingerprint = {

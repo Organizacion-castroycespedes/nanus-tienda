@@ -187,6 +187,17 @@ local usando la escritura atomica existente. Discovery sigue sin persistir.
 La configuracion local no implica conexion, unidad verificada, autorizacion ni
 `REAL_AVAILABLE`.
 
+### Fase 1B.17E: setup Windows y confirmacion local KG
+
+El instalador reutiliza el bridge generico para mostrar y configurar candidatos
+`SCALE` + `SERIAL` + `ROCHI_A01E`. La prueba llama a
+`/scale/current-weight` y acepta unicamente `source=REAL`; no abre COM desde
+Go, no usa fallback MOCK y conserva `unit=null`/`stable=null` hasta evidencia
+adicional. Tras una lectura REAL, el operador puede confirmar explicitamente
+que el display muestra kilogramos. La confirmacion se persiste como metadata
+local con provenance `KG` + `OPERATOR_CONFIRMATION` + timestamp. No es
+metrologia, autorizacion ni `REAL_AVAILABLE`.
+
 El store usa una ruta de secretos explicita bajo el estado administrado de
 `ProgramData` para el servicio `LocalService`; `stateDir` de otros consumidores
 no se modifica indiscriminadamente. No existe migracion automatica entre

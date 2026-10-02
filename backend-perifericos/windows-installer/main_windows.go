@@ -658,8 +658,8 @@ func uninstall(manifest installerManifest, removeData bool) error {
 		logger.Printf("uninstall start removeData=%t", removeData)
 	}
 
-	if err := stopService(manifest); err != nil && !isMissingServiceError(err) {
-		return fmt.Errorf("uninstall stop service: %w", err)
+	if err := uninstallStopResult(stopServiceIfRunning(manifest)); err != nil {
+		return err
 	}
 	if err := waitForServiceStopped(manifest); err != nil {
 		return fmt.Errorf("uninstall service stop confirmation: %w", err)
@@ -1612,18 +1612,20 @@ func installPOSPayload(layout runtimeLayout, manifest installerManifest) error {
 
 func ensureServicePermissions(layout runtimeLayout) error {
 	type aclSpec struct {
-		path       string
-		permission string
-		broadRead  bool
-		recursive  bool
+		path            string
+		permission      string
+		broadRead       bool
+		recursive       bool
+		inheritChildren bool
+		skipSecrets     bool
 	}
 	specs := []aclSpec{
-		{layout.InstallRoot, "RX", true, false},
-		{layout.VersionRoot, "RX", true, true},
-		{layout.ProgramDataRoot, "RX", false, false},
-		{layout.ConfigRoot, "RX", false, true},
-		{layout.LogsRoot, "M", false, true},
-		{layout.StateRoot, "M", false, true},
+		{path: layout.InstallRoot, permission: "RX", broadRead: true},
+		{path: layout.VersionRoot, permission: "RX", broadRead: true, recursive: true},
+		{path: layout.ProgramDataRoot, permission: "RX", broadRead: false},
+		{path: layout.ConfigRoot, permission: "RX", broadRead: false, inheritChildren: true},
+		{path: layout.LogsRoot, permission: "M", broadRead: false, inheritChildren: true},
+		{path: layout.StateRoot, permission: "M", broadRead: false, inheritChildren: true, skipSecrets: true},
 	}
 	backupRoot, err := os.MkdirTemp("", "manus-installer-acl-")
 	if err != nil {
@@ -1635,19 +1637,50 @@ func ensureServicePermissions(layout runtimeLayout) error {
 		if err := validateManagedDirectory(spec.path); err != nil {
 			return err
 		}
+		if spec.inheritChildren || spec.recursive {
+			excludedRoot := ""
+			if spec.skipSecrets {
+				excludedRoot = filepath.Join(spec.path, "secrets")
+			}
+			targets, err := collectOperationalAclTargets(spec.path, excludedRoot)
+			if err != nil {
+				return err
+			}
+			for targetIndex, target := range targets {
+				backup := filepath.Join(backupRoot, fmt.Sprintf("%d-%d.acl", index, targetIndex))
+				if err := saveAcl(target, backup, false); err != nil {
+					return err
+				}
+				backups = append(backups, aclBackup{path: target, file: backup})
+			}
+			continue
+		}
 		backup := filepath.Join(backupRoot, strconv.Itoa(index)+".acl")
 		if err := saveAcl(spec.path, backup, spec.recursive); err != nil {
 			return err
 		}
 		backups = append(backups, aclBackup{path: spec.path, file: backup})
 	}
-	for index, spec := range specs {
+	for _, spec := range specs {
 		if err := applyManagedAcl(spec.path, spec.permission, spec.broadRead, spec.recursive); err != nil {
-			rollbackError := restoreAcls(backupsForAclFailure(backups, index))
+			rollbackError := restoreAcls(backups)
 			if rollbackError != nil {
 				return fmt.Errorf("apply managed ACL: %w; ACL rollback failed: %v", err, rollbackError)
 			}
 			return fmt.Errorf("apply managed ACL: %w", err)
+		}
+		if spec.inheritChildren {
+			skip := ""
+			if spec.skipSecrets {
+				skip = filepath.Join(spec.path, "secrets")
+			}
+			if err := enableOperationalAclInheritance(spec.path, skip); err != nil {
+				rollbackError := restoreAcls(backups)
+				if rollbackError != nil {
+					return fmt.Errorf("enable operational ACL inheritance: %w; ACL rollback failed: %v", err, rollbackError)
+				}
+				return fmt.Errorf("enable operational ACL inheritance: %w", err)
+			}
 		}
 	}
 	return nil
@@ -1748,10 +1781,8 @@ func preflightInstallCoexistence(manifest installerManifest, layout runtimeLayou
 			return errors.New("managed service PID is unavailable; refusing possible coexistence")
 		}
 	}
-	if taskExists, err := queryAutostartTask(autostartTaskName); err != nil {
+	if err := prohibitAutostartTask(queryAutostartTask(autostartTaskName)); err != nil {
 		return err
-	} else if taskExists {
-		return errors.New("Manus Peripheral Agent Scheduled Task exists; remove or review it manually before service installation")
 	}
 	pids, err := queryListeningPids("4050")
 	if err != nil {
@@ -1793,53 +1824,35 @@ func sameWindowsIdentity(left, right string) bool {
 }
 
 func queryServiceSnapshot(name string) (serviceSnapshot, error) {
-	query, err := exec.Command("sc.exe", "queryex", name).CombinedOutput()
+	manager, err := mgr.Connect()
 	if err != nil {
-		if strings.Contains(string(query), "1060") || strings.Contains(strings.ToLower(string(query)), "does not exist") {
+		return serviceSnapshot{}, fmt.Errorf("connect to service manager: %w", err)
+	}
+	defer manager.Disconnect()
+	service, err := manager.OpenService(name)
+	if err != nil {
+		if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
 			return serviceSnapshot{}, nil
 		}
-		return serviceSnapshot{}, errors.New("service query failed")
+		return serviceSnapshot{}, fmt.Errorf("open managed service: %w", err)
 	}
-	config, err := exec.Command("sc.exe", "qc", name).CombinedOutput()
+	defer service.Close()
+	status, err := service.Query()
 	if err != nil {
-		return serviceSnapshot{}, errors.New("service configuration query failed")
+		return serviceSnapshot{}, fmt.Errorf("query managed service: %w", err)
 	}
-	return serviceSnapshot{
-		exists:  true,
-		running: strings.Contains(strings.ToUpper(string(query)), "RUNNING"),
-		account: parseScField(string(config), "SERVICE_START_NAME"),
-		pid:     parseScPid(string(query)),
-	}, nil
-}
-
-func parseScField(output, field string) string {
-	for _, line := range strings.Split(output, "\n") {
-		if !strings.Contains(strings.ToUpper(line), strings.ToUpper(field)) {
-			continue
-		}
-		if index := strings.Index(line, ":"); index >= 0 {
-			return strings.TrimSpace(strings.TrimRight(line[index+1:], "\r"))
-		}
-	}
-	return ""
-}
-
-func parseScPid(output string) uint32 {
-	value := parseScField(output, "PID")
-	parsed, _ := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
-	return uint32(parsed)
-}
-
-func queryAutostartTask(name string) (bool, error) {
-	output, err := exec.Command("schtasks.exe", "/Query", "/TN", name, "/FO", "LIST", "/V").CombinedOutput()
+	config, err := service.Config()
 	if err != nil {
-		text := strings.ToLower(string(output))
-		if strings.Contains(text, "cannot find") || strings.Contains(text, "does not exist") || strings.Contains(text, "1060") {
-			return false, nil
-		}
-		return false, errors.New("scheduled task query failed")
+		return serviceSnapshot{}, fmt.Errorf("query managed service configuration: %w", err)
 	}
-	return len(strings.TrimSpace(string(output))) > 0, nil
+	return nativeServiceSnapshot(status, config.ServiceStartName)
+}
+
+func nativeServiceSnapshot(status svc.Status, account string) (serviceSnapshot, error) {
+	if strings.TrimSpace(account) == "" || (status.State == svc.Running && status.ProcessId == 0) {
+		return serviceSnapshot{}, errors.New("incomplete native service snapshot")
+	}
+	return serviceSnapshot{exists: true, running: status.State == svc.Running, account: account, pid: status.ProcessId}, nil
 }
 
 func queryListeningPids(port string) ([]uint32, error) {
@@ -1899,16 +1912,26 @@ func saveAcl(path, backup string, recursive bool) error {
 		args = append(args, "/T")
 	}
 	args = append(args, "/C")
-	cmd := exec.Command("icacls.exe", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("save ACL for managed path: %w (%s)", err, strings.TrimSpace(string(output)))
+	if output, err := runACLCommand("icacls.exe", args...); err != nil {
+		if !aclCommandAccessDenied(output, err) {
+			return fmt.Errorf("save ACL for managed path: %w (%s)", err, strings.TrimSpace(string(output)))
+		}
+		if retryErr := withTemporaryAdministratorOwnership(path, func() error {
+			output, err := runACLCommand("icacls.exe", args...)
+			if err != nil {
+				return fmt.Errorf("save ACL for managed path: %w (%s)", err, strings.TrimSpace(string(output)))
+			}
+			return nil
+		}); retryErr != nil {
+			return retryErr
+		}
 	}
 	return nil
 }
 
 func restoreAcls(backups []aclBackup) error {
 	for index := len(backups) - 1; index >= 0; index-- {
-		cmd := exec.Command("icacls.exe", backups[index].path, "/restore", backups[index].file, "/C")
+		cmd := exec.Command("icacls.exe", filepath.Dir(backups[index].path), "/restore", backups[index].file)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("restore ACL: %w (%s)", err, strings.TrimSpace(string(output)))
 		}
@@ -1927,32 +1950,106 @@ func backupsForAclFailure(backups []aclBackup, failedIndex int) []aclBackup {
 }
 
 func applyManagedAcl(path, permission string, broadRead, recursive bool) error {
-	grants := []string{
-		`*S-1-5-18:(OI)(CI)(F)`,
-		`*S-1-5-32-544:(OI)(CI)(F)`,
-		fmt.Sprintf(`*S-1-5-19:(OI)(CI)(%s)`, permission),
-	}
-	if broadRead {
-		grants = append(grants, `*S-1-5-11:(OI)(CI)(RX)`)
-	}
-	args := []string{
-		path,
-		"/inheritance:r",
-		"/remove:g",
-		"*S-1-1-0",
-		"*S-1-5-32-545",
-		"*S-1-5-11",
-		"/grant:r",
-	}
-	args = append(args, grants...)
+	targets := []string{path}
 	if recursive {
-		args = append(args, "/T")
+		var err error
+		targets, err = collectOperationalAclTargets(path, "")
+		if err != nil {
+			return err
+		}
 	}
-	args = append(args, "/C")
-	cmd := exec.Command("icacls.exe", args...)
-	output, err := cmd.CombinedOutput()
+	for _, target := range targets {
+		if err := setManagedPathACL(target, permission, broadRead); err != nil {
+			return fmt.Errorf("managed ACL for %s: %w", target, err)
+		}
+	}
+	return nil
+}
+
+// enableOperationalAclInheritance repairs pre-existing operational files after
+// a restore without broadening access. The parent directory already carries
+// the explicit LocalService/SYSTEM/Administrators policy; children only need
+// to inherit it again. SecretStore data is intentionally excluded because it
+// has a separate, tighter ACL policy.
+func enableOperationalAclInheritance(root, excludedRoot string) error {
+	targets, err := collectOperationalAclTargets(root, excludedRoot)
 	if err != nil {
-		return fmt.Errorf("icacls managed path: %w: %s", err, strings.TrimSpace(string(output)))
+		return err
+	}
+	for _, path := range targets {
+		if filepath.Clean(path) == filepath.Clean(root) {
+			continue
+		}
+		if output, err := runACLCommand("icacls.exe", path, "/inheritance:e", "/C"); err != nil {
+			if !aclCommandAccessDenied(output, err) {
+				return fmt.Errorf("enable ACL inheritance for %s: %w (%s)", path, err, strings.TrimSpace(string(output)))
+			}
+			if retryErr := withTemporaryAdministratorOwnership(path, func() error {
+				output, err := runACLCommand("icacls.exe", path, "/inheritance:e", "/C")
+				if err != nil {
+					return fmt.Errorf("enable ACL inheritance for %s: %w (%s)", path, err, strings.TrimSpace(string(output)))
+				}
+				return nil
+			}); retryErr != nil {
+				return retryErr
+			}
+		}
+	}
+	return nil
+}
+
+var runACLCommand = func(name string, args ...string) ([]byte, error) {
+	return exec.Command(name, args...).CombinedOutput()
+}
+
+func aclCommandAccessDenied(output []byte, err error) bool {
+	text := strings.ToLower(string(output) + " " + err.Error())
+	return strings.Contains(text, "access is denied") || strings.Contains(text, "error 5")
+}
+
+func collectOperationalAclTargets(root, excludedRoot string) ([]string, error) {
+	root = filepath.Clean(root)
+	excludedRoot = filepath.Clean(excludedRoot)
+	targets := make([]string, 0)
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		cleanPath := filepath.Clean(path)
+		if excludedRoot != "" && cleanPath == excludedRoot {
+			return filepath.SkipDir
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("operational ACL path is a reparse point: %s", path)
+		}
+		targets = append(targets, path)
+		return nil
+	})
+	return targets, err
+}
+
+func withTemporaryAdministratorOwnership(path string, operation func() error) error {
+	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		return fmt.Errorf("capture ACL owner for %s: %w", path, err)
+	}
+	originalOwner, _, err := sd.Owner()
+	if err != nil {
+		return fmt.Errorf("read ACL owner for %s: %w", path, err)
+	}
+	if output, err := runACLCommand("takeown.exe", "/f", path, "/a", "/d", "Y"); err != nil {
+		return fmt.Errorf("take temporary ownership for %s: %w (%s)", path, err, strings.TrimSpace(string(output)))
+	}
+	operationErr := operation()
+	restoreErr := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION, originalOwner, nil, nil, nil)
+	if operationErr != nil && restoreErr != nil {
+		return fmt.Errorf("%w; restore ACL owner for %s failed: %v", operationErr, path, restoreErr)
+	}
+	if operationErr != nil {
+		return operationErr
+	}
+	if restoreErr != nil {
+		return fmt.Errorf("restore ACL owner for %s: %w", path, restoreErr)
 	}
 	return nil
 }

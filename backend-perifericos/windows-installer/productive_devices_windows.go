@@ -78,5 +78,24 @@ func appendProductiveDevicesHarness() string {
 	script = strings.Replace(script, "Promise.resolve(window.assignCashDrawer(select.value,'local-terminal')).then(function(){state.className='status ok';", "Promise.resolve(window.assignCashDrawer(select.value,'local-terminal')).then(function(){return window.setCashDrawerCertification(select.value,'local-terminal',certInput.checked);}).then(function(){state.className='status ok';", 1)
 	script = strings.Replace(script, "certification.append(certInput,certText);meta.append(certification);", "certification.append(certInput,certText);certification.className='drawer-certification';card.append(certification);", 1)
 	script = strings.Replace(script, "meta.append(help);select.onchange=", "help.className='drawer-helper';card.append(help);select.onchange=", 1)
-	return strings.Replace(script, "&mdash;", "—", -1)
+	rochiScript := `<script data-manus-rochi-setup="true">
+(function(){
+  function rochi(device){return device&&device.type==='SCALE'&&device.connectionType==='SERIAL'&&device.profileId==='ROCHI_A01E';}
+  function text(value,fallback){return value===undefined||value===null||value===''?fallback:String(value);}
+  function setStatus(card,kind,message){var status=card&&card.querySelector('.status');if(status){status.className='status '+kind;status.textContent=message;}}
+  function addMeta(meta,label,value){var row=document.createElement('div');row.className='meta';row.textContent=label+': '+value;meta.append(row);}
+  function render(){
+    var devices=window.__manusLastDevices||[];var cards=[].slice.call(document.querySelectorAll('.device-list>.device-card'));
+    devices.forEach(function(device,index){if(!rochi(device))return;var card=cards[index];if(!card||card.dataset.rochiEnhanced==='true')return;card.dataset.rochiEnhanced='true';
+      var title=card.querySelector('.device-name');if(title)title.textContent='ROCHI RC-A01E / USB-SERIAL CH340';
+      var meta=card.querySelector('.device-meta');if(meta){addMeta(meta,'Puerto',text(device.serial&&device.serial.port,'No asignado'));addMeta(meta,'PnP',text(device.serial&&device.serial.pnp&&device.serial.pnp.deviceId,'Identidad no disponible'));addMeta(meta,'Serial','9600 / 8 / N / 1');}
+      var actions=card.querySelector('.device-actions');if(!actions)return;actions.replaceChildren();
+      var configure=document.createElement('button');configure.className='btn btn-sm btn-ghost';configure.textContent='Configurar ROCHI';configure.onclick=function(){configure.disabled=true;setStatus(card,'info','Guardando configuración local...');Promise.resolve(window.saveDeviceConfiguration(device.id,'ROCHI_A01E','ROCHI RC-A01E')).then(function(){setStatus(card,'ok','Configurada localmente / lista para prueba');return window.listDevices?window.listDevices():null;}).then(function(canonical){if(Array.isArray(canonical)){window.__manusLastDevices=canonical;}}).catch(function(){setStatus(card,'danger','No se pudo guardar la configuración');}).finally(function(){configure.disabled=false;});};actions.append(configure);
+      var test=document.createElement('button');test.className='btn btn-sm btn-ghost';test.textContent='Probar lectura';test.onclick=function(){test.disabled=true;setStatus(card,'info','Leyendo desde ROCHI...');Promise.resolve(window.testScaleReading(device.id)).then(function(result){var unit=result.unitVerified?'kg / confirmada por operador':'unidad no verificada';setStatus(card,'ok','Lectura REAL: '+text(result.weight,'—')+' / '+unit);if(!result.unitVerified){var confirm=document.createElement('button');confirm.className='btn btn-sm';confirm.dataset.rochiKgConfirm='true';confirm.textContent='Confirmo display en kilogramos';confirm.onclick=function(){confirm.disabled=true;setStatus(card,'info','Guardando confirmación del operador...');Promise.resolve(window.confirmScaleKilograms(device.id)).then(function(){setStatus(card,'ok','Lectura verificada / unidad confirmada por operador');confirm.remove();}).catch(function(){confirm.disabled=false;setStatus(card,'danger','No se pudo guardar la confirmación');});};actions.append(confirm);}}).catch(function(error){setStatus(card,'danger','Lectura no disponible: '+text(error&&error.message,'error'));}).finally(function(){test.disabled=false;});};actions.append(test);
+    });
+  }
+  var observer=new MutationObserver(render);observer.observe(document.body,{childList:true,subtree:true});window.addEventListener('DOMContentLoaded',render);setTimeout(render,0);
+})();
+</script>`
+	return strings.Replace(script, "&mdash;", "—", -1) + rochiScript
 }

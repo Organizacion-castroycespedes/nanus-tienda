@@ -16,6 +16,7 @@ import {
   parseDeviceType,
   parseSerialConnectionOptions,
   validateIdentifier,
+  validateDeviceName,
   validateShortText,
 } from "../shared/utils/request-validation.util";
 import {
@@ -131,7 +132,7 @@ export class FileDeviceRegistryStateStore implements DeviceRegistryStateStore {
       "terminalId"
     );
     const connectionType = parseConnectionType(record.connectionType, ConnectionType.MOCK);
-    const name = validateShortText(optionalString(record, "name", ""), "name");
+    const name = validateDeviceName(optionalString(record, "name", ""));
     const profileId = typeof record.profileId === "string" ? record.profileId : undefined;
     const network = resolveNetworkOptionsForConnection(record.network, connectionType);
     const usb = this.normalizeUsb(record.usb, connectionType, type);

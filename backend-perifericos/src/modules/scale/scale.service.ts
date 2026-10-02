@@ -12,6 +12,7 @@ import { RochiA01eSerialScale } from "./rochi-a01e.serial";
 import { createRochiSerialPort } from "./rochi-a01e.serial-port.factory";
 import type { RochiSerialPortFactory } from "./rochi-a01e.serial";
 import { ConnectionType } from "../../shared/types/peripheral.types";
+import type { ScaleUnitVerification } from "../../shared/types/peripheral.types";
 import { DeviceProfileId } from "../../shared/profiles/device-profiles";
 import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
 
@@ -20,6 +21,16 @@ const DEFAULT_SCALE_ID = "mock-scale-001";
 const MOCK_WEIGHT_KG = 1.25;
 export const ROCHI_SERIAL_PORT_FACTORY = Symbol("ROCHI_SERIAL_PORT_FACTORY");
 const ROCHI_READ_TIMEOUT_MS = 2_500;
+
+const readUnitVerification = (metadata: Record<string, unknown> | undefined): ScaleUnitVerification | undefined => {
+  const value = metadata?.unitVerification;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.unit !== "KG" || record.method !== "OPERATOR_CONFIRMATION" || typeof record.verifiedAt !== "string") {
+    return undefined;
+  }
+  return { unit: "KG", method: "OPERATOR_CONFIRMATION", verifiedAt: record.verifiedAt };
+};
 
 @Injectable()
 export class ScaleService {
@@ -134,13 +145,15 @@ export class ScaleService {
         scale.onParseError((error) => reject(new Error(`ROCHI parser error: ${error.code}`)));
         scale.open().catch(reject);
       });
+      const configuredDevice = this.devicesService.getConfiguredScales(terminalId).find((device) => device.id === deviceId);
+      const unitVerification = readUnitVerification(configuredDevice?.metadata);
       const response: ScaleWeightResponse = {
         deviceId,
         weight: result.value,
-        unit: null,
+        unit: unitVerification ? "kg" : null,
         stable: null,
         source: "REAL",
-        unitVerified: false,
+        unitVerified: Boolean(unitVerification),
         stabilityVerified: false,
         timestamp: result.timestamp,
       };
