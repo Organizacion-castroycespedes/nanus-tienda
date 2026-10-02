@@ -1,5 +1,3 @@
-BEGIN;
-
 -- ================================
 -- Fiscal failure resolutions catalog
 -- ================================
@@ -134,5 +132,3 @@ SET origin = EXCLUDED.origin,
     solution_text = EXCLUDED.solution_text,
     retryable = EXCLUDED.retryable,
     updated_at = NOW();
-
-COMMIT;
