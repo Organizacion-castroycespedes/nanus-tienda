@@ -70,9 +70,7 @@ export const VoidSaleModal = ({
 
   if (!isOpen) return null;
 
-  const hasElectronicInvoice =
-    sale.electronicBilling &&
-    ["ACCEPTED", "PROCESSING", "SENT"].includes(sale.electronicBilling.status);
+  const hasElectronicInvoice = sale.electronicBilling?.status === "ACCEPTED";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

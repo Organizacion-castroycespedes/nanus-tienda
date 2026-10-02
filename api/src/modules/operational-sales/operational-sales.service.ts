@@ -22,7 +22,6 @@ import { VoidOperationalSaleDto } from "./dto/void-operational-sale.dto";
 import { OperationalDebitNoteDto } from "./dto/operational-debit-note.dto";
 
 const OPERATIONAL_FE_PROVIDER_RECOVERY_AUDIT_ACTION = "OP_FE_PROVIDER_RECOVERY";
-const IN_FLIGHT_INVOICE_STATUSES = new Set(["PENDING", "PROCESSING", "TECHNICAL_ERROR"]);
 const VOID_REQUEST_RETRY_BASE_MS = 60_000;
 const VOID_REQUEST_RETRY_MAX_MS = 30 * 60_000;
 const VOID_REQUEST_MAX_ATTEMPTS = 20;
@@ -679,9 +678,9 @@ export class OperationalSalesService {
         [tenantId, saleId]
       );
       const invoice = invoiceResult.rows[0] ?? null;
-      if (invoice && IN_FLIGHT_INVOICE_STATUSES.has(invoice.status) && !(isAdmin && invoice.status === "TECHNICAL_ERROR")) {
+      if (invoice && invoice.status !== "ACCEPTED") {
         throw new BadRequestException(
-          "La factura electrónica de esta venta aún no tiene respuesta definitiva de la DIAN. Consulte el estado y anule cuando esté aceptada o rechazada."
+          `No se puede anular la venta porque su factura electrónica está en estado ${invoice.status}. Primero actualice o reconcilie el estado fiscal; solo una factura aceptada puede anularse mediante nota crédito.`
         );
       }
 
@@ -1114,6 +1113,11 @@ export class OperationalSalesService {
           FOR UPDATE`,
         [tenantId, saleId]
       );
+      const finalSaleStatus = paymentsResult.rows.some(
+        (payment) => payment.status === "COMPLETED"
+      )
+        ? "REFUNDED"
+        : "CANCELLED";
 
       for (const p of paymentsResult.rows) {
         const pAmount = Number(p.amount);
@@ -1180,12 +1184,13 @@ export class OperationalSalesService {
       // 3. Update Sale
       await client.query(
         `UPDATE sales
-            SET status = 'CANCELLED',
-                payment_status = 'REFUNDED',
-                notes = COALESCE(notes, '') || ' [Anulada: ' || $3 || ']',
-                updated_at = NOW()
+            SET status = $3,
+                total_paid = 0,
+                balance = 0,
+                balance_due = 0,
+                payment_status = 'PENDING'
           WHERE id = $1 AND tenant_id = $2`,
-        [saleId, tenantId, dto.reason.trim()]
+        [saleId, tenantId, finalSaleStatus]
       );
 
       this.auditService?.logEvent({
@@ -1200,8 +1205,8 @@ export class OperationalSalesService {
           paymentStatus: sale.payment_status,
         },
         after: {
-          status: "CANCELLED",
-          paymentStatus: "REFUNDED",
+          status: finalSaleStatus,
+          paymentStatus: "PENDING",
           reason: dto.reason.trim(),
           discrepancyResponseCode: dto.discrepancyResponseCode ?? "2",
           creditNote,

@@ -151,6 +151,12 @@ const createService = (options: { creditNoteResult?: unknown } = {}) => {
           if (saleId === "sale-accepted-fe") {
             return { rows: [{ id: "doc-1", status: "ACCEPTED" }] };
           }
+          if (saleId === "sale-technical-fe") {
+            return { rows: [{ id: "doc-technical", status: "TECHNICAL_ERROR" }] };
+          }
+          if (saleId === "sale-rejected-fe") {
+            return { rows: [{ id: "doc-rejected", status: "REJECTED" }] };
+          }
           return { rows: [] };
         }
         if (text.includes("FROM customers")) {
@@ -388,6 +394,21 @@ test("voidSale rejects cancelled sale or missing reason", async () => {
   );
 });
 
+test("voidSale blocks every non-accepted electronic invoice, including for administrators", async () => {
+  const { service, calls, executedQueries } = createService();
+  const actor = { id: "admin-a", tenantId: "tenant-a", roles: ["SUPER_ADMIN"] };
+
+  for (const saleId of ["sale-technical-fe", "sale-rejected-fe"]) {
+    await assert.rejects(
+      () => service.voidSale(actor, saleId, { reason: "Anulación fiscal controlada" }),
+      /solo una factura aceptada puede anularse mediante nota crédito/,
+    );
+  }
+
+  assert.equal(calls.filter((call) => call.method === "issueCreditNote").length, 0);
+  assert.ok(!executedQueries.some((query) => query.text.includes("UPDATE sales")));
+});
+
 test("voidSale executes local voiding for sale without electronic invoice", async () => {
   const { service, auditEvents, executedQueries } = createService();
   const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
@@ -399,8 +420,14 @@ test("voidSale executes local voiding for sale without electronic invoice", asyn
 
   assert.equal(auditEvents.length, 1);
   assert.equal(auditEvents[0].action, "VOID_SALE");
-  assert.equal((auditEvents[0].after as any).status, "CANCELLED");
-  assert.ok(executedQueries.some((q) => q.text.includes("UPDATE sales")));
+  assert.equal((auditEvents[0].after as any).status, "REFUNDED");
+  assert.equal((auditEvents[0].after as any).paymentStatus, "PENDING");
+  const saleUpdate = executedQueries.find((q) => q.text.includes("UPDATE sales"));
+  assert.ok(saleUpdate);
+  assert.doesNotMatch(saleUpdate.text, /\bnotes\b|\bupdated_at\b/);
+  assert.match(saleUpdate.text, /payment_status = 'PENDING'/);
+  assert.match(saleUpdate.text, /total_paid = 0/);
+  assert.deepEqual(saleUpdate.params, ["sale-a", "tenant-a", "REFUNDED"]);
 });
 
 test("voidSale voids only after the online credit note is accepted by DIAN", async () => {
