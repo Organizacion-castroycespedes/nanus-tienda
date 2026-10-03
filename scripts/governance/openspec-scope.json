@@ -63,6 +63,34 @@
         "openspec/changes/corregir-anulacion-fiscal-ventas-operativas/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "fix-liquor-invoice-icl-rounding",
+      "paths": [
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.mapper.ts",
+        "backend-facturacion-electronica/test/factucore.provider.spec.ts",
+        "openspec/changes/fix-liquor-invoice-icl-rounding/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "fix-invoice-line-base-rounding",
+      "paths": [
+        "api/src/modules/inventory/services/sale.service.spec.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/pricing/pricing-tax-rounding.ts",
+        "api/src/modules/pricing/pricing.service.spec.ts",
+        "api/src/modules/pricing/pricing.service.ts",
+        "openspec/changes/fix-invoice-line-base-rounding/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "backfill-product-standard-identification",
+      "paths": [
+        "openspec/changes/backfill-product-standard-identification/**"
+      ],
+      "exemptions": []
     }
   ]
 }
