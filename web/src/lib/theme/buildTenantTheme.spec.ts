@@ -66,6 +66,16 @@ test("builds isolated tenant tokens from each branding config", () => {
   assert.notEqual(tenantA.secondarySoftBg, tenantB.secondarySoftBg);
 });
 
+test("prefers the canonical logo over a stale legacy logoUrl", () => {
+  const tokens = buildTenantThemeTokens({
+    ...branding({}),
+    logo: "data:image/png;base64,new-logo",
+    logoUrl: "data:image/png;base64,old-logo",
+  });
+
+  assert.equal(tokens.logo, "data:image/png;base64,new-logo");
+});
+
 test("falls back when tenant colors are invalid", () => {
   const tokens = buildTenantThemeTokens(
     branding({

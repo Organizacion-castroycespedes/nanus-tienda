@@ -185,10 +185,7 @@ const calculateFactuCoreLineTotal = (line: FactuCoreDocumentLine): number => {
   const unitPrice = Number(line.unitPrice);
   const discount = Number(line.discountAmount ?? 0);
   const lineBase = Math.round((qty * unitPrice - discount) * 100) / 100;
-  const lineTax = (line.taxes ?? []).reduce((sum, tax) => {
-    const rate = Number(tax.rate);
-    return sum + calculateDianTaxAmount(lineBase, rate);
-  }, 0);
+  const lineTax = (line.taxes ?? []).reduce((sum, tax) => sum + Number(tax.taxAmount), 0);
   return Math.round((lineBase + Math.round(lineTax * 100) / 100) * 100) / 100;
 };
 
@@ -531,9 +528,12 @@ const mapTax = (tax: ElectronicTaxInput): FactuCoreTax => {
   if (!Number.isFinite(normalizedRate) || normalizedRate < 0) {
     throw new FactuCoreConfigurationError("tax_rate_normalization", "Tax rate is not a valid non-negative number");
   }
-  const rate = normalizedRate > 0 && normalizedRate < 1 ? normalizedRate * 100 : normalizedRate;
+  // ICL rate is COP per alcohol-degree/750 ml unit, not a percentage; FactuCore
+  // rebuilds its amount from the unrounded degree/volume base, so keep pricing's amount.
+  const isSpecificTax = taxType === "ICL";
+  const rate = !isSpecificTax && normalizedRate > 0 && normalizedRate < 1 ? normalizedRate * 100 : normalizedRate;
   const taxableBase = Number(tax.taxableBase);
-  const taxAmount = Number.isFinite(taxableBase) && Number.isFinite(rate)
+  const taxAmount = !isSpecificTax && Number.isFinite(taxableBase) && Number.isFinite(rate)
     ? calculateDianTaxAmount(taxableBase, rate)
     : Number(tax.amount);
 

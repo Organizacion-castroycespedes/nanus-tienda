@@ -7,6 +7,7 @@ import {
   isEligibleForElectronicBillingRequest,
   providerCreateIntentRecoveryMessage,
   PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION,
+  resolveOperationalSaleVoidAvailability,
   shouldShowProviderCreateIntentRecovery,
 } from "./operational-sales.service";
 
@@ -70,6 +71,27 @@ test("provider-create recovery visibility uses only backend capability and write
     });
     assert.equal(shouldShowProviderCreateIntentRecovery(ineligible as never, true), false, status);
   }
+});
+
+test("sale void uses one accepted-only electronic flow and keeps local void for sales without FE", () => {
+  assert.equal(resolveOperationalSaleVoidAvailability(sale() as never).kind, "LOCAL");
+  assert.equal(
+    resolveOperationalSaleVoidAvailability(sale({ electronicBilling: { status: "ACCEPTED" } }) as never).kind,
+    "CREDIT_NOTE",
+  );
+
+  for (const status of ["PENDING", "PROCESSING", "REJECTED", "TECHNICAL_ERROR", "CANCELLED"]) {
+    const result = resolveOperationalSaleVoidAvailability(
+      sale({ electronicBilling: { status } }) as never,
+    );
+    assert.equal(result.kind, "BLOCKED_ELECTRONIC", status);
+    assert.match(result.message ?? "", /Solo una factura aceptada/);
+  }
+
+  assert.equal(
+    resolveOperationalSaleVoidAvailability(sale({ status: "CANCELLED" }) as never).kind,
+    "HIDDEN",
+  );
 });
 
 test("provider-create recovery single-post guard blocks concurrent double interaction", async () => {

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -62,6 +63,7 @@ import {
   type CartSaleItemPresentation,
 } from "./cart/CartSaleModal";
 import { PosProductCard } from "./catalog/PosProductCard";
+import { PosDiagnosticsPanel } from "./hardware/PosDiagnosticsPanel";
 import {
   createSale,
   getPosCustomers,
@@ -1184,9 +1186,11 @@ export const PosScreen = () => {
     };
   }, [products]);
 
+  const deferredQuery = useDeferredValue(query);
+
   const filteredProducts = useMemo(() => {
     return filterPosProductsForCatalog(products, {
-      query,
+      query: deferredQuery,
       stockFilter: activeStockFilter,
       categoryId: selectedProductCategoryId,
       subcategoryId: selectedProductSubcategoryId,
@@ -1198,8 +1202,8 @@ export const PosScreen = () => {
     });
   }, [
     activeStockFilter,
+    deferredQuery,
     products,
-    query,
     selectedProductCategoryId,
     selectedProductSubcategoryId,
   ]);
@@ -1211,7 +1215,7 @@ export const PosScreen = () => {
   useEffect(() => {
     setVisibleProductCount(POS_CATALOG_PAGE_SIZE);
   }, [
-    query,
+    deferredQuery,
     activeStockFilter,
     selectedProductCategoryId,
     selectedProductSubcategoryId,
@@ -2999,116 +3003,23 @@ export const PosScreen = () => {
               ) : null}
 
               {peripheralDiagnosticsOpen && canShowPeripheralDiagnostics ? (
-              <>
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                        Scanner
-                      </span>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                          scannerMockStatus === "connected"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
-                            : scannerMockStatus === "error"
-                              ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
-                              : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                        }`}
-                      >
-                        {scannerMockEnabled
-                          ? scannerMockStatus === "error"
-                            ? "Desconectado"
-                            : "Escuchando scanner.code.read"
-                          : "Desactivado por feature flag"}
-                      </span>
-                    </div>
-                    <Input
-                      label="Código scanner"
-                      placeholder="SKU, codigo de barras o referencia"
-                      value={scannerMockCode}
-                      onChange={(event) => setScannerMockCode(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void handleSimulateScannerRead();
-                        }
-                      }}
-                      disabled={!scannerMockEnabled}
-                      className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="md"
-                    isLoading={scannerSimulating}
-                    disabled={!scannerMockEnabled || !scannerMockCode.trim()}
-                    onClick={() => void handleSimulateScannerRead()}
-                    className="xl:mb-0.5"
-                  >
-                    <Search className="h-4 w-4" />
-                    Simular scanner
-                  </Button>
-                </div>
-                {scannerLastCode || scannerLastResult ? (
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
-                    {scannerLastCode ? <span>Ultimo codigo: {scannerLastCode}</span> : null}
-                    {scannerLastResult ? <span>{scannerLastResult}</span> : null}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div className="min-w-0">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                        <Scale className="h-4 w-4" />
-                        Balanza
-                      </span>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                          scaleMockStatus === "ready"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
-                            : scaleMockStatus === "reading"
-                              ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
-                              : scaleMockStatus === "error"
-                                ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
-                                : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                        }`}
-                      >
-                        {scaleMockEnabled
-                          ? scaleMockStatus === "reading"
-                            ? "Leyendo"
-                            : scaleMockStatus === "error"
-                              ? "Error"
-                              : "Listo"
-                          : "Desactivado por feature flag"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
-                      <span>
-                        Producto pesable:{" "}
-                        {firstWeighableCartProduct?.name ?? "ninguno en carrito"}
-                      </span>
-                      {scaleLastWeight ? <span>Ultimo peso: {scaleLastWeight}</span> : null}
-                      {scaleLastResult ? <span>{scaleLastResult}</span> : null}
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="md"
-                    isLoading={scaleReading}
-                    disabled={!scaleMockEnabled || scaleReading}
-                    onClick={() => void handleReadScaleFromCart()}
-                    className="xl:mb-0.5"
-                  >
-                    <Scale className="h-4 w-4" />
-                    Leer balanza
-                  </Button>
-                </div>
-              </div>
-              </>
+                <PosDiagnosticsPanel
+                  scannerMockStatus={scannerMockStatus}
+                  scannerMockEnabled={scannerMockEnabled}
+                  scannerMockCode={scannerMockCode}
+                  setScannerMockCode={setScannerMockCode}
+                  scannerSimulating={scannerSimulating}
+                  onSimulateScannerRead={() => void handleSimulateScannerRead()}
+                  scannerLastCode={scannerLastCode}
+                  scannerLastResult={scannerLastResult}
+                  scaleMockStatus={scaleMockStatus}
+                  scaleMockEnabled={scaleMockEnabled}
+                  firstWeighableCartProduct={firstWeighableCartProduct}
+                  scaleLastWeight={scaleLastWeight}
+                  scaleLastResult={scaleLastResult}
+                  scaleReading={scaleReading}
+                  onReadScaleFromCart={() => void handleReadScaleFromCart()}
+                />
               ) : null}
 
             </div>
