@@ -72,6 +72,62 @@ test("electronic billing normalizes IVA base and amount for three units", () => 
   assert.deepEqual(normalized, { taxableBase: 300000, amount: 15000 });
 });
 
+test("electronic billing normalizes ADV unit snapshot for three units", () => {
+  const normalized = normalizeElectronicBillingTaxForQuantity({
+    quantity: 3,
+    lineBase: 346429.29,
+    expectedLineBase: 542601,
+    tax: {
+      dianCode: "36",
+      taxRate: 0.25,
+      taxBase: 180867,
+      taxAmount: 45216.75,
+    },
+  });
+
+  assert.deepEqual(normalized, { taxableBase: 542601, amount: 135650.25 });
+});
+
+test("electronic billing normalizes ICL unit snapshot for three units", () => {
+  const normalized = normalizeElectronicBillingTaxForQuantity({
+    quantity: 3,
+    lineBase: 346429.29,
+    expectedLineBase: 120,
+    tax: {
+      dianCode: "32",
+      taxRate: 360,
+      taxBase: 40,
+      taxAmount: 14400,
+    },
+  });
+
+  assert.deepEqual(normalized, { taxableBase: 120, amount: 43200 });
+});
+
+test("electronic billing keeps ICL and ADV line snapshots for two units", () => {
+  const icl = normalizeElectronicBillingTaxForQuantity({
+    quantity: 2,
+    lineBase: 126489.14,
+    expectedLineBase: 58,
+    tax: { dianCode: "32", taxRate: 360, taxBase: 58, taxAmount: 20880 },
+  });
+  const adv = normalizeElectronicBillingTaxForQuantity({
+    quantity: 2,
+    lineBase: 126489.14,
+    expectedLineBase: 90000,
+    tax: { dianCode: "36", taxRate: 0.25, taxBase: 90000, taxAmount: 22500 },
+  });
+  const iclWithoutProfile = normalizeElectronicBillingTaxForQuantity({
+    quantity: 2,
+    lineBase: 126489.14,
+    tax: { dianCode: "32", taxRate: 360, taxBase: 58, taxAmount: 20880 },
+  });
+
+  assert.deepEqual(icl, { taxableBase: 58, amount: 20880 });
+  assert.deepEqual(adv, { taxableBase: 90000, amount: 22500 });
+  assert.deepEqual(iclWithoutProfile, { taxableBase: 58, amount: 20880 });
+});
+
 test("electronic billing returns zero amount when tax rate is zero", () => {
   const normalized = normalizeElectronicBillingTaxForQuantity({
     quantity: 1,
@@ -1971,3 +2027,59 @@ test("SaleService validates verification digit presence for NIT customer fiscal 
   assert.equal(isComplete.call(service, { ...validNitCustomer, verificationDigit: null }), false);
 });
 
+
+test("SaleService sends a six-decimal unit price that rebuilds the line base", async () => {
+  const { service } = buildCreateSaleService([], {
+    customerRepository: { findById: async () => null },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "AGUA-300",
+        name: "Agua 300ml",
+        description: "Agua 300ml",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: { findById: async () => null },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => null,
+      findActiveFinalConsumer: async () => null,
+    },
+  });
+  const buildLines = (service as unknown as {
+    buildElectronicBillingLines: (
+      tenantId: string,
+      items: unknown[]
+    ) => Promise<Array<{ unitPrice: string; subtotalAmount: string; totalAmount: string }>>;
+  }).buildElectronicBillingLines;
+
+  const [line] = await buildLines.call(service, ids.tenant, [
+    {
+      saleItemId: "sale-item-1",
+      productId: ids.product,
+      quantity: 12,
+      price: 1000,
+      priceWithoutTax: 840.34,
+      taxBase: 10084.03,
+      lineTotal: 12000,
+      taxes: [
+        {
+          taxId: "iva-19",
+          taxName: "IVA 19%",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.19,
+          taxBase: 10084.03,
+          taxAmount: 1915.97,
+          isIncluded: true,
+        },
+      ],
+    },
+  ]);
+
+  assert.equal(line.unitPrice, "840.335833");
+  assert.equal(line.subtotalAmount, "10084.03");
+  assert.equal(line.totalAmount, "12000.00");
+  assert.equal(Math.round(Number(line.unitPrice) * 12 * 100) / 100, 10084.03);
+});

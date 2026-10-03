@@ -233,9 +233,9 @@ describe("PricingService", () => {
     assert.equal(result.quantity, 1.5);
     assert.equal(result.baseUnitPrice, 99.99);
     assert.equal(result.lineTotal, 149.99);
-    assert.equal(result.taxBase, 126.05);
-    assert.equal(result.taxAmount, 23.94);
-    assert.equal(result.taxes[0]?.taxAmount, 23.94);
+    assert.equal(result.taxBase, 126.04);
+    assert.equal(result.taxAmount, 23.95);
+    assert.equal(result.taxes[0]?.taxAmount, 23.95);
   });
 
   it("does not query promotions for the base calculation", async () => {
@@ -501,9 +501,85 @@ describe("PricingService", () => {
     assert.equal(result.quantity, 1.5);
     assert.equal(result.baseUnitPrice, 99.99);
     assert.equal(result.lineTotal, 149.99);
-    assert.equal(result.taxBase, 126.05);
-    assert.equal(result.taxAmount, 23.94);
-    assert.equal(result.taxes[0]?.taxAmount, 23.94);
+    assert.equal(result.taxBase, 126.04);
+    assert.equal(result.taxAmount, 23.95);
+    assert.equal(result.taxes[0]?.taxAmount, 23.95);
+  });
+
+  it("derives the included tax base from the charged line for quantity 12", async () => {
+    const { service } = buildService(
+      baseProduct({ price: 1000, taxRate: 0.19, taxIsIncluded: true })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 12,
+    });
+
+    assert.equal(result.lineTotal, 12000);
+    assert.equal(result.taxBase, 10084.03);
+    assert.equal(result.taxAmount, 1915.97);
+    assert.equal(result.lineSubtotal, 10084.03);
+  });
+
+  it("derives the tax base from the separate customer price for quantity 12", async () => {
+    const { service } = buildService(
+      baseProduct({
+        price: 840.34,
+        priceWithTax: 1000,
+        priceWithoutTax: 840.34,
+        taxRate: 0.19,
+        taxIsIncluded: false,
+      })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 12,
+    });
+
+    assert.equal(result.lineTotal, 12000);
+    assert.equal(result.taxBase, 10084.03);
+    assert.equal(result.taxAmount, 1915.97);
+  });
+
+  it("keeps excluded tax on top of the price without separate customer price", async () => {
+    const { service } = buildService(
+      baseProduct({ price: 1000, taxRate: 0.19, taxIsIncluded: false })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 3,
+    });
+
+    assert.equal(result.taxBase, 3000);
+    assert.equal(result.taxAmount, 570);
+    assert.equal(result.lineTotal, 3570);
+  });
+
+  it("closes every quantity: base plus recalculated tax equals the charged line", async () => {
+    for (const price of [1000, 2500, 3990, 77000, 99.99]) {
+      for (const taxRate of [0.05, 0.19]) {
+        const { service } = buildService(
+          baseProduct({ price, taxRate, taxIsIncluded: true })
+        );
+        for (const quantity of [1, 2, 3, 7, 12, 24, 1.5]) {
+          const result = await service.calculateLineWithoutPromotions({
+            ...baseInput(),
+            quantity,
+          });
+          const rebuilt = Math.round(
+            (result.taxBase + Math.round(result.taxBase * taxRate * 100 + 1e-6) / 100) * 100
+          ) / 100;
+          assert.ok(
+            Math.abs(rebuilt - result.lineTotal) <= 0.01 + 1e-6,
+            `${price} x ${quantity} @ ${taxRate}: ${rebuilt} != ${result.lineTotal}`
+          );
+          assert.equal(result.taxAmount, Math.round(result.taxBase * taxRate * 100 + 1e-6) / 100);
+        }
+      }
+    }
   });
 
   it("calculates a liquor stack with ICL ADV and included IVA", async () => {
@@ -671,6 +747,66 @@ describe("PricingService", () => {
     assert.equal(result.taxes[0]?.taxAmount, 716.8);
     assert.equal(result.taxes[1]?.taxAmount, 27467.25);
     assert.equal(result.taxes[2]?.taxAmount, 8140);
+  });
+
+  it("derives the liquor IVA base from the charged line for quantity 3", async () => {
+    const ivaTaxId = randomUUID();
+    const { service } = buildService(
+      baseProduct({
+        price: 63244.57,
+        priceWithTax: 88096.8,
+        priceWithoutTax: 63244.57,
+        taxId: ivaTaxId,
+        taxRate: 0.05,
+        taxIsIncluded: false,
+        taxes: [
+          productTax({
+            taxName: "ICL",
+            calculationMethodCode: "PER_ALCOHOL_DEGREE_VOLUME",
+            calculationOrder: 1,
+            rate: 0,
+            percentageRate: null,
+            fixedAmount: 360,
+            baseQuantity: 750,
+          }),
+          productTax({
+            taxName: "ADV",
+            taxTypeCode: "AD_VALOREM",
+            calculationMethodCode: "AD_VALOREM",
+            calculationOrder: 2,
+            rate: 0.25,
+            percentageRate: 0.25,
+          }),
+          productTax({
+            taxId: ivaTaxId,
+            taxName: "IVA 5%",
+            calculationOrder: 3,
+            rate: 0.05,
+            percentageRate: 0.05,
+          }),
+        ],
+        taxProfile: taxProfile({
+          alcoholDegree: 29,
+          netVolumeMl: 750,
+          daneCertifiedRetailPrice: 45000,
+        }),
+      })
+    );
+
+    const result = await service.calculateLineWithoutPromotions({
+      ...baseInput(),
+      quantity: 3,
+    });
+
+    assert.equal(result.lineTotal, 264290.4);
+    assert.equal(result.taxes[0]?.taxAmount, 31320);
+    assert.equal(result.taxes[1]?.taxAmount, 33750);
+    assert.equal(result.taxBase, 189733.71);
+    assert.equal(result.taxes[2]?.taxAmount, 9486.69);
+    assert.equal(
+      Math.round((result.taxBase + 31320 + 33750 + 9486.69) * 100) / 100,
+      264290.4
+    );
   });
 
   it("rejects quantity 0", async () => {
