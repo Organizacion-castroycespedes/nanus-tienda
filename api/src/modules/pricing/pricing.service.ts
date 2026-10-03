@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PricingRepository } from "./pricing.repository";
+import {
+  calculatePercentageTaxAmount,
+  resolveLineTaxBase,
+} from "./pricing-tax-rounding";
 import type {
   CalculateLinePriceInput,
   LinePricePreview,
@@ -187,22 +191,19 @@ export class PricingService {
     let lineSubtotal = 0;
     let lineTotal = 0;
 
-    if (taxRate > 0 && !(percentageTax?.isIncluded ?? input.product.taxIsIncluded)) {
+    const isExcludedTax =
+      taxRate > 0 && !(percentageTax?.isIncluded ?? input.product.taxIsIncluded);
+
+    if (isExcludedTax && !hasSeparateCustomerPrice) {
       lineSubtotal = this.roundCurrency(input.quantity * taxCalculationUnitPrice);
       taxBase = lineSubtotal;
-      taxAmount = this.roundCurrency(taxBase * taxRate);
-      lineTotal = hasSeparateCustomerPrice
-        ? this.roundCurrency(input.quantity * finalUnitPrice)
-        : this.roundCurrency(lineSubtotal + taxAmount);
+      taxAmount = calculatePercentageTaxAmount(taxBase, taxRate);
+      lineTotal = this.roundCurrency(lineSubtotal + taxAmount);
     } else {
       lineTotal = this.roundCurrency(input.quantity * finalUnitPrice);
-      const unitPriceWithoutTax =
-        taxRate > 0
-          ? this.roundCurrency(finalUnitPrice / (1 + taxRate))
-          : finalUnitPrice;
-      taxBase = this.roundCurrency(unitPriceWithoutTax * input.quantity);
+      taxBase = resolveLineTaxBase(lineTotal, taxRate);
       taxAmount =
-        taxRate > 0 ? this.roundCurrency(lineTotal - taxBase) : 0;
+        taxRate > 0 ? calculatePercentageTaxAmount(taxBase, taxRate) : 0;
       lineSubtotal = taxBase;
     }
 
@@ -237,10 +238,6 @@ export class PricingService {
     const percentageTax = this.getBridgePercentageTax(input.product);
     const percentageRate = this.getPercentageRate(percentageTax);
     const lineFinal = this.roundCurrency(input.finalUnitPrice * input.quantity);
-    const taxCalculationLine = this.roundCurrency(
-      this.getTaxCalculationUnitPrice(input.product, input.finalUnitPrice) *
-        input.quantity
-    );
     const hasSeparateCustomerPrice = this.hasSeparateCustomerPrice(input.product);
     const profile = input.product.taxProfile;
 
@@ -328,11 +325,13 @@ export class PricingService {
           );
         }
 
-        const taxBase = this.roundCurrency(
-          (lineFinal - consumoAmount) / (1 + percentageRate)
+        const taxBase = resolveLineTaxBase(
+          lineFinal - consumoAmount,
+          percentageRate
         );
-        const taxAmount = this.roundCurrency(
-          lineFinal - consumoAmount - taxBase
+        const taxAmount = calculatePercentageTaxAmount(
+          taxBase,
+          percentageRate
         );
         taxLines.set(
           percentageTax.taxId,
@@ -364,8 +363,23 @@ export class PricingService {
       // ICL and ADV are added on top of that base; they must not be removed
       // before calculating VAT. The authorized liquor invoice contract uses
       // IVA base = lineFinal and total = lineFinal + ICL + ADV + IVA.
-      const taxBase = hasSeparateCustomerPrice ? taxCalculationLine : lineFinal;
-      const taxAmount = this.roundCurrency(taxBase * percentageRate);
+      // With a separate customer price the charged line already contains
+      // every tax, so the IVA base is what remains after ICL, ADV and fixed.
+      const chargedNetAmount = this.roundCurrency(
+        lineFinal - consumoAmount - fixedChargeAmount
+      );
+      if (hasSeparateCustomerPrice && chargedNetAmount < 0) {
+        throw new BadRequestException(
+          "alcohol taxes exceed visible line amount"
+        );
+      }
+      const taxBase = hasSeparateCustomerPrice
+        ? resolveLineTaxBase(chargedNetAmount, percentageRate)
+        : lineFinal;
+      const taxAmount = calculatePercentageTaxAmount(
+        taxBase,
+        percentageRate
+      );
       taxLines.set(
         percentageTax.taxId,
         this.buildPreviewTax(percentageTax, {
