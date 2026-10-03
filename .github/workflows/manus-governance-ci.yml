@@ -1,0 +1,87 @@
+name: Manus Governance CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    name: Repository governance gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pinned OpenSpec CLI
+        run: npm install --global @fission-ai/openspec@1.4.0
+
+      - name: Validate OpenSpec changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          openspec validate reconciliar-drift-historico-pre-gobernanza --strict
+          openspec validate disponer-historial-fallido-y-bundles-manuales --strict
+
+      - name: Run repository strict governance gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
+            diff_ref="origin/${GITHUB_BASE_REF}...HEAD"
+          else
+            diff_ref="HEAD^...HEAD"
+          fi
+          mapfile -t changed_files < <(git diff --name-only "${diff_ref}")
+          args=(--root . --enforcement-mode STRICT)
+          for changed_file in "${changed_files[@]}"; do
+            args+=(--changed-file "${changed_file}")
+          done
+          python scripts/governance/openspec_governance_diagnostic.py "${args[@]}"
+
+      - name: Run deterministic governance tests
+        working-directory: scripts/governance
+        run: |
+          python -B -m unittest \
+            test_environment_promotion_plan.py \
+            test_environment_promotion_orchestrator.py \
+            test_promotion_execution_gates.py \
+            test_phase_e_promotion_validation.py \
+            test_openspec_governance_diagnostic.py \
+            test_prd_evidence_executor.py \
+            test_qa_certification.py
+
+      - name: Check Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -B -m py_compile scripts/governance/*.py
+
+      - name: Check Bash syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' script; do
+            bash -n "${script}"
+          done < <(find scripts/database -type f -name '*.sh' -print0)
+
+      - name: Run governed runner contract tests
+        shell: bash
+        run: bash scripts/database/test_apply_single_migration.sh
+
+      - name: Check whitespace
+        run: git diff --check

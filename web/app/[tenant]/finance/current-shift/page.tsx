@@ -3,6 +3,7 @@
 import {
   Download,
   Eye,
+  LogIn,
   Printer,
   RefreshCw,
   Search,
@@ -450,6 +451,14 @@ const CurrentShiftPage = () => {
               <RefreshCw className="h-4 w-4" />
               Actualizar
             </Button>
+            {shift?.hasOpenCashSession ? (
+              <Button
+                onClick={() => router.push(`/${tenantSlug}/pos/select-context`)}
+              >
+                <LogIn className="h-4 w-4" />
+                Entrar al POS
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               onClick={() => router.push(`/${tenantSlug}/finance/cash-sessions`)}

@@ -22,6 +22,10 @@ import {
 } from "../../finance/payments/payments.repository";
 import { PaymentsService } from "../../finance/payments/payments.service";
 import { PricingService } from "../../pricing/pricing.service";
+import {
+  calculatePercentageTaxAmount,
+  resolveLineTaxBase,
+} from "../../pricing/pricing-tax-rounding";
 import type { LinePricePreview } from "../../pricing/pricing.types";
 import { AuditService } from "../../../common/services/audit.service";
 import { CustomerRepository } from "../repositories/customer.repository";
@@ -316,6 +320,7 @@ const roundElectronicBillingMoney = (value: number) => Math.round((value + Numbe
 export const normalizeElectronicBillingTaxForQuantity = (input: {
   quantity: number;
   lineBase: number;
+  expectedLineBase?: number | null;
   tax: {
     dianCode?: string | null;
     taxRate: number;
@@ -323,13 +328,12 @@ export const normalizeElectronicBillingTaxForQuantity = (input: {
     taxAmount: number;
   };
 }) => {
-  const isStandardPercentageScheme = ["01", "03", "04", "30"].includes(
-    input.tax.dianCode ?? ""
-  );
+  const dianCode = input.tax.dianCode ?? "";
+  const rawRate = Number(input.tax.taxRate ?? 0);
+  const rate = rawRate > 1 ? rawRate / 100 : rawRate;
 
+  const isStandardPercentageScheme = ["01", "03", "04", "30"].includes(dianCode);
   if (isStandardPercentageScheme) {
-    const rawRate = Number(input.tax.taxRate ?? 0);
-    const rate = rawRate > 1 ? rawRate / 100 : rawRate;
     if (rate === 0) {
       return { taxableBase: roundElectronicBillingMoney(input.lineBase), amount: 0 };
     }
@@ -342,11 +346,49 @@ export const normalizeElectronicBillingTaxForQuantity = (input: {
     };
   }
 
+  const isAdValorem = dianCode === "36";
+  const isSpecificTax = ["32", "22", "33", "34", "35"].includes(dianCode);
+  if (isAdValorem || isSpecificTax) {
+    const rawBase = Number(input.tax.taxBase || 0);
+    const rawAmount = Number(input.tax.taxAmount || 0);
+    // base * rate == amount holds for both unit and line snapshots, so only the
+    // product profile (degree/volume or DANE price) can prove a unit snapshot.
+    const expectedLineBase = input.expectedLineBase ?? null;
+    const isUnitSnapshot =
+      input.quantity > 1 &&
+      expectedLineBase !== null &&
+      expectedLineBase > 0 &&
+      rawBase > 0 &&
+      Math.abs(rawBase - expectedLineBase) > 0.01 &&
+      Math.abs(rawBase * input.quantity - expectedLineBase) <= 0.01 * input.quantity;
+
+    if (isAdValorem) {
+      const taxableBase = roundElectronicBillingMoney(
+        isUnitSnapshot ? expectedLineBase! : rawBase || input.lineBase
+      );
+      return {
+        taxableBase,
+        amount: roundElectronicBillingMoney(taxableBase * rate),
+      };
+    }
+
+    if (isUnitSnapshot) {
+      return {
+        taxableBase: roundElectronicBillingMoney(expectedLineBase!),
+        amount: roundElectronicBillingMoney(expectedLineBase! * rawRate),
+      };
+    }
+
+    return {
+      taxableBase: roundElectronicBillingMoney(rawBase),
+      amount: roundElectronicBillingMoney(rawAmount),
+    };
+  }
+
   if (input.quantity <= 1) {
     return { taxableBase: input.tax.taxBase, amount: input.tax.taxAmount };
   }
 
-  const rate = input.tax.taxRate > 1 ? input.tax.taxRate / 100 : input.tax.taxRate;
   const taxableBase = roundElectronicBillingMoney(input.lineBase);
   return {
     taxableBase,
@@ -414,6 +456,17 @@ export class SaleService {
     }
 
     return this.roundCurrency(numericValue).toFixed(2);
+  }
+
+  // DIAN PriceAmount allows six decimals; with two, unitPrice x quantity
+  // cannot rebuild a line base that is not a multiple of the quantity.
+  private toUnitPriceWireValue(value: number | string | null | undefined) {
+    const numericValue = Number(value ?? 0);
+    if (!Number.isFinite(numericValue)) {
+      return "0.000000";
+    }
+
+    return (Math.round(numericValue * 1_000_000) / 1_000_000).toFixed(6);
   }
 
   private mapSale(row: SaleRow) {
@@ -1080,9 +1133,19 @@ export class SaleService {
                 : null;
             const dianCode = snapshotTax.dianCode ?? tax?.taxTypeDianCode ?? null;
 
+            const expectedLineBase =
+              dianCode === "32" &&
+              taxProfile?.alcoholDegree != null &&
+              taxProfile.netVolumeMl != null
+                ? (item.quantity * taxProfile.alcoholDegree * taxProfile.netVolumeMl) / 750
+                : dianCode === "36" && taxProfile?.daneCertifiedRetailPrice != null
+                  ? item.quantity * taxProfile.daneCertifiedRetailPrice
+                  : null;
+
             const normalizedTax = normalizeElectronicBillingTaxForQuantity({
               quantity: item.quantity,
               lineBase: subtotalAmount,
+              expectedLineBase,
               tax: {
                 dianCode,
                 taxRate: Number(snapshotTax.taxRate ?? tax?.rate ?? 0),
@@ -1129,11 +1192,12 @@ export class SaleService {
           const lineFinal = this.roundCurrency(
             item.lineTotal ?? item.subtotal ?? item.price * item.quantity
           );
-          const unitPriceWithoutTax = this.roundCurrency(
-            item.price / (1 + (taxRate > 1 ? taxRate / 100 : taxRate))
+          const fractionalRate = taxRate > 1 ? taxRate / 100 : taxRate;
+          lineSubtotal = resolveLineTaxBase(lineFinal, fractionalRate);
+          const calcTaxAmount = calculatePercentageTaxAmount(
+            lineSubtotal,
+            fractionalRate
           );
-          lineSubtotal = this.roundCurrency(unitPriceWithoutTax * item.quantity);
-          const calcTaxAmount = this.roundCurrency(lineFinal - lineSubtotal);
           const dianCode = productTax.taxTypeDianCode ?? "01";
 
           taxes = [
@@ -1171,7 +1235,9 @@ export class SaleService {
           description: product.description ?? product.name,
           quantity: this.toDecimalWireValue(item.quantity),
           unitCode: product.measurementUnit,
-          unitPrice: this.toDecimalWireValue(item.priceWithoutTax),
+          unitPrice: this.toUnitPriceWireValue(
+            item.quantity > 0 ? lineSubtotal / item.quantity : item.priceWithoutTax
+          ),
           discountAmount: this.toDecimalWireValue(discountAmount),
           subtotalAmount: this.toDecimalWireValue(lineSubtotal),
           taxAmount: this.toDecimalWireValue(taxAmount),

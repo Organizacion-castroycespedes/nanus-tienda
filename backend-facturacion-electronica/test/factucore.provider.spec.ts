@@ -1045,6 +1045,51 @@ test("tenant credentials do not leak across interleaved calls", async () => {
   assert.equal(client.calls[1].context.credentials.clientKey, "key-tenant-b");
 });
 
+test("mapper keeps liquor ICL specific amount and pays the document total", () => {
+  const command = makeInvoiceCommand();
+  command.payment = { ...command.payment, methodCode: "CASH" };
+  command.lines = [{
+    sourceLineId: "sale-line-whisky",
+    description: "WHISKY BUCHANANS DE LUXE 1000",
+    quantity: "1.00",
+    unitCode: "UND",
+    unitPrice: "145455.71",
+    subtotalAmount: "145455.71",
+    taxAmount: "83782.29",
+    totalAmount: "229238.00",
+    taxTreatment: "TAXED",
+    beverageCategory: "LIQUOR",
+    volumeMilliliters: "1000.00",
+    alcoholDegrees: "40.00",
+    publicSalePriceBeforeTaxes: "229238.00",
+    taxes: [
+      { type: "AD_VALOREM", code: "36", schemeId: "36", rate: "0.25", taxableBase: "229238.00", amount: "57309.50" },
+      { type: "VAT", code: "01", schemeId: "01", rate: "0.05", taxableBase: "145455.71", amount: "7272.79" },
+      { type: "LIQUOR_CONSUMPTION", code: "32", schemeId: "32", rate: "360.00", taxableBase: "53.33", amount: "19200.00" },
+    ],
+  }] as never;
+  command.totals = {
+    subtotalAmount: "145455.71",
+    discountAmount: "0.00",
+    taxAmount: "83782.29",
+    totalAmount: "229238.00",
+    currencyCode: "COP",
+  } as never;
+
+  const request = new FactuCoreMapper().buildInvoiceRequest(command);
+  const taxes = request.lines[0].taxes ?? [];
+
+  assert.deepEqual(
+    taxes.map((tax) => [tax.taxType, tax.taxSchemeId, tax.rate, Number(tax.taxableBase), tax.taxAmount]),
+    [
+      ["ADV", "36", 25, 229238, 57309.5],
+      ["IVA", "01", 5, 145455.71, 7272.79],
+      ["ICL", "32", 360, 53.33, 19200],
+    ],
+  );
+  assert.equal(request.payments?.[0].amount, "229238.00");
+});
+
 test("missing credential payload blocks FactuCore HTTP", async () => {
   const client = new RecordingFactuCoreClient();
   const provider = new FactuCoreProvider(

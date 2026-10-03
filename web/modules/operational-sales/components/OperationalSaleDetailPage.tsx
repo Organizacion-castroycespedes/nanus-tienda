@@ -28,6 +28,7 @@ import { useOperationalSaleDetail } from "../hooks/use-operational-sale-detail";
 import {
   isEligibleForElectronicBillingRequest,
   PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION,
+  resolveOperationalSaleVoidAvailability,
   shouldShowProviderCreateIntentRecovery,
 } from "../services/operational-sales.service";
 import { PreInvoiceWizardModal } from "./wizard/PreInvoiceWizardModal";
@@ -168,6 +169,7 @@ const ActionCard = ({
   const [localActionMessage, setLocalActionMessage] = useState<string | null>(null);
   const billing = sale.electronicBilling;
   const accepted = billing?.status === "ACCEPTED";
+  const voidAvailability = resolveOperationalSaleVoidAvailability(sale);
   const showElectronicBilling = sale.electronicBillingEnabled;
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canRetry =
@@ -271,7 +273,7 @@ const ActionCard = ({
             {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
           </Button>
 
-          {sale.status !== "CANCELLED" && sale.status !== "REFUNDED" && accepted ? (
+          {voidAvailability.kind === "LOCAL" || voidAvailability.kind === "CREDIT_NOTE" ? (
             <Button
               type="button"
               variant="outline"
@@ -279,8 +281,14 @@ const ActionCard = ({
               className="flex items-center gap-2 border-rose-300 text-rose-700 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-rose-50"
             >
               <RotateCcw className="h-4 w-4 text-rose-600 shrink-0" />
-              Anular / Nota Crédito
+              {voidAvailability.kind === "CREDIT_NOTE" ? "Anular / Nota Crédito" : "Anular venta"}
             </Button>
+          ) : null}
+
+          {voidAvailability.kind === "BLOCKED_ELECTRONIC" ? (
+            <div className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <strong>Anulación no disponible.</strong> {voidAvailability.message}
+            </div>
           ) : null}
 
           {sale.status !== "CANCELLED" &&

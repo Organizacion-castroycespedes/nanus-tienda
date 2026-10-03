@@ -182,7 +182,7 @@ const FinanceHomePage = () => {
             href={link("cash-sessions")}
             className="inline-flex min-h-9 items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
           >
-            {currentSession ? "Cerrar caja / arqueo" : "Abrir caja"}
+            {currentSession ? "Gestionar caja" : "Abrir caja"}
           </Link>
         </div>
       </header>

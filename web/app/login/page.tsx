@@ -264,7 +264,6 @@ const LoginPageContent = () => {
                   id="email"
                   name="email"
                   type="email"
-                  autoFocus
                   ref={emailInputRef}
                   autoComplete="email"
                   value={email}
