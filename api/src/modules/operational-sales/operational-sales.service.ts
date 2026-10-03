@@ -8,6 +8,7 @@ import {
 import {
   buildOnlineResultFromDelivery,
   buildOnlineResultFromDocument,
+  ELECTRONIC_BILLING_STATUSES,
   type ElectronicBillingOnlineResult,
 } from "../integration-outbox/contracts/electronic-billing-outcome";
 import { normalizeOperationalSalesQuery, type OperationalSalesQueryDto } from "./dto/operational-sales-query.dto";
@@ -22,7 +23,6 @@ import { VoidOperationalSaleDto } from "./dto/void-operational-sale.dto";
 import { OperationalDebitNoteDto } from "./dto/operational-debit-note.dto";
 
 const OPERATIONAL_FE_PROVIDER_RECOVERY_AUDIT_ACTION = "OP_FE_PROVIDER_RECOVERY";
-const IN_FLIGHT_INVOICE_STATUSES = new Set(["PENDING", "PROCESSING", "TECHNICAL_ERROR"]);
 const VOID_REQUEST_RETRY_BASE_MS = 60_000;
 const VOID_REQUEST_RETRY_MAX_MS = 30 * 60_000;
 const VOID_REQUEST_MAX_ATTEMPTS = 20;
@@ -679,14 +679,18 @@ export class OperationalSalesService {
         [tenantId, saleId]
       );
       const invoice = invoiceResult.rows[0] ?? null;
-      if (invoice && IN_FLIGHT_INVOICE_STATUSES.has(invoice.status) && !(isAdmin && invoice.status === "TECHNICAL_ERROR")) {
+      if (invoice && invoice.status !== ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
         throw new BadRequestException(
-          "La factura electrónica de esta venta aún no tiene respuesta definitiva de la DIAN. Consulte el estado y anule cuando esté aceptada o rechazada."
+          `No se puede anular la venta porque su factura electrónica está en estado ${invoice.status}. Primero actualice o reconcilie el estado fiscal; solo una factura aceptada puede anularse mediante nota crédito.`
         );
       }
 
       await client.query("COMMIT");
-      return { invoice: invoice?.status === "ACCEPTED" ? invoice : null };
+      return {
+        invoice: invoice?.status === ELECTRONIC_BILLING_STATUSES.ACCEPTED
+          ? invoice
+          : null,
+      };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -721,7 +725,7 @@ export class OperationalSalesService {
           electronicDocument: null,
         });
 
-    if (creditNote.status === "ACCEPTED") {
+    if (creditNote.status === ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
       await this.applySaleVoid(actor, tenantId, saleId, dto, creditNote);
       await this.closeVoidRequest(tenantId, saleId, "COMPLETED", creditNote);
       return { ...(await this.detail(actor, saleId)), creditNote, voidRequest: null };
@@ -897,7 +901,7 @@ export class OperationalSalesService {
           this.buildCreditNotePayload(dto),
         );
         const creditNote = issue.kind === "OUTCOME" ? buildOnlineResultFromDocument(issue.electronicDocument) : null;
-        if (creditNote?.status === "ACCEPTED") {
+        if (creditNote?.status === ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
           await this.applySaleVoid(actor, request.tenant_id, request.sale_id, dto, creditNote);
           await this.closeVoidRequest(request.tenant_id, request.sale_id, "COMPLETED", creditNote);
           continue;
@@ -1114,6 +1118,11 @@ export class OperationalSalesService {
           FOR UPDATE`,
         [tenantId, saleId]
       );
+      const finalSaleStatus = paymentsResult.rows.some(
+        (payment) => payment.status === "COMPLETED"
+      )
+        ? "REFUNDED"
+        : "CANCELLED";
 
       for (const p of paymentsResult.rows) {
         const pAmount = Number(p.amount);
@@ -1180,12 +1189,13 @@ export class OperationalSalesService {
       // 3. Update Sale
       await client.query(
         `UPDATE sales
-            SET status = 'CANCELLED',
-                payment_status = 'REFUNDED',
-                notes = COALESCE(notes, '') || ' [Anulada: ' || $3 || ']',
-                updated_at = NOW()
+            SET status = $3,
+                total_paid = 0,
+                balance = 0,
+                balance_due = 0,
+                payment_status = 'PENDING'
           WHERE id = $1 AND tenant_id = $2`,
-        [saleId, tenantId, dto.reason.trim()]
+        [saleId, tenantId, finalSaleStatus]
       );
 
       this.auditService?.logEvent({
@@ -1200,8 +1210,8 @@ export class OperationalSalesService {
           paymentStatus: sale.payment_status,
         },
         after: {
-          status: "CANCELLED",
-          paymentStatus: "REFUNDED",
+          status: finalSaleStatus,
+          paymentStatus: "PENDING",
           reason: dto.reason.trim(),
           discrepancyResponseCode: dto.discrepancyResponseCode ?? "2",
           creditNote,
@@ -1246,7 +1256,7 @@ export class OperationalSalesService {
         [tenantId, saleId]
       );
       const billingDoc = billingDocResult.rows[0];
-      if (!billingDoc || billingDoc.status !== "ACCEPTED") {
+      if (!billingDoc || billingDoc.status !== ELECTRONIC_BILLING_STATUSES.ACCEPTED) {
         throw new BadRequestException(
           "No se puede emitir una Nota Débito sin una factura electrónica aceptada previa."
         );

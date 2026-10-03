@@ -1,5 +1,6 @@
 import { apiClient } from "../../../lib/http";
 import type { ElectronicBillingOnlineResult } from "../../reporteria/services/electronic-billing.service";
+import { ELECTRONIC_DOCUMENT_STATUSES } from "../../reporteria/types";
 import type {
   OperationalSaleDetail,
   OperationalSaleListItem,
@@ -90,6 +91,41 @@ export const shouldShowProviderCreateIntentRecovery = (
   sale.electronicBilling?.retryability?.canRecoverProviderCreateIntent === true
   || sale.electronicBilling?.retryability?.canRecoverExistingProvider === true
 );
+
+export type OperationalSaleVoidAvailability =
+  | { kind: "HIDDEN"; message: null }
+  | { kind: "LOCAL"; message: null }
+  | { kind: "CREDIT_NOTE"; message: null }
+  | { kind: "BLOCKED_ELECTRONIC"; message: string };
+
+const electronicBillingStatusLabels: Record<string, string> = {
+  [ELECTRONIC_DOCUMENT_STATUSES.PENDING]: "pendiente",
+  [ELECTRONIC_DOCUMENT_STATUSES.PROCESSING]: "en procesamiento",
+  [ELECTRONIC_DOCUMENT_STATUSES.REJECTED]: "rechazada",
+  [ELECTRONIC_DOCUMENT_STATUSES.TECHNICAL_ERROR]: "con error técnico",
+  [ELECTRONIC_DOCUMENT_STATUSES.CANCELLED]: "cancelada",
+};
+
+export const resolveOperationalSaleVoidAvailability = (
+  sale: Pick<OperationalSaleDetail, "status" | "electronicBilling">,
+): OperationalSaleVoidAvailability => {
+  if (sale.status === "CANCELLED" || sale.status === "REFUNDED") {
+    return { kind: "HIDDEN", message: null };
+  }
+  if (!sale.electronicBilling) {
+    return { kind: "LOCAL", message: null };
+  }
+  if (sale.electronicBilling.status === ELECTRONIC_DOCUMENT_STATUSES.ACCEPTED) {
+    return { kind: "CREDIT_NOTE", message: null };
+  }
+
+  const status = electronicBillingStatusLabels[sale.electronicBilling.status]
+    ?? sale.electronicBilling.status.toLowerCase();
+  return {
+    kind: "BLOCKED_ELECTRONIC",
+    message: `No se puede anular esta venta porque la factura electrónica está ${status}. Primero actualiza o reconcilia su estado fiscal. Solo una factura aceptada puede anularse mediante nota crédito.`,
+  };
+};
 
 export const PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION =
   "Manus verificar\u00e1 primero si el documento ya existe en FactuCore. Si lo encuentra, reutilizar\u00e1 ese documento; si no, continuar\u00e1 el procesamiento seguro y podr\u00eda avanzar hacia la DIAN. No ejecutes esta acci\u00f3n varias veces.";

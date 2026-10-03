@@ -48,6 +48,21 @@
         "openspec/changes/autorizar-estado-estricto-gobernanza/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "corregir-anulacion-fiscal-ventas-operativas",
+      "paths": [
+        "api/.env.example",
+        "api/src/modules/integration-outbox/contracts/electronic-billing-outcome.ts",
+        "api/src/modules/operational-sales/operational-sales.service.spec.ts",
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "web/modules/operational-sales/components/OperationalSaleDetailPage.tsx",
+        "web/modules/operational-sales/components/VoidSaleModal.tsx",
+        "web/modules/operational-sales/services/operational-sales.service.spec.ts",
+        "web/modules/operational-sales/services/operational-sales.service.ts",
+        "openspec/changes/corregir-anulacion-fiscal-ventas-operativas/**"
+      ],
+      "exemptions": []
     }
   ]
 }
