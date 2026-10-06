@@ -346,6 +346,28 @@ describe("PosTerminalsService", () => {
     assert.equal(result.terminalId, "local-terminal");
     assert.equal(result.printerDeviceId, "network-printer-001");
     assert.equal(result.features.scanner, false);
+    assert.deepEqual(result.scale, {
+      assignment: "ASSIGNED",
+      classification: "MOCK",
+      deviceId: "mock-scale-001",
+    });
+  });
+
+  it("classifies a non-MOCK assignment conservatively as UNKNOWN", async () => {
+    const { service } = buildService({
+      settings: buildSettings({ scale_device_id: "rochi-terminal-1" }),
+    });
+
+    const result = await service.resolveCurrent(
+      { tenantId, branchId },
+      actor
+    );
+
+    assert.deepEqual(result.scale, {
+      assignment: "ASSIGNED",
+      classification: "UNKNOWN",
+      deviceId: "rochi-terminal-1",
+    });
   });
 
   it("resolves tenant slug before principal branch and terminal repository calls", async () => {
@@ -440,6 +462,11 @@ describe("PosTerminalsService", () => {
     assert.equal(result.agentTerminalCode, null);
     assert.equal(result.printerDeviceId, null);
     assert.equal(result.terminalId, null);
+    assert.deepEqual(result.scale, {
+      assignment: "NONE",
+      classification: "UNKNOWN",
+      deviceId: null,
+    });
     assert.deepEqual(lookupCalls, [
       `findOperationalTerminalById:${term002Id}`,
       `findByOperationalTerminalId:${term002Id}`,
@@ -580,6 +607,11 @@ describe("PosTerminalsService", () => {
     assert.equal(result.terminalId, "local-terminal");
     assert.equal(result.printerDeviceId, "mock-printer-001");
     assert.equal(result.features.printSale, true);
+    assert.deepEqual(result.scale, {
+      assignment: "ASSIGNED",
+      classification: "MOCK",
+      deviceId: "mock-scale-001",
+    });
   });
 
   it("rejects branch from another tenant", async () => {

@@ -13,6 +13,7 @@ import {
   openAgentCashDrawer,
   printAgentTicket,
   testAgentPrint,
+  AgentHttpError,
 } from "./agent-client.js";
 
 const config = {
@@ -209,6 +210,54 @@ describe("physical Agent action timeouts", () => {
         success: true,
         jobId: "test-1",
       });
+    });
+  });
+});
+
+describe("controlled Agent HTTP errors", () => {
+  it("preserves safe status and known code without exposing response text", async () => {
+    await withServer((_request, response) => {
+      response.statusCode = 400;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ statusCode: 400, message: "PRINT_TRANSPORT_NOT_READY: local path C:\\\\secret" }));
+    }, async (port) => {
+      await assert.rejects(
+        testAgentPrint(configForPort(port), {}),
+        (error: unknown) => error instanceof AgentHttpError
+          && error.statusCode === 400
+          && error.code === "PRINT_TRANSPORT_NOT_READY"
+          && error.message === "PRINT_TRANSPORT_NOT_READY"
+          && !error.message.includes("secret"),
+      );
+    });
+  });
+
+  it("keeps malformed successful responses as AGENT_RESPONSE_INVALID", async () => {
+    await withServer((_request, response) => {
+      response.statusCode = 201;
+      response.setHeader("Content-Type", "application/json");
+      response.end("not-json");
+    }, async (port) => {
+      await assert.rejects(
+        testAgentPrint(configForPort(port), {}),
+        (error: unknown) => error instanceof Error && error.message === "AGENT_RESPONSE_INVALID",
+      );
+    });
+  });
+
+  it("uses a generic safe code for an unknown HTTP error", async () => {
+    await withServer((_request, response) => {
+      response.statusCode = 500;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ message: "internal stack path C:\\\\secret" }));
+    }, async (port) => {
+      await assert.rejects(
+        testAgentPrint(configForPort(port), {}),
+        (error: unknown) => error instanceof AgentHttpError
+          && error.statusCode === 500
+          && error.code === "AGENT_HTTP_ERROR"
+          && error.message === "AGENT_HTTP_ERROR",
+      );
     });
   });
 });

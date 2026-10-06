@@ -8,6 +8,7 @@ import type { ProductResponse } from "../../../../domains/products/dtos";
 
 export type ScannerMockStatus = "disabled" | "connected" | "error";
 export type ScaleMockStatus = "disabled" | "ready" | "reading" | "error";
+export type ScaleConfigState = "loading" | "unconfigured" | "configured" | "error";
 
 export type PosDiagnosticsPanelProps = {
   scannerMockStatus: ScannerMockStatus;
@@ -20,6 +21,7 @@ export type PosDiagnosticsPanelProps = {
   scannerLastResult: string | null;
   scaleMockStatus: ScaleMockStatus;
   scaleMockEnabled: boolean;
+  scaleConfigState: ScaleConfigState;
   firstWeighableCartProduct: ProductResponse | null;
   scaleLastWeight: string | null;
   scaleLastResult: string | null;
@@ -38,6 +40,7 @@ export const PosDiagnosticsPanel = memo(function PosDiagnosticsPanel({
   scannerLastResult,
   scaleMockStatus,
   scaleMockEnabled,
+  scaleConfigState,
   firstWeighableCartProduct,
   scaleLastWeight,
   scaleLastResult,
@@ -129,7 +132,13 @@ export const PosDiagnosticsPanel = memo(function PosDiagnosticsPanel({
                     : scaleMockStatus === "error"
                       ? "Error"
                       : "Listo"
-                  : "Desactivado por feature flag"}
+                  : scaleConfigState === "loading"
+                    ? "Verificando configuración"
+                    : scaleConfigState === "error"
+                      ? "Configuración no disponible"
+                      : scaleConfigState === "configured"
+                        ? "Pendiente: balanza REAL no autorizada"
+                        : "Sin balanza configurada"}
               </span>
             </div>
             <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">

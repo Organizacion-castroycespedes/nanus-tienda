@@ -18,6 +18,7 @@ from openspec_governance_diagnostic import (
     path_matches,
     resolve_openspec_command,
     source_status_report,
+    valid_pattern,
     build_environment_evidence,
     classify_environment_checksum,
     load_qa_runtime_config,
@@ -1042,6 +1043,56 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertTrue(path_matches("scripts/governance/**", "scripts\\governance\\tool.py"))
         self.assertTrue(path_matches("AGENTS.md", "AGENTS.md"))
         self.assertFalse(path_matches("scripts/governance/**", "scripts/database/migrate.sh"))
+
+    def test_literal_bracket_paths_are_exact_and_globs_remain_rejected(self):
+        route_paths = (
+            "web/app/[tenant]/layout.tsx",
+            "web/app/[...slug]/page.tsx",
+            "web/app/[[...slug]]/page.tsx",
+        )
+        for route_path in route_paths:
+            with self.subTest(route_path=route_path):
+                self.assertTrue(valid_pattern(route_path))
+                self.assertTrue(path_matches(route_path, route_path))
+
+        self.assertFalse(path_matches("web/app/[tenant]/layout.tsx", "web/app/[other]/layout.tsx"))
+        self.assertTrue(valid_pattern("web/app/[tenant]/**"))
+        self.assertTrue(path_matches("web/app/[tenant]/**", "web/app/[tenant]/layout.tsx"))
+        self.assertFalse(path_matches("web/app/[tenant]/**", "web/app/[other]/layout.tsx"))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            change_root = root / "openspec" / "changes" / "route-paths"
+            change_root.mkdir(parents=True)
+            (change_root / ".openspec.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
+            manifest = {
+                "version": 1,
+                "changes": [{"change_id": "route-paths", "paths": [route_paths[0]], "exemptions": []}],
+            }
+            coverage = evaluate_coverage(
+                root,
+                [route_paths[0], "web/app/[other]/layout.tsx"],
+                manifest,
+                [],
+                {"change_id": "route-paths", "change_strict_pass": True},
+                True,
+            )
+            self.assertEqual(coverage["files"][0]["coverage_status"], "SINGLE_MATCH")
+            self.assertEqual(coverage["files"][0]["matched_change_ids"], ["route-paths"])
+            self.assertEqual(coverage["files"][1]["coverage_status"], "ZERO_MATCH")
+
+        for unsupported_pattern in (
+            "*",
+            "**",
+            "**/*",
+            "web/*/layout.tsx",
+            "web/?/layout.tsx",
+            "web/app/*/layout.tsx",
+            "web/app/?/layout.tsx",
+            "web/app/**/layout.tsx",
+        ):
+            with self.subTest(unsupported_pattern=unsupported_pattern):
+                self.assertFalse(valid_pattern(unsupported_pattern))
 
     def test_git_added_modified_deleted_and_renamed_records(self):
         raw = b"?? added.py\0 M modified.py\0 D deleted.py\0R  old.py\0renamed.py\0"

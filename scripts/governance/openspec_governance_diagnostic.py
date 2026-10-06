@@ -97,9 +97,17 @@ def valid_pattern(pattern: str) -> bool:
     normalized = normalize_path(pattern)
     if not normalized or normalized.startswith("/") or ".." in normalized.split("/"):
         return False
-    if any(char in normalized for char in "*?[]") and not normalized.endswith("/**"):
+    if any(not segment for segment in normalized.split("/")):
         return False
-    return normalized not in {"*", "**", "**/*", "./", "."}
+
+    if normalized.endswith("/**"):
+        prefix = normalized[:-3].rstrip("/")
+        return bool(prefix) and not any(char in prefix for char in "*?")
+
+    # Brackets are literal path characters (for example Next.js route groups).
+    # Exact patterns do not implement glob syntax; only a terminal /** above is
+    # supported as a recursive prefix pattern.
+    return not any(char in normalized for char in "*?") and normalized not in {".", "./"}
 
 
 def path_matches(pattern: str, path: str) -> bool:

@@ -75,3 +75,47 @@ func TestCoreOperationWrapperEmitsStartAndSuccessOrFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestInteractiveDeviceStepsAreSkippedBeforeTechnicalSuccess(t *testing.T) {
+	state := newInstallerCoreState()
+	recorder := &installerCoreEventRecorder{}
+	sequence := uint64(1)
+	if !applyInstallerCoreEvent(&state, newCoreEvent(sequence, eventInstallStarted, "")) {
+		t.Fatal("install start should be accepted")
+	}
+	sequence++
+	skipInteractiveDeviceSteps(recorder, &sequence)
+	for _, event := range recorder.Events {
+		if !applyInstallerCoreEvent(&state, event) {
+			t.Fatalf("skip event rejected: %#v", event)
+		}
+	}
+	if state.Steps[6].State != coreStepSkipped || state.Steps[7].State != coreStepSkipped {
+		t.Fatalf("interactive steps not skipped: %#v", state.Steps)
+	}
+	for _, step := range []installerCoreStepID{
+		stepVerifyRequirements,
+		stepPrepareFiles,
+		stepInstallAgent,
+		stepConfigureService,
+		stepStartService,
+		stepVerifyService,
+		stepFinalize,
+	} {
+		sequence++
+		if !applyInstallerCoreEvent(&state, newCoreEvent(sequence, eventStepStarted, step)) {
+			t.Fatalf("technical step start rejected: %s", step)
+		}
+		sequence++
+		if !applyInstallerCoreEvent(&state, newCoreEvent(sequence, eventStepSucceeded, step)) {
+			t.Fatalf("technical step success rejected: %s", step)
+		}
+	}
+	sequence++
+	if !applyInstallerCoreEvent(&state, newCoreEvent(sequence, eventInstallSuccess, "")) {
+		t.Fatalf("technical install should complete after explicit skips: %#v", state)
+	}
+	if state.Phase != coreCompleted {
+		t.Fatalf("unexpected final phase: %#v", state)
+	}
+}

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import {
   DeviceType,
   PeripheralEventName,
@@ -8,20 +8,44 @@ import { DevicesService } from "../devices/devices.service";
 import { EventsService } from "../events/events.service";
 import { LogsService } from "../logs/logs.service";
 import type { ScaleWeightRequest, ScaleWeightResponse } from "./scale.types";
+import { RochiA01eSerialScale } from "./rochi-a01e.serial";
+import { createRochiSerialPort } from "./rochi-a01e.serial-port.factory";
+import type { RochiSerialPortFactory } from "./rochi-a01e.serial";
+import { ConnectionType } from "../../shared/types/peripheral.types";
+import type { ScaleUnitVerification } from "../../shared/types/peripheral.types";
+import { DeviceProfileId } from "../../shared/profiles/device-profiles";
+import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
 
 const DEFAULT_TERMINAL_ID = "local-terminal";
 const DEFAULT_SCALE_ID = "mock-scale-001";
 const MOCK_WEIGHT_KG = 1.25;
+export const ROCHI_SERIAL_PORT_FACTORY = Symbol("ROCHI_SERIAL_PORT_FACTORY");
+const ROCHI_READ_TIMEOUT_MS = 2_500;
+
+const readUnitVerification = (metadata: Record<string, unknown> | undefined): ScaleUnitVerification | undefined => {
+  const value = metadata?.unitVerification;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.unit !== "KG" || record.method !== "OPERATOR_CONFIRMATION" || typeof record.verifiedAt !== "string") {
+    return undefined;
+  }
+  return { unit: "KG", method: "OPERATOR_CONFIRMATION", verifiedAt: record.verifiedAt };
+};
 
 @Injectable()
 export class ScaleService {
   constructor(
     @Inject(DevicesService) private readonly devicesService: DevicesService,
     @Inject(LogsService) private readonly logsService: LogsService,
-    @Inject(EventsService) private readonly eventsService: EventsService
+    @Inject(EventsService) private readonly eventsService: EventsService,
+    @Optional()
+    @Inject(ROCHI_SERIAL_PORT_FACTORY)
+    private readonly rochiPortFactory: RochiSerialPortFactory = createRochiSerialPort
   ) {}
 
-  getCurrentWeight(request: ScaleWeightRequest): ScaleWeightResponse {
+  private readonly inFlight = new Map<string, Promise<ScaleWeightResponse>>();
+
+  getCurrentWeight(request: ScaleWeightRequest): ScaleWeightResponse | Promise<ScaleWeightResponse> {
     const terminalId = validateIdentifier(
       request.terminalId?.trim() || DEFAULT_TERMINAL_ID,
       "terminalId"
@@ -30,19 +54,54 @@ export class ScaleService {
       request.deviceId?.trim() || DEFAULT_SCALE_ID,
       "deviceId"
     );
-    const scale = this.devicesService.findRequired(deviceId, DeviceType.SCALE);
+    if (getPeripheralsConfig().mode !== "REAL") {
+      this.devicesService.findRequired(deviceId, DeviceType.SCALE);
+      return this.buildMockResponse(terminalId, deviceId);
+    }
+
+    const configuredScales = this.devicesService.getConfiguredScales(terminalId);
+    const selected = request.deviceId?.trim()
+      ? configuredScales.find((device) => device.id === deviceId)
+      : configuredScales.length === 1 ? configuredScales[0] : undefined;
+    if (configuredScales.length === 0 || !selected) {
+      if (configuredScales.length > 1 && !request.deviceId) {
+        throw new BadRequestException("multiple configured scales require deviceId");
+      }
+      throw new NotFoundException("configured SCALE device not found");
+    }
+    if (
+      selected.connectionType !== ConnectionType.SERIAL ||
+      selected.profileId !== DeviceProfileId.RochiA01e ||
+      !selected.serial
+    ) {
+      throw new BadRequestException("configured SCALE is not a supported ROCHI serial device");
+    }
+
+    const active = this.inFlight.get(selected.id);
+    if (active) return active;
+    const operation = this.readRochi(terminalId, selected.id, selected.serial).finally(() => {
+      this.inFlight.delete(selected.id);
+    });
+    this.inFlight.set(selected.id, operation);
+    return operation;
+  }
+
+  private buildMockResponse(terminalId: string, deviceId: string): ScaleWeightResponse {
     const timestamp = new Date().toISOString();
     const response: ScaleWeightResponse = {
-      deviceId: scale.id,
+      deviceId,
       weight: MOCK_WEIGHT_KG,
       unit: "kg",
       stable: true,
+      source: "MOCK",
+      unitVerified: false,
+      stabilityVerified: true,
       timestamp,
     };
 
     this.eventsService.emit(PeripheralEventName.ScaleWeightChanged, {
       terminalId,
-      deviceId: scale.id,
+      deviceId,
       weight: response.weight,
       unit: response.unit,
       stable: response.stable,
@@ -54,7 +113,7 @@ export class ScaleService {
       message: "Scale current weight simulated successfully",
       metadata: {
         terminalId,
-        deviceId: scale.id,
+        deviceId,
         weight: response.weight,
         unit: response.unit,
         stable: response.stable,
@@ -62,5 +121,55 @@ export class ScaleService {
     });
 
     return response;
+  }
+
+  private async readRochi(
+    terminalId: string,
+    deviceId: string,
+    serial: NonNullable<ReturnType<DevicesService["getConfiguredScales"]>[number]["serial"]>
+  ): Promise<ScaleWeightResponse> {
+    const scale = new RochiA01eSerialScale({
+      path: serial.port,
+      sourceUnit: "UNKNOWN",
+      baudRate: serial.baudRate,
+      dataBits: serial.dataBits,
+      stopBits: serial.stopBits,
+      parity: serial.parity,
+      rtscts: serial.flowControl === "rtscts",
+    }, this.rochiPortFactory, "REAL");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await new Promise<{ value: number; timestamp: string }>((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("ROCHI reading timeout")), ROCHI_READ_TIMEOUT_MS);
+        scale.onReading((value) => resolve({ value: value.value, timestamp: new Date(value.receivedAtMs).toISOString() }));
+        scale.onParseError((error) => reject(new Error(`ROCHI parser error: ${error.code}`)));
+        scale.open().catch(reject);
+      });
+      const configuredDevice = this.devicesService.getConfiguredScales(terminalId).find((device) => device.id === deviceId);
+      const unitVerification = readUnitVerification(configuredDevice?.metadata);
+      const response: ScaleWeightResponse = {
+        deviceId,
+        weight: result.value,
+        unit: unitVerification ? "kg" : null,
+        stable: null,
+        source: "REAL",
+        unitVerified: Boolean(unitVerification),
+        stabilityVerified: false,
+        timestamp: result.timestamp,
+      };
+      this.eventsService.emit(PeripheralEventName.ScaleWeightChanged, {
+        terminalId, deviceId, weight: response.weight, unit: response.unit,
+        stable: response.stable, source: response.source, timestamp: response.timestamp,
+      });
+      this.logsService.append({
+        source: "scale", event: "scale.current_weight.real",
+        message: "Scale current weight read from ROCHI",
+        metadata: { terminalId, deviceId, source: "REAL", unitVerified: false, stabilityVerified: false },
+      });
+      return response;
+    } finally {
+      if (timer) clearTimeout(timer);
+      await scale.close().catch(() => undefined);
+    }
   }
 }

@@ -83,7 +83,7 @@ test("Windows discovery provider includes XP-58 Local USB001", () => {
   assert.deepEqual(printer, {
     name: "XP-58",
     nativeIdentifier: "XP-58",
-    fingerprint: { source: "WINDOWS_PRINT_QUEUE", values: { queueName: "XP-58" } },
+    fingerprint: { source: "WINDOWS_PRINT_QUEUE", values: { queueName: "XP-58", portName: "USB001", driverName: "XP-58", queueReady: "true" } },
     platform: "WINDOWS",
     architecture: process.arch,
   });
