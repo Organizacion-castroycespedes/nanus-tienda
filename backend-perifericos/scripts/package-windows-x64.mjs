@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -12,9 +13,47 @@ const packageJson = JSON.parse(readFileSync(join(projectRoot, "package.json"), "
 const agentVersion = resolveAgentVersion({ packageVersion: packageJson.version });
 const artifactName = `ManusPeripheralAgent-win-x64-${agentVersion}`;
 const artifactRoot = join(projectRoot, "dist-terminal", "windows-x64", artifactName);
-const stagingRoot = mkdtempSync(join(tmpdir(), "manus-peripheral-agent-runtime-"));
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const environment = getEnvironment(process.env.MANUS_ENVIRONMENT ?? "qa");
+const requiredNode = [24, 21, 0];
+const versionParts = (version) => version.replace(/^v/, "").split(".").map(Number);
+const isCompatibleNode = (version) => {
+  const [major, minor, patch = 0] = versionParts(version);
+  return major > requiredNode[0]
+    || (major === requiredNode[0] && (minor > requiredNode[1] || (minor === requiredNode[1] && patch >= requiredNode[2])));
+};
+
+// Build toolchain and productive runtime are different things. The portable
+// artifact intentionally contains only node.exe; npm must come from the same
+// complete, pinned Node distribution used for the build.
+const configuredToolchainRoot = process.env.MANUS_NODE_TOOLCHAIN_ROOT?.trim();
+const toolchainRoot = configuredToolchainRoot
+  ? resolve(configuredToolchainRoot)
+  : dirname(process.execPath);
+const toolchainNodePath = join(toolchainRoot, "node.exe");
+if (!existsSync(toolchainNodePath)) {
+  throw new Error(`Complete Node build toolchain is missing node.exe: ${toolchainNodePath}`);
+}
+
+const toolchainNodeVersion = execFileSync(toolchainNodePath, ["--version"], {
+  encoding: "utf8",
+  windowsHide: true,
+}).trim();
+if (!isCompatibleNode(toolchainNodeVersion)) {
+  throw new Error(`Windows packaging requires the official Node toolchain >=24.21.0; found ${toolchainNodeVersion} at ${toolchainNodePath}`);
+}
+
+const toolchainNodeSHA256 = createHash("sha256").update(readFileSync(toolchainNodePath)).digest("hex");
+const expectedToolchainSHA256 = process.env.MANUS_NODE_TOOLCHAIN_SHA256?.trim().toLowerCase();
+if (expectedToolchainSHA256 && expectedToolchainSHA256 !== toolchainNodeSHA256) {
+  throw new Error(`Node toolchain SHA256 mismatch for ${toolchainNodePath}: expected ${expectedToolchainSHA256}, actual ${toolchainNodeSHA256}`);
+}
+
+const npmCliPath = join(toolchainRoot, "node_modules", "npm", "bin", "npm-cli.js");
+const npmPackagePath = join(dirname(npmCliPath), "..", "package.json");
+if (!existsSync(npmCliPath) || !existsSync(npmPackagePath)) {
+  throw new Error(`Complete Node build toolchain is missing npm-cli.js: ${npmCliPath}`);
+}
+const stagingRoot = mkdtempSync(join(tmpdir(), "manus-peripheral-agent-runtime-"));
 
 const clearReadonlyWindows = (path) => {
   if (process.platform !== "win32") {
@@ -319,13 +358,11 @@ try {
   // repository files, npm, or Git are copied to the workstation artifact.
   cpSync(join(projectRoot, "package.json"), join(stagingRoot, "package.json"));
   cpSync(join(projectRoot, "package-lock.json"), join(stagingRoot, "package-lock.json"));
-  execFileSync(npmCommand, ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], {
+  execFileSync(toolchainNodePath, [npmCliPath, "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], {
     cwd: stagingRoot,
     stdio: "inherit",
     windowsHide: true,
-    // npm.cmd is a Windows command shim; the build host shell is required
-    // only while composing the artifact, never by the target workstation.
-    shell: process.platform === "win32",
+    shell: false,
   });
 
   cpSync(join(projectRoot, "dist"), join(artifactRoot, "app"), {
@@ -334,7 +371,7 @@ try {
   });
   cpSync(join(stagingRoot, "node_modules"), join(artifactRoot, "node_modules"), { recursive: true });
   mkdirSync(join(artifactRoot, "runtime"), { recursive: true });
-  cpSync(process.execPath, join(artifactRoot, "runtime", "node.exe"));
+  cpSync(toolchainNodePath, join(artifactRoot, "runtime", "node.exe"));
 
   writeText("config/agent.config.example.json", `${JSON.stringify({
     port: 4050,
@@ -374,7 +411,7 @@ try {
     version: agentVersion,
     platform: "win32",
     architecture: "x64",
-    runtime: process.version,
+    runtime: toolchainNodeVersion,
     packaging: "portable-node-runtime",
   }, null, 2)}\n`);
   writeText("VERSION", `${agentVersion}\r\n`);

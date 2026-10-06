@@ -28,9 +28,15 @@ import {
   testPrint,
 } from "../api";
 import {
+  DEFAULT_SCALE_DEVICE_ID,
   resolveCurrentPosTerminalConfig,
   savePosTerminalPeripheralSettings,
 } from "../terminal-config";
+import {
+  buildScaleAssociationSettings,
+  isMockScaleConfiguration,
+  resolveScaleAssociationState,
+} from "../scale-association";
 import {
   isPrinterBackedCashDrawer,
   resolveCashDrawerDeviceIdToPersist,
@@ -142,6 +148,7 @@ const PeripheralsAdminWorkspace = () => {
   const [resolved, setResolved] = useState<PosTerminalResolvedConfig | null>(null);
   const [selectedTerminalId, setSelectedTerminalId] = useState(queryTerminalId);
   const [printerDeviceId, setPrinterDeviceId] = useState("");
+  const [scaleDeviceId, setScaleDeviceId] = useState("");
   const [printerProfileId, setPrinterProfileId] = useState<PrinterProfileId>("THERMAL_80MM");
   const [drawerCertified, setDrawerCertified] = useState(false);
   const [drawerResult, setDrawerResult] = useState<CashDrawerResponse | null>(null);
@@ -233,6 +240,11 @@ const PeripheralsAdminWorkspace = () => {
         if (resolvedResult.status === "fulfilled") {
           setResolved(resolvedResult.value);
           setPrinterDeviceId(resolvedResult.value.printerDeviceId ?? "");
+          setScaleDeviceId(
+            isMockScaleConfiguration(resolvedResult.value)
+              ? ""
+              : resolvedResult.value.scaleDeviceId ?? ""
+          );
           if (!terminalId && resolvedResult.value.operationalTerminalId) {
             replaceQueryTerminal(resolvedResult.value.operationalTerminalId);
             setSelectedTerminalId(resolvedResult.value.operationalTerminalId);
@@ -240,6 +252,7 @@ const PeripheralsAdminWorkspace = () => {
         } else {
           setResolved(null);
           setPrinterDeviceId("");
+          setScaleDeviceId("");
         }
       } finally {
         setLoading((prev) => ({ ...prev, snapshot: false }));
@@ -261,6 +274,19 @@ const PeripheralsAdminWorkspace = () => {
   const selectedTerminal = terminals.find((terminal) => terminal.id === selectedTerminalId);
   const selectedPrinterDevice = devices.find((device) => device.id === printerDeviceId);
   const printerCandidates = devices.filter((device) => device.type === "PRINTER");
+  const scaleCandidates = devices.filter(
+    (device) =>
+      device.type === "SCALE" &&
+      device.connectionType !== "MOCK" &&
+      device.id !== DEFAULT_SCALE_DEVICE_ID
+  );
+  const selectedScaleDevice = devices.find((device) => device.id === scaleDeviceId);
+  const canonicalScaleDevice = devices.find((device) => device.id === resolved?.scaleDeviceId);
+  const scaleState = resolveScaleAssociationState({
+    resolved,
+    selectedDevice: canonicalScaleDevice,
+    realScaleCandidateCount: scaleCandidates.length,
+  });
   const selectedPrinterDrawerCertified = getUsbCashDrawerCertification(selectedPrinterDevice);
   const printerBackedDrawer = isPrinterBackedCashDrawer({
     currentCashDrawerDeviceId: resolved?.cashDrawerDeviceId ?? null,
@@ -376,6 +402,51 @@ const PeripheralsAdminWorkspace = () => {
       );
     } catch (error) {
       showToast(error instanceof Error ? error.message : "No se pudo guardar.", "error");
+    } finally {
+      setLoading((prev) => ({ ...prev, save: false }));
+    }
+  };
+
+  const saveScale = async (nextScaleDeviceId: string | null) => {
+    const currentResolved = resolved;
+    const targetTerminalId = currentResolved?.posTerminalId;
+    if (!targetTerminalId || !currentResolved) {
+      showToast("Periféricos no configurados para la terminal.", "warning");
+      return;
+    }
+    if (
+      nextScaleDeviceId &&
+      !scaleCandidates.some((device) => device.id === nextScaleDeviceId)
+    ) {
+      showToast("Selecciona una balanza SCALE descubierta por el Agent.", "warning");
+      return;
+    }
+
+    setLoading((prev) => ({ ...prev, save: true }));
+    try {
+      await savePosTerminalPeripheralSettings(
+        targetTerminalId,
+        buildScaleAssociationSettings(currentResolved, nextScaleDeviceId)
+      );
+      const persisted = await resolveCurrentPosTerminalConfig({
+        tenantId: currentResolved.tenantId,
+        terminalId: selectedTerminalId || undefined,
+      });
+      if (
+        persisted.scaleDeviceId !== nextScaleDeviceId ||
+        persisted.features.scale !== Boolean(nextScaleDeviceId)
+      ) {
+        throw new Error("La terminal no devolvió la asociación de balanza solicitada.");
+      }
+      setResolved(persisted);
+      setScaleDeviceId(persisted.scaleDeviceId ?? "");
+      await loadSnapshot(selectedTerminalId || undefined);
+      showToast(
+        nextScaleDeviceId ? "Balanza asociada." : "Balanza desasociada.",
+        "success"
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "No se pudo guardar la balanza.", "error");
     } finally {
       setLoading((prev) => ({ ...prev, save: false }));
     }
@@ -652,14 +723,94 @@ const PeripheralsAdminWorkspace = () => {
         <BlockCard
           title="Balanza"
           state={{
-            status: resolved?.scaleDeviceId ? "configured" : "not-configured",
-            title: resolved?.scaleDeviceId ? "Balanza configurada" : "Balanza pendiente",
-            detail: resolved?.scaleDeviceId
-              ? "Configuración persistida visible."
-              : "Próximamente / Pendiente de integración.",
+            status: scaleState === "configured" ? "configured" : scaleState === "missing" ? "missing" : "not-configured",
+            title:
+              scaleState === "configured"
+                ? "Balanza configurada y detectada"
+                : scaleState === "missing"
+                  ? "Balanza configurada pero no detectada"
+                  : "Balanza pendiente",
+            detail:
+              scaleState === "configured"
+                ? "La asociación persistida corresponde a una balanza descubierta por el Agent."
+                : scaleState === "missing"
+                  ? "La terminal conserva la asociación, pero el Agent no detecta la balanza ahora."
+                  : "Selecciona explícitamente una balanza descubierta para asociarla a esta terminal.",
           }}
         >
-          {infoBox("deviceId", resolved?.scaleDeviceId ?? "-")}
+          <div className="space-y-3">
+            {infoBox("deviceId", isMockScaleConfiguration(resolved) ? "mock-scale-001 (fallback; sin asociación real)" : resolved?.scaleDeviceId ?? "-")}
+            {selectedScaleDevice
+              ? infoBox(
+                  "dispositivo descubierto",
+                  `${selectedScaleDevice.name} · ${selectedScaleDevice.connectionType} · ${selectedScaleDevice.profileId ?? "-"}`
+                )
+              : null}
+            {selectedScaleDevice?.connectionType === "SERIAL" && selectedScaleDevice.serial
+              ? infoBox(
+                  "SERIAL",
+                  [
+                    selectedScaleDevice.serial.port,
+                    selectedScaleDevice.serial.baudRate,
+                    `${selectedScaleDevice.serial.dataBits}N${selectedScaleDevice.serial.stopBits}`,
+                    selectedScaleDevice.serial.parity,
+                    selectedScaleDevice.serial.flowControl,
+                    selectedScaleDevice.serial.pnp?.deviceId,
+                    selectedScaleDevice.serial.pnp?.vendorId &&
+                      selectedScaleDevice.serial.pnp?.productId
+                      ? `${selectedScaleDevice.serial.pnp.vendorId}/${selectedScaleDevice.serial.pnp.productId}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" / ") || "-"
+                )
+              : null}
+            <label className="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <span className="font-medium">Balanza descubierta</span>
+              <select
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-slate-800 dark:border-slate-700"
+                value={scaleDeviceId}
+                onChange={(event) => setScaleDeviceId(event.target.value)}
+              >
+                <option value="">Sin configurar</option>
+                {resolved?.scaleDeviceId &&
+                !isMockScaleConfiguration(resolved) &&
+                !scaleCandidates.some((device) => device.id === resolved.scaleDeviceId) ? (
+                  <option value={resolved.scaleDeviceId}>
+                    {resolved.scaleDeviceId} · configurada, no detectada
+                  </option>
+                ) : null}
+                {scaleCandidates.map((device) => (
+                  <option key={device.id} value={device.id}>
+                    {device.name} · {device.id} · {device.connectionType} · {device.profileId ?? "-"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => void saveScale(scaleDeviceId || null)}
+                isLoading={loading.save}
+                disabled={
+                  !resolved?.posTerminalId ||
+                  !scaleDeviceId ||
+                  !scaleCandidates.some((device) => device.id === scaleDeviceId)
+                }
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Asociar / Cambiar
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => void saveScale(null)}
+                isLoading={loading.save}
+                disabled={!resolved?.posTerminalId || !resolved?.scaleDeviceId}
+              >
+                Desasociar
+              </Button>
+            </div>
+          </div>
         </BlockCard>
         <BlockCard
           title="Cajón vía impresora"

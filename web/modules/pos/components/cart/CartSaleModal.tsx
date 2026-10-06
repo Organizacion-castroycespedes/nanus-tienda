@@ -52,7 +52,7 @@ type CartSaleModalProps = {
   canCharge: boolean;
   hasPricingPending: boolean;
   pricingErrorMessage: string | null;
-  scaleMockEnabled: boolean;
+  scaleControlsVisible: boolean;
   scaleReading: boolean;
   resolvePresentation: (item: CartSaleLineItem) => CartSaleItemPresentation;
   formatCurrency: (value: number) => string;
@@ -77,7 +77,7 @@ export const CartSaleModal = ({
   canCharge,
   hasPricingPending,
   pricingErrorMessage,
-  scaleMockEnabled,
+  scaleControlsVisible,
   scaleReading,
   resolvePresentation,
   formatCurrency,
@@ -268,11 +268,11 @@ export const CartSaleModal = ({
                                 </button>
                               </div>
 
-                              {presentation.isWeighable ? (
+                              {presentation.isWeighable && scaleControlsVisible ? (
                                 <button
                                   type="button"
                                   onClick={() => onReadScale(item.productId)}
-                                  disabled={!scaleMockEnabled || scaleReading}
+                                  disabled={scaleReading}
                                   className="inline-flex h-8 items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
                                 >
                                   {scaleReading ? (

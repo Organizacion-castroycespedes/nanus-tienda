@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { BadRequestException } from "@nestjs/common";
 import type {
   DeviceDiscoveryProvider,
+  DiscoveredSerialDevice,
   DiscoveredUsbPrinter,
 } from "../../shared/discovery/device-discovery-provider";
 
@@ -13,8 +14,10 @@ export type WindowsPrinterDiagnostic = {
   PortName: string;
   DriverName: string;
   Shared: boolean;
+  WorkOffline?: boolean;
 };
 type WindowsPnpDiagnostic = { InstanceId: string; Class: string; FriendlyName: string; Status: string; Present: boolean; HardwareIds?: string[]; CompatibleIds?: string[]; LocationInfo?: string; LocationPaths?: string[] };
+export type WindowsSerialDiagnostic = { DeviceID: string; Name: string; PNPDeviceID: string; Status: string; Present: boolean };
 
 export class WindowsPrinterDiscoveryParseError extends Error {
   constructor(message: string) {
@@ -45,7 +48,7 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
           "-NoProfile",
           "-NonInteractive",
           "-Command",
-          "$printers = @(Get-Printer | Where-Object { $_.Type -eq 'Local' -and $_.PortName -match '^(USB|DOT4USB)' } | ForEach-Object { [PSCustomObject]@{ Name = [string]$_.Name; Type = $_.Type.ToString(); PortName = [string]$_.PortName; DriverName = [string]$_.DriverName; Shared = [bool]$_.Shared } }); ConvertTo-Json -InputObject $printers -Compress",
+          "$printers = @(Get-Printer | Where-Object { $_.Type -eq 'Local' -and $_.PortName -match '^(USB|DOT4USB)' } | ForEach-Object { [PSCustomObject]@{ Name = [string]$_.Name; Type = $_.Type.ToString(); PortName = [string]$_.PortName; DriverName = [string]$_.DriverName; Shared = [bool]$_.Shared; WorkOffline = [bool]$_.WorkOffline } }); ConvertTo-Json -InputObject $printers -Compress",
         ])
       );
       let pnp: WindowsPnpDiagnostic[] = [];
@@ -66,7 +69,7 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
         nativeIdentifier: printer.Name,
         fingerprint: {
           source: "WINDOWS_PRINT_QUEUE",
-          values: { queueName: printer.Name },
+          values: { queueName: printer.Name, portName: printer.PortName, driverName: printer.DriverName, queueReady: String(printer.WorkOffline !== true) },
         },
         platform: "WINDOWS" as const,
         architecture: process.arch,
@@ -93,7 +96,84 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
       throw new BadRequestException(`USB printer discovery failed: ${message}`);
     }
   }
+
+  listSerialDevices(): DiscoveredSerialDevice[] {
+    try {
+      return parseWindowsSerialDiagnostics(
+        this.commandRunner("powershell.exe", [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "$d=@(Get-CimInstance Win32_SerialPort | ForEach-Object { [PSCustomObject]@{ DeviceID=[string]$_.DeviceID; Name=[string]$_.Name; PNPDeviceID=[string]$_.PNPDeviceID; Status=[string]$_.Status; Present=($null -ne $_.PNPDeviceID -and $_.Status -eq 'OK') } }); if($d.Count -eq 0){ $d=@(Get-PnpDevice -PresentOnly | Where-Object { $_.Class -eq 'Ports' } | ForEach-Object { $m=[regex]::Match([string]$_.FriendlyName,'\\((COM\\d+)\\)'); if($m.Success){ [PSCustomObject]@{ DeviceID=$m.Groups[1].Value; Name=[string]$_.FriendlyName; PNPDeviceID=[string]$_.InstanceId; Status=[string]$_.Status; Present=$true } } }) }; ConvertTo-Json -InputObject $d -Compress",
+        ])
+      ).map((device) => {
+        const identity = extractUsbVidPid(device.PNPDeviceID);
+        return {
+          port: device.DeviceID,
+          name: device.Name || device.DeviceID,
+          nativeIdentifier: device.PNPDeviceID || device.DeviceID,
+          pnpDeviceId: device.PNPDeviceID,
+          vendorId: identity.vendorId,
+          productId: identity.productId,
+          status: device.Status,
+          present: device.Present,
+          fingerprint: {
+            source: "WINDOWS_SERIAL_PNP",
+            values: {
+              pnpDeviceId: device.PNPDeviceID,
+              vendorId: identity.vendorId ?? "",
+              productId: identity.productId ?? "",
+              status: device.Status,
+            },
+          },
+          platform: "WINDOWS" as const,
+          architecture: process.arch,
+        };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      throw new Error(`Windows serial discovery failed: ${message}`);
+    }
+  }
 }
+
+export const extractUsbVidPid = (
+  pnpDeviceId: string
+): { vendorId?: string; productId?: string } => {
+  const match = pnpDeviceId.match(/VID_([0-9A-F]{4}).*?PID_([0-9A-F]{4})/i);
+  return match
+    ? { vendorId: match[1].toUpperCase(), productId: match[2].toUpperCase() }
+    : {};
+};
+
+export const parseWindowsSerialDiagnostics = (
+  output: string
+): WindowsSerialDiagnostic[] => {
+  const trimmed = output.trim();
+  if (!trimmed || trimmed === "null") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new WindowsPrinterDiscoveryParseError("invalid JSON from Win32_SerialPort");
+  }
+  const values = Array.isArray(parsed) ? parsed : [parsed];
+  return values.flatMap((value): WindowsSerialDiagnostic[] => {
+    if (!value || typeof value !== "object") return [];
+    const item = value as Record<string, unknown>;
+    const deviceId = typeof item.DeviceID === "string" ? item.DeviceID.trim() : "";
+    const pnpDeviceId = typeof item.PNPDeviceID === "string" ? item.PNPDeviceID.trim() : "";
+    if (!/^COM\d+$/i.test(deviceId) || !pnpDeviceId) return [];
+    const status = typeof item.Status === "string" ? item.Status.trim() : "";
+    return [{
+      DeviceID: deviceId.toUpperCase(),
+      Name: typeof item.Name === "string" ? item.Name.trim() : "",
+      PNPDeviceID: pnpDeviceId,
+      Status: status,
+      Present: item.Present === true,
+    }];
+  });
+};
 
 export const parseWindowsPnpDiagnostics = (output: string): WindowsPnpDiagnostic[] => {
   const trimmed = output.trim(); if (!trimmed || trimmed === "null") return [];
@@ -146,11 +226,12 @@ export const parseWindowsPrinterDiagnostics = (
     const name = typeof printer.Name === "string" ? printer.Name.trim() : "";
     const portName = typeof printer.PortName === "string" ? printer.PortName.trim() : "";
     const driverName = typeof printer.DriverName === "string" ? printer.DriverName.trim() : "";
+    const workOffline = typeof printer.WorkOffline === "boolean" ? printer.WorkOffline : undefined;
     const type = printer.Type === 0 || printer.Type === "0" ? "Local" :
       typeof printer.Type === "string" ? printer.Type.trim() : "";
     if (!name || !type || !portName || !driverName || typeof printer.Shared !== "boolean") {
       return [];
     }
-    return [{ Name: name, Type: type, PortName: portName, DriverName: driverName, Shared: printer.Shared }];
+    return [{ Name: name, Type: type, PortName: portName, DriverName: driverName, Shared: printer.Shared, ...(workOffline === undefined ? {} : { WorkOffline: workOffline }) }];
   });
 };

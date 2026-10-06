@@ -39,6 +39,7 @@ const (
 	eventStepSucceeded   installerCoreEventType = "STEP_SUCCEEDED"
 	eventStepWarning     installerCoreEventType = "STEP_WARNING"
 	eventStepFailed      installerCoreEventType = "STEP_FAILED"
+	eventStepSkipped     installerCoreEventType = "STEP_SKIPPED"
 	eventRollbackStarted installerCoreEventType = "ROLLBACK_STARTED"
 	eventRollbackSuccess installerCoreEventType = "ROLLBACK_SUCCEEDED"
 	eventRollbackFailed  installerCoreEventType = "ROLLBACK_FAILED"

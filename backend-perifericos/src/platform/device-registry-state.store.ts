@@ -14,13 +14,16 @@ import {
   optionalString,
   parseConnectionType,
   parseDeviceType,
+  parseSerialConnectionOptions,
   validateIdentifier,
+  validateDeviceName,
   validateShortText,
 } from "../shared/utils/request-validation.util";
 import {
   ConnectionType,
   type NetworkConnectionOptions,
   type PeripheralDevice,
+  type SerialConnectionOptions,
   DeviceType,
   type UsbPrinterConnectionOptions,
 } from "../shared/types/peripheral.types";
@@ -38,6 +41,7 @@ export type PersistedPeripheralDevice = {
   profileId?: string;
   network?: NetworkConnectionOptions;
   usb?: UsbPrinterConnectionOptions;
+  serial?: SerialConnectionOptions;
   metadata?: Record<string, unknown>;
 };
 
@@ -128,10 +132,11 @@ export class FileDeviceRegistryStateStore implements DeviceRegistryStateStore {
       "terminalId"
     );
     const connectionType = parseConnectionType(record.connectionType, ConnectionType.MOCK);
-    const name = validateShortText(optionalString(record, "name", ""), "name");
+    const name = validateDeviceName(optionalString(record, "name", ""));
     const profileId = typeof record.profileId === "string" ? record.profileId : undefined;
     const network = resolveNetworkOptionsForConnection(record.network, connectionType);
     const usb = this.normalizeUsb(record.usb, connectionType, type);
+    const serial = this.normalizeSerial(record.serial, connectionType);
     const metadata = optionalMetadata(record);
 
     return {
@@ -143,6 +148,7 @@ export class FileDeviceRegistryStateStore implements DeviceRegistryStateStore {
       profileId,
       network,
       usb,
+      serial,
       metadata,
     };
   }
@@ -175,5 +181,18 @@ export class FileDeviceRegistryStateStore implements DeviceRegistryStateStore {
         ? validateShortText(record.windowsQueueName, "usb.windowsQueueName")
         : undefined,
     };
+  }
+
+  private normalizeSerial(
+    value: unknown,
+    connectionType: ConnectionType
+  ): SerialConnectionOptions | undefined {
+    if (connectionType !== ConnectionType.SERIAL) {
+      if (value !== undefined && value !== null) {
+        throw new Error("serial is only supported for SERIAL devices");
+      }
+      return undefined;
+    }
+    return parseSerialConnectionOptions(value, "serial");
   }
 }
