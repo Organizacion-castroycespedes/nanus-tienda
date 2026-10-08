@@ -238,6 +238,10 @@ export type ElectronPeripheralBridge = {
   openCashDrawer: (payload: unknown) => Promise<unknown>;
   simulateScanner: (payload: unknown) => Promise<unknown>;
   currentWeight: (payload: unknown) => Promise<unknown>;
+  agentSecurityStatus?: () => Promise<unknown>;
+  startAgentPairing?: () => Promise<unknown>;
+  acceptAgentEnrollmentEnvelope?: (payload: unknown) => Promise<unknown>;
+  scaleAuthorizationTest?: (payload: unknown) => Promise<unknown>;
   listLogs: () => Promise<unknown>;
 };
 
@@ -351,6 +355,10 @@ export const requestPeripheral = async <T>(
     if (path === "/cash-drawer/open" && init?.method === "POST") return invoke("drawer.open", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path === "/scanner/simulate" && init?.method === "POST") return invoke("scanner.simulate", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path.startsWith("/scale/current-weight") && (!init || init.method === undefined || init.method === "GET")) return invoke("scale.currentWeight", Object.fromEntries(new URLSearchParams(path.split("?")[1] ?? ""))) as Promise<T>;
+    if (path === "/agent-security/status" && (!init || init.method === undefined || init.method === "GET")) return invoke("agent.security.status") as Promise<T>;
+    if (path === "/agent-security/pairing/start" && init?.method === "POST") return invoke("agent.security.pairingStart") as Promise<T>;
+    if (path === "/agent-security/pairing/envelope" && init?.method === "POST") return invoke("agent.security.enrollmentEnvelope", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/scale/authorization-test" && init?.method === "POST") return invoke("scale.authorizationTest", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path === "/logs" && (!init || init.method === undefined || init.method === "GET")) return invoke("logs.list") as Promise<T>;
     throw new PeripheralAgentRequestError("HTTP_ERROR", "Esta operación aún no está disponible en Manus POS.");
   }

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, net, screen, shell } from "electron";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 
-import { createAgentDevice, discoverAgentDevices, getAgentCurrentWeight, getAgentHealth, listAgentDevices, listAgentLogs, openAgentCashDrawer, printAgentTicket, simulateAgentScanner, testAgentPrint, updateAgentDevice } from "./agent-client.js";
+import { acceptAgentEnrollmentEnvelope, createAgentDevice, discoverAgentDevices, getAgentCurrentWeight, getAgentHealth, getAgentSecurityStatus, listAgentDevices, listAgentLogs, openAgentCashDrawer, printAgentTicket, simulateAgentScanner, startAgentPairing, testAgentAuthorizationReading, testAgentPrint, updateAgentDevice } from "./agent-client.js";
 import { buildRuntimeInfo, IPC_CHANNELS, type AgentHealth, type ShellInfo } from "./electron-api.js";
 import {
   resolveElectronConfig,
@@ -116,7 +116,7 @@ const registerIpcHandlers = () => {
   ipcMain.removeHandler(IPC_CHANNELS.getAgentHealth);
   ipcMain.removeHandler(IPC_CHANNELS.listDevices);
   ipcMain.removeHandler(IPC_CHANNELS.discoverDevices);
-  for (const channel of [IPC_CHANNELS.createDevice, IPC_CHANNELS.updateDevice, IPC_CHANNELS.testPrint, IPC_CHANNELS.printTicket, IPC_CHANNELS.openCashDrawer, IPC_CHANNELS.simulateScanner, IPC_CHANNELS.currentWeight, IPC_CHANNELS.listLogs]) ipcMain.removeHandler(channel);
+  for (const channel of [IPC_CHANNELS.createDevice, IPC_CHANNELS.updateDevice, IPC_CHANNELS.testPrint, IPC_CHANNELS.printTicket, IPC_CHANNELS.openCashDrawer, IPC_CHANNELS.simulateScanner, IPC_CHANNELS.currentWeight, IPC_CHANNELS.agentSecurityStatus, IPC_CHANNELS.startAgentPairing, IPC_CHANNELS.acceptAgentEnrollmentEnvelope, IPC_CHANNELS.scaleAuthorizationTest, IPC_CHANNELS.listLogs]) ipcMain.removeHandler(channel);
   ipcMain.handle(IPC_CHANNELS.getShellInfo, () => getShellInfo());
   ipcMain.on(IPC_CHANNELS.retryConnection, () => requestManualRetry?.());
   ipcMain.handle(IPC_CHANNELS.getAgentHealth, async (): Promise<AgentHealth> => {
@@ -140,6 +140,10 @@ const registerIpcHandlers = () => {
   ipcMain.handle(IPC_CHANNELS.openCashDrawer, (_event, payload: unknown) => agentRoutingConfig ? openAgentCashDrawer(agentRoutingConfig, payload) : null);
   ipcMain.handle(IPC_CHANNELS.simulateScanner, (_event, payload: unknown) => agentRoutingConfig ? simulateAgentScanner(agentRoutingConfig, payload) : null);
   ipcMain.handle(IPC_CHANNELS.currentWeight, (_event, payload: unknown) => agentRoutingConfig ? getAgentCurrentWeight(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.agentSecurityStatus, () => agentRoutingConfig ? getAgentSecurityStatus(agentRoutingConfig) : null);
+  ipcMain.handle(IPC_CHANNELS.startAgentPairing, () => agentRoutingConfig ? startAgentPairing(agentRoutingConfig) : null);
+  ipcMain.handle(IPC_CHANNELS.acceptAgentEnrollmentEnvelope, (_event, payload: unknown) => agentRoutingConfig ? acceptAgentEnrollmentEnvelope(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.scaleAuthorizationTest, (_event, payload: unknown) => agentRoutingConfig ? testAgentAuthorizationReading(agentRoutingConfig, payload) : null);
   ipcMain.handle(IPC_CHANNELS.listLogs, () => agentRoutingConfig ? listAgentLogs(agentRoutingConfig) : []);
 };
 

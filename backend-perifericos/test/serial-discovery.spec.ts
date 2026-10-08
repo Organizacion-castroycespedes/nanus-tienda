@@ -73,7 +73,7 @@ test("only demonstrated CH340 VID/PID becomes ROCHI_A01E", () => {
   assert.equal(buildRochiSerialDescriptor({ ...rawRochi(), name: "CH340", vendorId: undefined }), undefined);
 });
 
-test("serial discovery is side-effect free, deduplicated, and keeps printers", () => {
+test("serial discovery is side-effect free, deduplicated, and keeps printers", async () => {
   const previousMode = process.env.PERIPHERALS_MODE;
   process.env.PERIPHERALS_MODE = "REAL";
   let writes = 0;
@@ -97,7 +97,7 @@ test("serial discovery is side-effect free, deduplicated, and keeps printers", (
   );
 
   try {
-    const response = new DevicesController(service).discover();
+    const response = await new DevicesController(service).discover();
     const candidates = response.devices.filter((device) => device.type === DeviceType.SCALE);
     assert.equal(candidates.length, 1);
     assert.equal(candidates[0].connectionType, ConnectionType.SERIAL);
@@ -116,7 +116,7 @@ test("serial discovery is side-effect free, deduplicated, and keeps printers", (
   }
 });
 
-test("discovered ROCHI configures, reloads, and follows PnP identity across COM changes", () => {
+test("discovered ROCHI configures, reloads, and follows PnP identity across COM changes", async () => {
   const root = mkdtempSync(join(tmpdir(), "manus-rochi-config-"));
   const paths = {
     configDir: join(root, "config"),
@@ -142,7 +142,7 @@ test("discovered ROCHI configures, reloads, and follows PnP identity across COM 
     paths
   );
   const firstController = new DevicesController(firstService);
-  const candidate = firstController.discover().devices.find(
+  const candidate = (await firstController.discover()).devices.find(
     (device) => device.profileId === "ROCHI_A01E"
   );
   assert.ok(candidate);
@@ -175,7 +175,7 @@ test("discovered ROCHI configures, reloads, and follows PnP identity across COM 
   assert.equal(reloaded?.name, "USB-SERIAL CH340 (COM5)");
   assert.equal(reloaded?.serial?.port, "COM5");
   assert.equal(reloaded?.serial?.pnp?.deviceId, configured.serial?.pnp?.deviceId);
-  const reconciled = new DevicesController(secondService).discover().devices.filter(
+  const reconciled = (await new DevicesController(secondService).discover()).devices.filter(
     (device) => device.profileId === "ROCHI_A01E"
   );
   assert.equal(reconciled.length, 1);

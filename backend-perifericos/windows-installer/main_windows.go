@@ -1159,19 +1159,23 @@ func (a *agentService) closeJob() {
 // agent.config.local.json. The Node loader then injects the persisted values.
 func buildAgentEnvironment(base []string, configPath, version string) []string {
 	managedKeys := map[string]struct{}{
-		"PERIPHERALS_PORT":                           {},
-		"PERIPHERALS_BIND":                           {},
-		"PERIPHERALS_MODE":                           {},
-		"PERIPHERALS_AGENT_NAME":                     {},
-		"PERIPHERALS_ALLOWED_ORIGINS":                {},
-		"PERIPHERALS_ENABLE_REAL_ADAPTERS":           {},
-		"PERIPHERALS_USB_PRINT_TRANSPORT":            {},
-		"PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED": {},
-		"PERIPHERALS_LOG_LEVEL":                      {},
-		"PERIPHERALS_LOG_LIMIT":                      {},
-		"PERIPHERALS_PRINTER_WIDTH_CHARS":            {},
-		"PERIPHERALS_CONFIG_PATH":                    {},
-		"PERIPHERALS_VERSION":                        {},
+		"PERIPHERALS_PORT":                              {},
+		"PERIPHERALS_BIND":                              {},
+		"PERIPHERALS_MODE":                              {},
+		"PERIPHERALS_AGENT_NAME":                        {},
+		"PERIPHERALS_ALLOWED_ORIGINS":                   {},
+		"PERIPHERALS_ENABLE_REAL_ADAPTERS":              {},
+		"PERIPHERALS_USB_PRINT_TRANSPORT":               {},
+		"PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED":    {},
+		"PERIPHERALS_LOG_LEVEL":                         {},
+		"PERIPHERALS_LOG_LIMIT":                         {},
+		"PERIPHERALS_PRINTER_WIDTH_CHARS":               {},
+		"PERIPHERALS_ENROLLMENT_API_BASE_URL":           {},
+		"PERIPHERALS_ENROLLMENT_SIGNING_PUBLIC_KEY_PEM": {},
+		"PERIPHERALS_ENROLLMENT_AUDIENCE":               {},
+		"PERIPHERALS_ENROLLMENT_SIGNING_KEY_ID":         {},
+		"PERIPHERALS_CONFIG_PATH":                       {},
+		"PERIPHERALS_VERSION":                           {},
 	}
 
 	env := make([]string, 0, len(base)+4)
@@ -2261,6 +2265,42 @@ func ensureLocalConfig(layout runtimeLayout) error {
 	}
 	localPath := filepath.Join(layout.ConfigRoot, "agent.config.local.json")
 	if exists(localPath) {
+		currentBytes, err := os.ReadFile(localPath)
+		if err != nil {
+			return err
+		}
+		var current map[string]any
+		var seeded map[string]any
+		if err := json.Unmarshal(currentBytes, &current); err != nil {
+			return fmt.Errorf("parse existing Agent config: %w", err)
+		}
+		if err := json.Unmarshal(seedBytes, &seeded); err != nil {
+			return fmt.Errorf("parse packaged Agent config: %w", err)
+		}
+		changed := false
+		for _, key := range []string{"enrollmentApiBaseUrl", "enrollmentSigningPublicKeyPem", "enrollmentAudience", "enrollmentSigningKeyId"} {
+			currentValue, currentHasValue := current[key].(string)
+			seedValue, seedHasValue := seeded[key].(string)
+			if (!currentHasValue || strings.TrimSpace(currentValue) == "") && seedHasValue && strings.TrimSpace(seedValue) != "" {
+				current[key] = seedValue
+				changed = true
+			}
+		}
+		if !changed {
+			return nil
+		}
+		updated, err := json.MarshalIndent(current, "", "  ")
+		if err != nil {
+			return err
+		}
+		temporary := localPath + ".tmp"
+		if err := os.WriteFile(temporary, append(updated, '\n'), 0o600); err != nil {
+			return err
+		}
+		if err := os.Rename(temporary, localPath); err != nil {
+			_ = os.Remove(temporary)
+			return err
+		}
 		return nil
 	}
 

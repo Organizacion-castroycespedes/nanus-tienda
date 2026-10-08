@@ -9,6 +9,10 @@ export const CAPABILITY_METHODS = {
   "drawer.open": "openCashDrawer",
   "scanner.simulate": "simulateScanner",
   "scale.currentWeight": "currentWeight",
+  "agent.security.status": "agentSecurityStatus",
+  "agent.security.pairingStart": "startAgentPairing",
+  "agent.security.enrollmentEnvelope": "acceptAgentEnrollmentEnvelope",
+  "scale.authorizationTest": "scaleAuthorizationTest",
   "logs.list": "listLogs",
 } as const;
 

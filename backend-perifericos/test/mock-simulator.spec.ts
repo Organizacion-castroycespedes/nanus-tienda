@@ -308,14 +308,14 @@ test("adapter resolver selects mock adapters and rejects real connection types",
   }
 });
 
-test("discover logs and emits connected events", () => {
+test("discover logs and emits connected events", async () => {
   const {
     devicesController,
     logsService,
     eventsService,
   } = buildServices();
 
-  const result = devicesController.discover();
+  const result = await devicesController.discover();
 
   assert.equal(result.success, true);
   assert.ok(result.devices.length >= 4);

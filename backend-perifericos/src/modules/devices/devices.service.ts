@@ -121,6 +121,7 @@ export class DevicesService {
   private runtimeStatuses = new Map<string, DeviceStatus>();
   private usbDevices = new Map<string, UsbPrinterDescriptor>();
   private registryPersistenceState: "empty" | "loaded" | "corrupt" = "empty";
+  private discoveryInFlight: Promise<DiscoverDevicesResponse> | null = null;
   private readonly platformPaths: PlatformPaths;
   private readonly deviceRegistryStore: DeviceRegistryStateStore;
 
@@ -148,7 +149,7 @@ export class DevicesService {
     this.loadConfiguredDevices();
   }
 
-  discoverOnStartup(): void {
+  async discoverOnStartup(): Promise<void> {
     if (!getPeripheralsConfig().realAdaptersEnabled) {
       return;
     }
@@ -162,7 +163,7 @@ export class DevicesService {
           configuredDevices: this.configuredDevices.size,
         },
       });
-      const discovery = this.discover();
+      const discovery = await this.discover();
       this.logsService.append({
         source: "devices",
         event: "discovery.completed",
@@ -196,7 +197,15 @@ export class DevicesService {
     return filtered.map((device) => this.cloneDevice(device));
   }
 
-  discover(): DiscoverDevicesResponse {
+  discover(): Promise<DiscoverDevicesResponse> {
+    if (this.discoveryInFlight) return this.discoveryInFlight;
+    this.discoveryInFlight = this.runDiscovery().finally(() => {
+      this.discoveryInFlight = null;
+    });
+    return this.discoveryInFlight;
+  }
+
+  private async runDiscovery(): Promise<DiscoverDevicesResponse> {
     const config = getPeripheralsConfig();
     const discoveryStartedAt = Date.now();
     const discoveredAt = new Date().toISOString();
@@ -219,9 +228,15 @@ export class DevicesService {
       },
     });
     let usbDescriptors: UsbPrinterDescriptor[] = [];
+    const usbStartedAt = Date.now();
+    let usbDiscoveryFailed = false;
+    let usbDiscoveryError = "";
+    let printerCommandDurationMs = 0;
+    let reconciliationDurationMs = 0;
 
     try {
-      usbDescriptors = this.usbDiscovery.list();
+      usbDescriptors = await this.usbDiscovery.list();
+      printerCommandDurationMs = Date.now() - usbStartedAt;
       if (config.mode === "REAL") {
        const physical = usbDescriptors.filter((d) => d.descriptor.fingerprint.source === "WINDOWS_PNP").map((d) => ({ name: d.name, deviceId: d.deviceId, nativeIdentifier: d.descriptor.nativeIdentifier, fingerprint: d.descriptor.fingerprint.values }));
        const queues = usbDescriptors.filter((d) => d.descriptor.fingerprint.source === "WINDOWS_PRINT_QUEUE").map((d) => ({
@@ -237,7 +252,9 @@ export class DevicesService {
           queueName: device.usb?.windowsQueueName?.trim() ?? "",
         }))
         .filter((binding) => Boolean(binding.physicalDeviceId) && Boolean(binding.queueName));
+       const reconciliationStartedAt = Date.now();
        const reconciled = reconcilePrinters(physical, queues, configuredPrinterBindings);
+       reconciliationDurationMs = Date.now() - reconciliationStartedAt;
        const normalized = reconciled.map((item) => {
         const original = usbDescriptors.find((d) => d.descriptor.nativeIdentifier === item.nativeIdentifier);
         const source = item.physicalDetected ? "WINDOWS_PNP" : "WINDOWS_PRINT_QUEUE";
@@ -287,33 +304,54 @@ export class DevicesService {
           errorMessage,
         },
       });
-      if (config.mode === "REAL") {
-        throw new BadRequestException(
-          `Physical printer discovery failed: ${errorMessage}`
-        );
-      }
+      usbDiscoveryFailed = true;
+      usbDiscoveryError = errorMessage;
     }
+    this.logsService.append({
+      source: "devices",
+      event: usbDiscoveryFailed ? "devices.discover.usb_failed" : "devices.discover.usb_completed",
+      message: usbDiscoveryFailed ? "USB printer discovery stage failed" : "USB printer discovery stage completed",
+      metadata: { durationMs: Date.now() - usbStartedAt, commandDurationMs: printerCommandDurationMs,
+        reconciliationDurationMs, count: usbDescriptors.length, mode: config.mode,
+        outcome: usbDiscoveryFailed ? "FAILED" : "COMPLETED" },
+    });
 
     let serialDescriptors: SerialDeviceDescriptor[] = [];
+    let serialDiscoveryFailed = false;
+    let serialDiscoveryError = "";
+    const serialStartedAt = Date.now();
     try {
-      serialDescriptors = this.usbDiscovery.listSerialDevices?.() ?? [];
+      serialDescriptors = await (this.usbDiscovery.listSerialDevices?.() ?? []);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "unknown error";
+      serialDiscoveryFailed = true;
+      serialDiscoveryError = errorMessage;
       this.logsService.append({
-        level: LogLevel.WARN,
+        level: config.mode === "REAL" ? LogLevel.ERROR : LogLevel.WARN,
         source: "devices",
         event: "devices.discover.serial_failed",
-        message: "Serial discovery failed; printer discovery remains available",
+        message: "Serial discovery failed; retaining last known serial candidates",
         metadata: {
           mode: config.mode,
           outcome: "FAILED",
-          errorMessage: error instanceof Error ? error.message : "unknown error",
+          durationMs: Date.now() - serialStartedAt,
+          errorMessage,
         },
       });
     }
+    this.logsService.append({
+      source: "devices",
+      event: serialDiscoveryFailed ? "devices.discover.serial_failed" : "devices.discover.serial_completed",
+      message: serialDiscoveryFailed ? "Serial discovery stage failed" : "Serial discovery stage completed",
+      metadata: { durationMs: Date.now() - serialStartedAt, count: serialDescriptors.length, mode: config.mode,
+        outcome: serialDiscoveryFailed ? "FAILED" : "COMPLETED" },
+    });
 
-    this.usbDevices = new Map(
-      usbDescriptors.map((descriptor) => [descriptor.deviceId, descriptor])
-    );
+    if (!usbDiscoveryFailed) {
+      this.usbDevices = new Map(
+        usbDescriptors.map((descriptor) => [descriptor.deviceId, descriptor])
+      );
+    }
 
     const nextDiscoveredUsbDevices = new Map<string, PeripheralDevice>();
     const matchedConfiguredIds = new Set<string>();
@@ -333,22 +371,26 @@ export class DevicesService {
       this.runtimeStatuses.set(runtimeId, DeviceStatus.CONNECTED);
     }
 
-    for (const device of this.configuredDevices.values()) {
-      if (
-        device.connectionType === ConnectionType.USB &&
-        !matchedConfiguredIds.has(device.id)
-      ) {
-        this.runtimeStatuses.set(device.id, DeviceStatus.DISCONNECTED);
+    if (!usbDiscoveryFailed) {
+      for (const device of this.configuredDevices.values()) {
+        if (
+          device.connectionType === ConnectionType.USB &&
+          !matchedConfiguredIds.has(device.id)
+        ) {
+          this.runtimeStatuses.set(device.id, DeviceStatus.DISCONNECTED);
+        }
       }
     }
 
-    this.discoveredUsbDevices = nextDiscoveredUsbDevices;
-    this.discoveredSerialDevices = new Map(
-      serialDescriptors.map((descriptor) => [
-        descriptor.id,
-        this.buildDiscoveredSerialDevice(descriptor),
-      ])
-    );
+    if (!usbDiscoveryFailed) this.discoveredUsbDevices = nextDiscoveredUsbDevices;
+    if (!serialDiscoveryFailed) {
+      this.discoveredSerialDevices = new Map(
+        serialDescriptors.map((descriptor) => [
+          descriptor.id,
+          this.buildDiscoveredSerialDevice(descriptor),
+        ])
+      );
+    }
     const devices = config.mode === "REAL"
       ? this.list().filter((device) => device.connectionType !== ConnectionType.MOCK)
       : this.list();
@@ -356,18 +398,21 @@ export class DevicesService {
     this.logsService.append({
       source: "devices",
       event: "discovery.completed",
-      message: nextDiscoveredUsbDevices.size > 0
-        ? "Physical printer discovery completed with results"
-        : "Physical printer discovery completed without results",
+      message: serialDiscoveryFailed || usbDiscoveryFailed
+        ? "Device discovery completed partially; one or more sources failed"
+        : nextDiscoveredUsbDevices.size > 0
+          ? "Physical printer discovery completed with results"
+          : "Physical printer discovery completed without results",
       metadata: {
         count: devices.length,
         configuredDevices: this.configuredDevices.size,
-        usbPrinterCount: nextDiscoveredUsbDevices.size,
+        usbPrinterCount: this.discoveredUsbDevices.size,
         serialCandidateCount: this.discoveredSerialDevices.size,
         mode: config.mode,
-        outcome: nextDiscoveredUsbDevices.size > 0 ? "FOUND" : "EMPTY",
+        outcome: serialDiscoveryFailed || usbDiscoveryFailed ? "PARTIAL" : nextDiscoveredUsbDevices.size > 0 ? "FOUND" : "EMPTY",
+        persistence: "NOT_PERFORMED",
         durationMs: Date.now() - discoveryStartedAt,
-        timeoutMs: config.mode === "REAL" ? 10_000 : undefined,
+        timeoutMs: config.mode === "REAL" ? 21_000 : undefined,
         timeout: false,
       },
     });
@@ -382,6 +427,14 @@ export class DevicesService {
         deviceType: device.type,
         timestamp: discoveredAt,
       });
+    }
+
+    if (config.mode === "REAL" && (serialDiscoveryFailed || usbDiscoveryFailed)) {
+      const failures = [
+        usbDiscoveryFailed ? `printer discovery failed: ${usbDiscoveryError}` : "",
+        serialDiscoveryFailed ? `serial discovery failed: ${serialDiscoveryError}` : "",
+      ].filter(Boolean).join("; ");
+      throw new BadRequestException(`Device discovery partially failed: ${failures}`);
     }
 
     return {

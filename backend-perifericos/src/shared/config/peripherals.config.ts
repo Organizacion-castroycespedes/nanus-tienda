@@ -20,6 +20,10 @@ export type PeripheralsConfig = {
   printerWidthChars: number;
   version: string;
   startedAt: number;
+  enrollmentApiBaseUrl?: string;
+  enrollmentSigningPublicKeyPem?: string;
+  enrollmentAudience?: string;
+  enrollmentSigningKeyId?: string;
 };
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -153,4 +157,8 @@ export const getPeripheralsConfig = (): PeripheralsConfig => ({
   ),
   version: resolveAgentVersion(),
   startedAt: STARTED_AT,
+  enrollmentApiBaseUrl: process.env.PERIPHERALS_ENROLLMENT_API_BASE_URL?.trim() || undefined,
+  enrollmentSigningPublicKeyPem: process.env.PERIPHERALS_ENROLLMENT_SIGNING_PUBLIC_KEY_PEM?.replace(/\\n/g, "\n") || undefined,
+  enrollmentAudience: process.env.PERIPHERALS_ENROLLMENT_AUDIENCE?.trim() || undefined,
+  enrollmentSigningKeyId: process.env.PERIPHERALS_ENROLLMENT_SIGNING_KEY_ID?.trim() || undefined,
 });

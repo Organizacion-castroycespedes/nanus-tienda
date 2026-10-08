@@ -30,6 +30,10 @@ export const IPC_CHANNELS = {
   openCashDrawer: "manusTerminal.openCashDrawer",
   simulateScanner: "manusTerminal.simulateScanner",
   currentWeight: "manusTerminal.currentWeight",
+  agentSecurityStatus: "manusTerminal.agentSecurityStatus",
+  startAgentPairing: "manusTerminal.startAgentPairing",
+  acceptAgentEnrollmentEnvelope: "manusTerminal.acceptAgentEnrollmentEnvelope",
+  scaleAuthorizationTest: "manusTerminal.scaleAuthorizationTest",
   listLogs: "manusTerminal.listLogs",
 } as const;
 
@@ -47,13 +51,18 @@ export type ManusTerminalApi = {
   openCashDrawer: (payload: unknown) => Promise<unknown>;
   simulateScanner: (payload: unknown) => Promise<unknown>;
   currentWeight: (payload: unknown) => Promise<unknown>;
+  agentSecurityStatus: () => Promise<unknown>;
+  startAgentPairing: () => Promise<unknown>;
+  acceptAgentEnrollmentEnvelope: (payload: unknown) => Promise<unknown>;
+  scaleAuthorizationTest: (payload: unknown) => Promise<unknown>;
   listLogs: () => Promise<unknown[]>;
 };
 
 export const RUNTIME_CAPABILITIES = [
   "agent.health", "devices.list", "devices.discover", "devices.create",
   "devices.update", "printer.testPrint", "printer.printTicket", "drawer.open",
-  "scanner.simulate", "scale.currentWeight", "logs.list",
+  "scanner.simulate", "scale.currentWeight", "agent.security.status", "agent.security.pairingStart",
+  "agent.security.enrollmentEnvelope", "scale.authorizationTest", "logs.list",
 ] as const;
 
 export type RuntimeCapability = typeof RUNTIME_CAPABILITIES[number];

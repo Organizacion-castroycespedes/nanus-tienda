@@ -4,6 +4,7 @@ import {
   buildRochiSerialDescriptor,
   type UsbPrinterDescriptor,
   type UsbPrinterDiscovery,
+  type SerialDeviceDescriptor,
 } from "../shared/usb/usb-printer-discovery";
 import { getAgentInstallationId } from "./agent-installation-state.store";
 import { createPlatformDeviceDiscoveryProvider } from "./device-discovery-provider.factory";
@@ -15,14 +16,14 @@ export class SystemUsbPrinterDiscovery implements UsbPrinterDiscovery {
     private readonly agentInstallationId = getAgentInstallationId()
   ) {}
 
-  list(): UsbPrinterDescriptor[] {
-    return this.provider
-      .listUsbPrinters()
+  async list(): Promise<UsbPrinterDescriptor[]> {
+    return (await this.provider
+      .listUsbPrinters())
       .map((printer) => buildUsbPrinterDescriptor(printer.name, printer, this.agentInstallationId));
   }
 
-  listSerialDevices() {
-    return (this.provider.listSerialDevices?.() ?? [])
+  async listSerialDevices(): Promise<SerialDeviceDescriptor[]> {
+    return (await (this.provider.listSerialDevices?.() ?? []))
       .map((device) => buildRochiSerialDescriptor(device, this.agentInstallationId))
       .filter((device): device is NonNullable<typeof device> => Boolean(device));
   }

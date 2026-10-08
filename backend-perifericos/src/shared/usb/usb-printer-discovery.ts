@@ -14,8 +14,8 @@ export type UsbPrinterDescriptor = UsbPrinterConnectionOptions & {
 };
 
 export type UsbPrinterDiscovery = {
-  list(): UsbPrinterDescriptor[];
-  listSerialDevices?(): SerialDeviceDescriptor[];
+  list(): UsbPrinterDescriptor[] | Promise<UsbPrinterDescriptor[]>;
+  listSerialDevices?(): SerialDeviceDescriptor[] | Promise<SerialDeviceDescriptor[]>;
 };
 
 export type SerialDeviceDescriptor = {
