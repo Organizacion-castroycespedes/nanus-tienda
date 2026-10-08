@@ -46,25 +46,25 @@ test("Windows discovery normalizes XP-58 numeric Type and stable single object",
   assert.deepEqual(parsed, [{ Name: "XP-58", Type: "Local", PortName: "USB001", DriverName: "XP-58", Shared: false }]);
 });
 
-test("Windows discovery handles multiple, empty, and excluded ports", () => {
+test("Windows discovery handles multiple, empty, and excluded ports", async () => {
   const parsed = parseWindowsPrinterDiagnostics(JSON.stringify([
     { Name: "XP-58", Type: 0, PortName: "USB001", DriverName: "XP-58", Shared: false },
     { Name: "Network", Type: "Local", PortName: "WSD-1", DriverName: "x", Shared: false },
     { Name: "Dot4", Type: "Local", PortName: "DOT4USB001", DriverName: "x", Shared: false },
   ]));
   const provider = new WindowsPrinterDiscoveryProvider(() => JSON.stringify(parsed));
-  assert.deepEqual(provider.listUsbPrinters().map((printer) => printer.name), ["XP-58", "Dot4"]);
+  assert.deepEqual((await provider.listUsbPrinters()).map((printer) => printer.name), ["XP-58", "Dot4"]);
   assert.deepEqual(parseWindowsPrinterDiagnostics("[]"), []);
   assert.deepEqual(parseWindowsPrinterDiagnostics("null"), []);
 });
 
-test("Windows discovery reports invalid JSON as parse failure", () => {
+test("Windows discovery reports invalid JSON as parse failure", async () => {
   assert.throws(() => parseWindowsPrinterDiagnostics("not-json"), /PARSE_FAILED/);
   const provider = new WindowsPrinterDiscoveryProvider(() => "not-json");
-  assert.throws(() => provider.listUsbPrinters(), /PARSE_FAILED/);
+  await assert.rejects(() => provider.listUsbPrinters(), /PARSE_FAILED/);
 });
 
-test("Windows discovery provider includes XP-58 Local USB001", () => {
+test("Windows discovery provider includes XP-58 Local USB001", async () => {
   let inventory: unknown;
   const provider = new WindowsPrinterDiscoveryProvider(
     () => JSON.stringify({
@@ -78,7 +78,7 @@ test("Windows discovery provider includes XP-58 Local USB001", () => {
       inventory = printers;
     }
   );
-  const [printer] = provider.listUsbPrinters();
+  const [printer] = await provider.listUsbPrinters();
 
   assert.deepEqual(printer, {
     name: "XP-58",

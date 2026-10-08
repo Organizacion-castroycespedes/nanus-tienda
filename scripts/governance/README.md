@@ -330,6 +330,15 @@ requires the explicit owner rollback state. All rollback is configuration-only.
 Strict evaluation never enables migration execution, historical SQL replay,
 promotion bypass or `NEXT_SAFE_VERSION`.
 
+The repository-only diagnostic accepts `--target-ref <git-ref>` when the
+authoritative comparison ref is tracked under a remote other than `origin`
+(for example, `github-authorized/develop`). Without this option it preserves
+the existing `origin/develop`, then local `develop`, lookup order. The supplied
+value must pass Git ref-name validation and resolve to a commit in the local
+repository; a bare commit SHA or revision expression is not a substitute for
+an identified source ref. Fetching/authorizing the remote remains an explicit
+operator action; the diagnostic does not change remotes or fetch refs.
+
 Findings already classified as `PREEXISTING_HISTORICAL_BASELINE` remain visible
 but non-blocking. This includes the approved V095 baseline anomalies. A new
 repository regression is still blocking even when its numeric version is at or
@@ -357,6 +366,27 @@ flows may require Local evidence. Environment-aware enforcement remains
 separate from durable strict state: `STRICT` is current, and
 `NEXT_SAFE_VERSION` remains `UNVERIFIED`.
 
+## Scoped migration-version evaluation
+
+Version allocation is distinct from promotion certification. The pure
+`next_safe_version_evaluation` accepts an explicit `evaluation_scope`:
+
+- `DEV_TO_QA` uses only the current Repository and fresh, same-operation, live
+  QA history/schema evidence. Its result is exposed as `DEV_QA_SAFE_VERSION`;
+  it does not evaluate PRD, populate a global safe-version result, reserve a
+  number, authorize execution or certify production compatibility.
+- `QA_TO_PRD` and `GLOBAL` require Repository, Target, fresh live QA and fresh
+  live PRD evidence. Their global version result is still not promotion
+  authorization; the separate promotion gate and explicit PRD authorization
+  remain mandatory.
+
+Both scopes select the first collision-free numeric identity above the active
+cutover boundary across the selected authoritative evidence. Recorded
+repository/QA drift remains visible. Missing history is not treated as proof
+that SQL was not executed, and no scope permits replay, synthetic history,
+historical renumbering or retroactive certification. A verified scoped result
+is only a proposal (`VERSION_RESERVED=NO`).
+
 ## Next-version policy (Task 10.5B)
 
 `next_safe_version_evaluation` is a pure, no-I/O policy evaluator. It uses
@@ -365,14 +395,16 @@ separate from durable strict state: `STRICT` is current, and
 current Target and every required verified environment. `DB_ONLY` identities
 also occupy the numeric namespace; repository-only `MAX+1` is not authority.
 
-Required live environment evidence must be marked `LIVE` and
-`same_operation=true` when current-operation evidence is required. Target
-revalidation is also explicit. Missing, stale, previous-run or unverified
-evidence returns `UNVERIFIED`; blocked governance or an unapproved cutover
-returns `BLOCKED`.
+Required live environment evidence must be marked `LIVE`, `same_operation=true`
+and `freshness_status=FRESH`. Target revalidation is explicit for
+`QA_TO_PRD`/`GLOBAL`. Missing, stale, previous-run or unverified evidence
+returns `UNVERIFIED`; blocked governance or an unapproved cutover returns
+`BLOCKED`.
 
 The result is only a proposal. It creates no reservation or file, and it never
 authorizes promotion or migration execution. A changed authoritative union
 invalidates the proposal and requires recalculation. `V095` remains a numeric
-historical boundary, not a canonical file, and `NEXT_SAFE_VERSION` remains
-`UNVERIFIED` until the later same-operation live validation phase.
+historical boundary, not a canonical file. The legacy `NEXT_SAFE_VERSION`
+field is deliberately `UNVERIFIED` for a DEV_TO_QA result; consumers must read
+the scope-specific output. Global safety remains `UNVERIFIED` until the
+separate PRD-aware same-operation evaluation.

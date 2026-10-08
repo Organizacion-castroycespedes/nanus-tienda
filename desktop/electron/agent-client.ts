@@ -166,4 +166,8 @@ export const getAgentCurrentWeight = (config: AgentRoutingConfig, payload: unkno
   for (const key of ["terminalId", "deviceId"]) if (typeof input[key] === "string" && input[key]) query.set(key, String(input[key]).slice(0, 128));
   return requestJson(config, `/scale/current-weight${query.toString() ? `?${query}` : ""}`);
 };
+export const getAgentSecurityStatus = (config: AgentRoutingConfig) => requestJson(config, "/agent-security/status");
+export const startAgentPairing = (config: AgentRoutingConfig) => requestJson(config, "/agent-security/pairing/start", "POST", {});
+export const acceptAgentEnrollmentEnvelope = (config: AgentRoutingConfig, payload: unknown) => requestJson(config, "/agent-security/pairing/envelope", "POST", payload, { timeoutMs: 10_000 });
+export const testAgentAuthorizationReading = (config: AgentRoutingConfig, payload: unknown) => requestJson(config, "/scale/authorization-test", "POST", payload, { timeoutMs: 15_000 });
 export const listAgentLogs = (config: AgentRoutingConfig) => requestJson(config, "/logs").then((value) => Array.isArray(value) ? value : []);

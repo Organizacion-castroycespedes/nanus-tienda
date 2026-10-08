@@ -366,7 +366,7 @@ test("USB certified drawer pulse uses one raw write and returns QA data", async 
   const harness = buildUsbHarness((command, args) => {
     writes.push({ command, args });
   });
-  harness.devicesService.discover();
+  await harness.devicesService.discover();
 
   const printer = harness.devicesService.create({
     id: "printer-xp58-usb-qa-001",
@@ -408,7 +408,7 @@ test("USB uncertified drawer pulse is rejected before transport write", async ()
   const harness = buildUsbHarness(() => {
     writes += 1;
   });
-  harness.devicesService.discover();
+  await harness.devicesService.discover();
 
   harness.devicesService.create({
     id: "printer-xp58-usb-qa-002",

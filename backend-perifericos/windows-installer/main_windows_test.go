@@ -43,6 +43,10 @@ func TestBuildAgentEnvironmentUsesPersistedConfigOverInheritedPeripheralValues(t
 		"PERIPHERALS_ENABLE_REAL_ADAPTERS=false",
 		"PERIPHERALS_CONFIG_PATH=C:\\old\\config.json",
 		"PERIPHERALS_VERSION=old",
+		"PERIPHERALS_ENROLLMENT_API_BASE_URL=https://attacker.invalid/api",
+		"PERIPHERALS_ENROLLMENT_SIGNING_PUBLIC_KEY_PEM=attacker-key",
+		"PERIPHERALS_ENROLLMENT_AUDIENCE=attacker-audience",
+		"PERIPHERALS_ENROLLMENT_SIGNING_KEY_ID=attacker-id",
 	}
 
 	env := buildAgentEnvironment(base, `C:\ProgramData\Manus\PeripheralAgent\config\agent.config.local.json`, "0.1.1-qa.9")
@@ -52,6 +56,11 @@ func TestBuildAgentEnvironmentUsesPersistedConfigOverInheritedPeripheralValues(t
 	}
 	if strings.Contains(joined, "PERIPHERALS_ENABLE_REAL_ADAPTERS=false") {
 		t.Fatal("inherited adapter flag must not reach the service child")
+	}
+	for _, forbidden := range []string{"attacker.invalid", "attacker-key", "attacker-audience", "attacker-id"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("inherited enrollment trust configuration must not reach the service child: %s", forbidden)
+		}
 	}
 	if !strings.Contains(joined, "PERIPHERALS_CONFIG_PATH=C:\\ProgramData\\Manus\\PeripheralAgent\\config\\agent.config.local.json") {
 		t.Fatal("service config path must be explicit")
@@ -1282,5 +1291,52 @@ func TestUpgradePreservesExistingConfigAndInstallationIdentity(t *testing.T) {
 	}
 	if string(gotIdentity) != string(identity) {
 		t.Fatalf("installation identity changed: %s", gotIdentity)
+	}
+}
+
+func TestEnsureLocalConfigSeedsOnlyMissingTrustedAgentEnrollmentSettings(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("ProgramFiles", filepath.Join(root, "Program Files"))
+	t.Setenv("ProgramData", filepath.Join(root, "ProgramData"))
+	layout := buildLayout(installerManifest{Version: "0.1.1-qa.10"})
+	if err := ensureBaseDirectories(layout); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(layout.VersionRoot, "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := `{"mode":"REAL","enrollmentApiBaseUrl":"https://api.qa.example/api","enrollmentSigningPublicKeyPem":"PUBLIC-KEY-FIXTURE","enrollmentAudience":"manus-agent:qa","enrollmentSigningKeyId":"qa-fixture"}`
+	if err := os.WriteFile(filepath.Join(layout.VersionRoot, "config", "agent.config.local.json"), []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(layout.ConfigRoot, "agent.config.local.json")
+	if err := os.WriteFile(configPath, []byte(`{"mode":"REAL","enrollmentSigningKeyId":"operator-pinned-key"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureLocalConfig(layout); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["mode"] != "REAL" || got["enrollmentSigningKeyId"] != "operator-pinned-key" {
+		t.Fatalf("existing Agent config or trust pin changed: %s", data)
+	}
+	for key, want := range map[string]string{
+		"enrollmentApiBaseUrl":          "https://api.qa.example/api",
+		"enrollmentSigningPublicKeyPem": "PUBLIC-KEY-FIXTURE",
+		"enrollmentAudience":            "manus-agent:qa",
+	} {
+		if got[key] != want {
+			t.Fatalf("seeded %s = %v, want trusted package value", key, got[key])
+		}
+	}
+	if strings.Contains(string(data), "PRIVATE") || strings.Contains(string(data), "secret") {
+		t.Fatal("Agent config contains private or credential material")
 	}
 }

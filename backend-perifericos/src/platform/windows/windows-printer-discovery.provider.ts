@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { BadRequestException } from "@nestjs/common";
 import type {
   DeviceDiscoveryProvider,
@@ -6,8 +6,8 @@ import type {
   DiscoveredUsbPrinter,
 } from "../../shared/discovery/device-discovery-provider";
 
-export type WindowsDiscoveryCommandRunner = (command: string, args: string[]) => string;
-export const WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS = 10_000;
+export type WindowsDiscoveryCommandRunner = (command: string, args: string[]) => string | Promise<string>;
+export const WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS = 7_000;
 export type WindowsPrinterDiagnostic = {
   Name: string;
   Type: string;
@@ -27,10 +27,16 @@ export class WindowsPrinterDiscoveryParseError extends Error {
 }
 
 const systemCommandRunner: WindowsDiscoveryCommandRunner = (command, args) =>
-  execFileSync(command, args, {
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
+  new Promise((resolve, reject) => {
+    execFile(command, args, {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
+      maxBuffer: 8 * 1024 * 1024,
+    }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(stdout);
+    });
   });
 
 export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider {
@@ -40,11 +46,11 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
       (printers) => console.info("Windows printer inventory", printers)
   ) {}
 
-  listUsbPrinters(): DiscoveredUsbPrinter[] {
+  async listUsbPrinters(): Promise<DiscoveredUsbPrinter[]> {
     const startedAt = Date.now();
     try {
       const printers = parseWindowsPrinterDiagnostics(
-        this.commandRunner("powershell.exe", [
+        await this.commandRunner("powershell.exe", [
           "-NoProfile",
           "-NonInteractive",
           "-Command",
@@ -53,8 +59,15 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
       );
       let pnp: WindowsPnpDiagnostic[] = [];
       try {
-        pnp = parseWindowsPnpDiagnostics(this.commandRunner("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "$d=@(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB\\*' -and (($_.Class -eq 'USB') -or ($_.CompatibleID -match 'Class_07')) } | ForEach-Object { [PSCustomObject]@{ InstanceId=[string]$_.InstanceId; Class=[string]$_.Class; FriendlyName=[string]$_.FriendlyName; Status=[string]$_.Status; Present=$true; HardwareIds=@($_.HardwareID); CompatibleIds=@($_.CompatibleID); LocationInfo=[string]$_.LocationInfo; LocationPaths=@($_.LocationPaths) } }); ConvertTo-Json -InputObject $d -Compress"]));
-      } catch { pnp = []; }
+        pnp = parseWindowsPnpDiagnostics(await this.commandRunner("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "$d=@(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB\\*' -and (($_.Class -eq 'USB') -or ($_.CompatibleID -match 'Class_07')) } | ForEach-Object { [PSCustomObject]@{ InstanceId=[string]$_.InstanceId; Class=[string]$_.Class; FriendlyName=[string]$_.FriendlyName; Status=[string]$_.Status; Present=$true; HardwareIds=@($_.HardwareID); CompatibleIds=@($_.CompatibleID); LocationInfo=[string]$_.LocationInfo; LocationPaths=@($_.LocationPaths) } }); ConvertTo-Json -InputObject $d -Compress"]));
+      } catch (error) {
+        pnp = [];
+        console.warn("Windows USB PnP printer inventory unavailable; retaining queue inventory", {
+          durationMs: Date.now() - startedAt,
+          timeoutMs: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
+          timeout: error instanceof Error && /timed?out|ETIMEDOUT/i.test(error.message),
+        });
+      }
       this.diagnosticLogger(printers);
       console.info("Windows printer discovery completed", {
         durationMs: Date.now() - startedAt,
@@ -97,10 +110,11 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
     }
   }
 
-  listSerialDevices(): DiscoveredSerialDevice[] {
+  async listSerialDevices(): Promise<DiscoveredSerialDevice[]> {
+    const startedAt = Date.now();
     try {
       return parseWindowsSerialDiagnostics(
-        this.commandRunner("powershell.exe", [
+        await this.commandRunner("powershell.exe", [
           "-NoProfile",
           "-NonInteractive",
           "-Command",
@@ -132,6 +146,12 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
+      console.error("Windows serial discovery failed", {
+        durationMs: Date.now() - startedAt,
+        timeoutMs: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
+        timeout: /timed?out|ETIMEDOUT/i.test(message),
+        errorMessage: message,
+      });
       throw new Error(`Windows serial discovery failed: ${message}`);
     }
   }

@@ -7,6 +7,11 @@ import type {
 
 export type ScaleAssociationState = "pending" | "configured" | "missing";
 
+export const buildScaleAgentConfiguration = (device: PeripheralDevice) => {
+  if (device.type !== "SCALE" || device.connectionType !== "SERIAL" || device.profileId !== "ROCHI_A01E") return null;
+  return { terminalId: "local-terminal", connectionType: "SERIAL" as const, profileId: "ROCHI_A01E" as const };
+};
+
 export const buildScaleAssociationSettings = (
   resolved: PosTerminalResolvedConfig,
   scaleDeviceId: string | null

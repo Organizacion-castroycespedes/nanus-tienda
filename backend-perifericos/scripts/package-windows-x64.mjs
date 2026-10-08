@@ -386,6 +386,10 @@ try {
     usbRawPhysicalCutCertified: false,
     logLimit: 500,
     printerWidthChars: 48,
+    enrollmentApiBaseUrl: environment.agentApiBaseUrl || "",
+    enrollmentSigningPublicKeyPem: process.env.MANUS_AGENT_ENROLLMENT_SIGNING_PUBLIC_KEY_PEM || "",
+    enrollmentAudience: environment.agentAudience || "",
+    enrollmentSigningKeyId: process.env.MANUS_AGENT_ENROLLMENT_SIGNING_KEY_ID || "",
   }, null, 2)}\n`);
 
   // This QA local config contains no secrets. It keeps the agent loopback-only
@@ -403,6 +407,10 @@ try {
     usbRawPhysicalCutCertified: false,
     logLimit: 500,
     printerWidthChars: 48,
+    enrollmentApiBaseUrl: environment.agentApiBaseUrl || "",
+    enrollmentSigningPublicKeyPem: process.env.MANUS_AGENT_ENROLLMENT_SIGNING_PUBLIC_KEY_PEM || "",
+    enrollmentAudience: environment.agentAudience || "",
+    enrollmentSigningKeyId: process.env.MANUS_AGENT_ENROLLMENT_SIGNING_KEY_ID || "",
   }, null, 2)}\n`);
 
   writeText("start-agent.cmd", `@echo off\r\nsetlocal\r\nset "AGENT_ROOT=%~dp0"\r\nif not defined PERIPHERALS_CONFIG_PATH set "PERIPHERALS_CONFIG_PATH=%AGENT_ROOT%config\\agent.config.local.json"\r\nif not defined PERIPHERALS_VERSION set "PERIPHERALS_VERSION=${agentVersion}"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\logs"\r\nif not exist "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state" mkdir "%LOCALAPPDATA%\\Manus\\PeripheralAgent\\state"\r\n"%AGENT_ROOT%runtime\\node.exe" "%AGENT_ROOT%app\\main.js"\r\n`);

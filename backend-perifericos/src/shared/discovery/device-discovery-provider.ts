@@ -24,6 +24,6 @@ export type DiscoveredSerialDevice = {
 
 /** Portable input port. Platform adapters enumerate local printer queues. */
 export interface DeviceDiscoveryProvider {
-  listUsbPrinters(): DiscoveredUsbPrinter[];
-  listSerialDevices?(): DiscoveredSerialDevice[];
+  listUsbPrinters(): DiscoveredUsbPrinter[] | Promise<DiscoveredUsbPrinter[]>;
+  listSerialDevices?(): DiscoveredSerialDevice[] | Promise<DiscoveredSerialDevice[]>;
 }

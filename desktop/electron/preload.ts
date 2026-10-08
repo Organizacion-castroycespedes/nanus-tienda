@@ -16,6 +16,10 @@ const api: ManusTerminalApi = {
   openCashDrawer: (payload) => ipcRenderer.invoke(IPC_CHANNELS.openCashDrawer, payload),
   simulateScanner: (payload) => ipcRenderer.invoke(IPC_CHANNELS.simulateScanner, payload),
   currentWeight: (payload) => ipcRenderer.invoke(IPC_CHANNELS.currentWeight, payload),
+  agentSecurityStatus: () => ipcRenderer.invoke(IPC_CHANNELS.agentSecurityStatus),
+  startAgentPairing: () => ipcRenderer.invoke(IPC_CHANNELS.startAgentPairing),
+  acceptAgentEnrollmentEnvelope: (payload) => ipcRenderer.invoke(IPC_CHANNELS.acceptAgentEnrollmentEnvelope, payload),
+  scaleAuthorizationTest: (payload) => ipcRenderer.invoke(IPC_CHANNELS.scaleAuthorizationTest, payload),
   listLogs: () => ipcRenderer.invoke(IPC_CHANNELS.listLogs),
 };
 

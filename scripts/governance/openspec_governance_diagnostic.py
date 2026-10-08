@@ -275,6 +275,14 @@ def resolve_target_ref(root: Path, requested: str | None = None) -> dict[str, st
     for candidate in candidates:
         if not candidate:
             continue
+        # A governance target must be a named Git ref, not an object ID or
+        # revision expression supplied as a convenient substitute for source
+        # identity.  Resolve it only after Git accepts the complete ref name.
+        if re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", candidate):
+            continue
+        ref_code, _ = run(["git", "check-ref-format", "--allow-onelevel", candidate], root)
+        if ref_code != 0:
+            continue
         code, output = run(["git", "rev-parse", "--verify", f"{candidate}^{{commit}}"], root)
         if code == 0 and output.strip():
             return {"target_ref": candidate, "target_sha": output.strip().splitlines()[-1], "target_status": "VERIFIED"}

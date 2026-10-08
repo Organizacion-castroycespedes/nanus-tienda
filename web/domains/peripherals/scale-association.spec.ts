@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildScaleAssociationSettings, resolveScaleAssociationState } from "./scale-association";
+import { buildScaleAgentConfiguration, buildScaleAssociationSettings, resolveScaleAssociationState } from "./scale-association";
 import type { PeripheralDevice, PosTerminalResolvedConfig } from "./types";
 
 const resolved = (overrides: Partial<PosTerminalResolvedConfig> = {}) => ({
@@ -34,6 +34,13 @@ const resolved = (overrides: Partial<PosTerminalResolvedConfig> = {}) => ({
 }) as PosTerminalResolvedConfig;
 
 const scale = { id: "rochi", type: "SCALE", name: "ROCHI", status: "CONNECTED", connectionType: "SERIAL", terminalId: "agent" } as PeripheralDevice;
+
+test("local Agent scale config accepts only a ROCHI SERIAL profile and does not set authorization", () => {
+  assert.deepEqual(buildScaleAgentConfiguration({ ...scale, profileId: "ROCHI_A01E" }), {
+    terminalId: "local-terminal", connectionType: "SERIAL", profileId: "ROCHI_A01E",
+  });
+  assert.equal(buildScaleAgentConfiguration(scale), null);
+});
 
 test("construye una asociación de escala preservando el resto de periféricos y flags", () => {
   assert.deepEqual(buildScaleAssociationSettings(resolved(), "rochi"), {

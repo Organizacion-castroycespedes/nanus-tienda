@@ -8,6 +8,8 @@ export const ENVIRONMENTS = {
     name: "qa",
     frontendUrl: "https://www.apptiendamanus.space/login",
     origin: "https://www.apptiendamanus.space",
+    agentApiBaseUrl: "https://api.apptiendamanus.space/api",
+    agentAudience: "manus-agent:qa",
   },
   production: {
     name: "production",
