@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { getPeripheralAgentConfig, requestPeripheral } from "./api";
+import { getPeripheralAgentConfig, PeripheralAgentRequestError, requestPeripheral } from "./api";
+import { getScaleCaptureOperatorMessage } from "../../modules/pos/utils/scale-capture-error";
 
 const withProductionEnvironment = (
   httpUrl: string | undefined,
@@ -177,6 +178,124 @@ test("Electron bridge fails closed for an unmapped peripheral path", async () =>
       configurable: true,
       value: previousWindow,
     });
+  }
+});
+
+test("Electron capture bridge preserves SCALE_WEIGHT_ZERO as a semantic error code", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { manusTerminal: { scaleCapture: async () => ({
+      kind: "scale-capture-result-v1",
+      ok: false,
+      errorCode: "SCALE_WEIGHT_ZERO",
+    }) } },
+  });
+  globalThis.fetch = (async () => { throw new Error("renderer fetch must not run"); }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      requestPeripheral("/scale/capture", { method: "POST", body: JSON.stringify({ captureId: "capture-1" }) }),
+      (error: unknown) => error instanceof PeripheralAgentRequestError
+        && error.code === "SCALE_WEIGHT_ZERO"
+        && getScaleCaptureOperatorMessage(error) === "Coloca el producto en la balanza para continuar.",
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("Electron capture bridge unwraps a positive REAL weight without changing precision", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousFetch = globalThis.fetch;
+  const response = { captureId: "capture-1", status: "READY", reading: { weight: 0.245, unit: "kg", source: "REAL", unitVerified: true } };
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { manusTerminal: { scaleCapture: async () => ({
+      kind: "scale-capture-result-v1",
+      ok: true,
+      value: response,
+    }) } },
+  });
+  globalThis.fetch = (async () => { throw new Error("renderer fetch must not run"); }) as typeof fetch;
+
+  try {
+    assert.deepEqual(
+      await requestPeripheral<typeof response>("/scale/capture", { method: "POST", body: "{}" }),
+      response,
+    );
+    assert.equal(response.reading.weight, 0.245);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("Electron capture bridge maps unavailable and unknown structured errors safely", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { manusTerminal: { scaleCapture: async () => ({
+      kind: "scale-capture-result-v1",
+      ok: false,
+      errorCode: "AGENT_UNAVAILABLE",
+    }) } },
+  });
+  globalThis.fetch = (async () => { throw new Error("renderer fetch must not run"); }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      requestPeripheral("/scale/capture", { method: "POST", body: "{}" }),
+      (error: unknown) => error instanceof PeripheralAgentRequestError && error.code === "AGENT_OFFLINE",
+    );
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { manusTerminal: { scaleCapture: async () => ({
+        kind: "scale-capture-result-v1",
+        ok: false,
+        errorCode: "AGENT_HTTP_ERROR",
+      }) } },
+    });
+    await assert.rejects(
+      requestPeripheral("/scale/capture", { method: "POST", body: "{}" }),
+      (error: unknown) => error instanceof PeripheralAgentRequestError
+        && error.code === "HTTP_ERROR"
+        && !error.message.includes("AGENT_HTTP_ERROR"),
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("browser capture transport classifies the exact Agent zero-weight code", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousFetch = globalThis.fetch;
+  const previousAgentUrl = process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: undefined });
+  process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL = "http://127.0.0.1:4050";
+  globalThis.fetch = (async () => new Response(JSON.stringify({ message: "SCALE_WEIGHT_ZERO" }), {
+    status: 400,
+    headers: { "Content-Type": "application/json" },
+  })) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      requestPeripheral("/scale/capture", { method: "POST", body: JSON.stringify({ captureId: "capture-1" }) }),
+      (error: unknown) => error instanceof PeripheralAgentRequestError && error.code === "SCALE_WEIGHT_ZERO",
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousAgentUrl === undefined) delete process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL;
+    else process.env.NEXT_PUBLIC_PERIPHERALS_AGENT_HTTP_URL = previousAgentUrl;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
   }
 });
 

@@ -57,12 +57,18 @@ export class DpapiAgentSecretStore {
     const path = this.path(name);
     if (!existsSync(path)) return null;
     if (process.platform !== "win32") throw new Error("DPAPI_WINDOWS_ONLY");
-    try { this.restrictAcl(path); } catch { throw new Error("AGENT_SECRET_ACL_INVALID"); }
     let record: ProtectedRecord;
     try { record = JSON.parse(readFileSync(path, "utf8")) as ProtectedRecord; }
     catch { throw new Error("AGENT_SECRET_RECORD_INVALID"); }
     if (record.version !== 1 || !record.entropy || !record.protected) throw new Error("AGENT_SECRET_RECORD_INVALID");
-    return this.protector.unprotect(Buffer.from(record.protected, "base64"), Buffer.from(record.entropy, "base64"));
+    const ciphertext = Buffer.from(record.protected, "base64");
+    const entropy = Buffer.from(record.entropy, "base64");
+    try {
+      return await this.protector.unprotect(ciphertext, entropy);
+    } finally {
+      ciphertext.fill(0);
+      entropy.fill(0);
+    }
   }
 
   async write(name: string, plaintext: Buffer): Promise<void> {

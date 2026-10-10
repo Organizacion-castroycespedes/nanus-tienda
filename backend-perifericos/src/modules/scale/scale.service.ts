@@ -164,7 +164,9 @@ export class ScaleService {
       this.logsService.append({
         source: "scale", event: "scale.current_weight.real",
         message: "Scale current weight read from ROCHI",
-        metadata: { terminalId, deviceId, source: "REAL", unitVerified: false, stabilityVerified: false },
+        metadata: { terminalId, deviceId, logicalScaleId: deviceId, source: response.source,
+          unit: response.unit, unitVerified: response.unitVerified,
+          stabilityVerified: response.stabilityVerified, observedAt: response.timestamp },
       });
       return response;
     } finally {

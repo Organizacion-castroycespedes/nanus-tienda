@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "reflect-metadata";
+import { BadRequestException, Logger } from "@nestjs/common";
 import { GUARDS_METADATA } from "@nestjs/common/constants";
 import { MENU_KEYS } from "../../../common/constants/menu-keys";
 import { PERMISSION_KEY } from "../../../common/decorators/require-permission.decorator";
@@ -12,6 +13,81 @@ import { SaleController } from "./sale.controller";
 
 const getPermission = (methodName: keyof SaleController) =>
   Reflect.getMetadata(PERMISSION_KEY, SaleController.prototype[methodName]);
+
+const captureControllerLogs = async <T>(controller: SaleController, operation: () => Promise<T>) => {
+  const logger = (controller as unknown as { logger: Logger }).logger;
+  const originalLog = logger.log;
+  const originalError = logger.error;
+  const records: string[] = [];
+  logger.log = ((message: string) => { records.push(message); }) as never;
+  logger.error = ((message: string) => { records.push(message); }) as never;
+  try {
+    return { result: await operation(), records };
+  } finally {
+    logger.log = originalLog;
+    logger.error = originalError;
+  }
+};
+
+test("SaleController: weight capture creation logs one safe received and succeeded event", async () => {
+  let calls = 0;
+  const saleService = {
+    startWeightCapture: async () => {
+      calls += 1;
+      return { captureId: "40000000-0000-4000-8000-000000000001", nonce: "nonce-secret-marker", expiresAt: "2026-01-01T00:00:00.000Z" };
+    },
+  };
+  const controller = new SaleController(saleService as never, {} as never);
+  const request = { context: { tenantId: "tenant-safe-marker", userId: "user-safe-marker", branchId: "branch-safe-marker",
+    terminalId: "terminal-safe-marker", posSessionId: "session-safe-marker", roles: [] } } as never;
+
+  const { result, records } = await captureControllerLogs(controller, () =>
+    controller.startWeightCapture({ productId: "product-safe-marker" }, request));
+
+  assert.equal(calls, 1);
+  assert.equal(result.nonce, "nonce-secret-marker");
+  assert.deepEqual(records.map((record) => JSON.parse(record).event), [
+    "weight_capture.create.received", "weight_capture.create.succeeded",
+  ]);
+  assert.equal(JSON.parse(records[1]).captureId, "40000000-0000-4000-8000-000000000001");
+  const serialized = records.join("\n");
+  for (const forbidden of ["nonce-secret-marker", "product-safe-marker", "tenant-safe-marker", "user-safe-marker", "branch-safe-marker", "terminal-safe-marker", "session-safe-marker", "Authorization", "verifier", "0.245"]) {
+    assert.equal(serialized.includes(forbidden), false);
+  }
+  assert.equal(records.some((record) => Object.keys(JSON.parse(record)).some((key) => key === "weight" || key === "nonce" || key === "verifier")), false);
+});
+
+test("SaleController: failed weight capture creation logs safe error and rethrows the same HTTP exception", async () => {
+  const failure = new BadRequestException("WEIGHT_CAPTURE_PRODUCT_INVALID");
+  const saleService = { startWeightCapture: async () => { throw failure; } };
+  const controller = new SaleController(saleService as never, {} as never);
+  const request = { context: { tenantId: "tenant-safe-marker", userId: "user-safe-marker", branchId: "branch-safe-marker",
+    terminalId: "terminal-safe-marker", posSessionId: "session-safe-marker", roles: [] } } as never;
+  let thrown: unknown;
+
+  const { records } = await captureControllerLogs(controller, async () => {
+    try {
+      await controller.startWeightCapture({ productId: "product-safe-marker" }, request);
+    } catch (error) {
+      thrown = error;
+    }
+    return undefined;
+  });
+
+  assert.equal(thrown, failure);
+  assert.equal((thrown as BadRequestException).getStatus(), 400);
+  assert.deepEqual(records.map((record) => JSON.parse(record).event), [
+    "weight_capture.create.received", "weight_capture.create.failed",
+  ]);
+  const failed = JSON.parse(records[1]);
+  assert.equal(failed.stage, "capture_creation");
+  assert.equal(failed.httpStatus, 400);
+  assert.equal(failed.errorCode, "WEIGHT_CAPTURE_PRODUCT_INVALID");
+  const serialized = records.join("\n");
+  for (const forbidden of ["product-safe-marker", "tenant-safe-marker", "user-safe-marker", "branch-safe-marker", "terminal-safe-marker", "session-safe-marker", "Authorization", "nonce", "verifier", "0.245"]) {
+    assert.equal(serialized.includes(forbidden), false);
+  }
+});
 
 test("SaleController: uses auth, roles and permissions guards", () => {
   const guards = Reflect.getMetadata(GUARDS_METADATA, SaleController);

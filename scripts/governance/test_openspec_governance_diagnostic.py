@@ -1,5 +1,6 @@
 import json
 import hashlib
+import io
 import subprocess
 import sys
 import tempfile
@@ -7,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import openspec_governance_diagnostic as diagnostic_module
 from openspec_governance_diagnostic import (
     classify_change,
     classify_sql_path,
@@ -1112,6 +1114,77 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertNotIn("local", cutover["missing_prerequisites"])
         self.assertIn("qa", cutover["missing_prerequisites"])
         self.assertIn("prd_snapshot", cutover["missing_prerequisites"])
+
+    def _invoke_read_only_main(self, mode, extra_args=()):
+        root = Path(__file__).parents[2].resolve()
+        evidence = {"source": mode.upper(), "status": "VERIFIED"}
+        report = {"enforcement": {"exit_code": 0}}
+        args = ["openspec_governance_diagnostic.py", "--root", str(root),
+                f"--{mode}-read-only", *extra_args]
+        with patch.object(diagnostic_module, "qa_read_only_reconcile", return_value=evidence) as qa_mock, \
+                patch.object(diagnostic_module, "prd_read_only_reconcile", return_value=evidence) as prd_mock, \
+                patch.object(diagnostic_module, "diagnostic_report", return_value=report) as report_mock, \
+                patch.object(diagnostic_module, "render_warning_console", return_value="report"):
+            with patch.object(sys, "argv", args), patch.object(sys, "stdout", io.StringIO()), \
+                    patch.object(sys, "stderr", io.StringIO()):
+                exit_code = diagnostic_module.main()
+        self.assertEqual(exit_code, 0)
+        if mode == "qa":
+            qa_mock.assert_called_once_with(root)
+            prd_mock.assert_not_called()
+        else:
+            qa_mock.assert_not_called()
+            prd_mock.assert_called_once_with(
+                root, ssh_target=None, ssh_port=2798, ssh_user=None,
+                ssh_key_path=None, remote_env_path=None,
+            )
+        return root, evidence, report_mock
+
+    def test_qa_read_only_main_propagates_change_files_command_and_target_ref(self):
+        command = "npx.cmd --yes @fission-ai/openspec@1.4.0"
+        root, evidence, report_mock = self._invoke_read_only_main("qa", [
+            "--change", "weighted-sale-change",
+            "--changed-file", "api/src/first.ts",
+            "--changed-file", "api/src/second.ts",
+            "--openspec-command", command,
+            "--target-ref", "origin/develop",
+            "--enforcement-mode", "STRICT",
+        ])
+        report_mock.assert_called_once_with(
+            root, "weighted-sale-change", ["api/src/first.ts", "api/src/second.ts"], command,
+            target_ref="origin/develop", environment_evidence=evidence,
+            enforcement_mode="STRICT",
+        )
+
+    def test_prd_read_only_main_propagates_change_files_command_and_target_ref(self):
+        command = "npx.cmd --yes @fission-ai/openspec@1.4.0"
+        root, evidence, report_mock = self._invoke_read_only_main("prd", [
+            "--change", "weighted-sale-change",
+            "--changed-file", "api/src/first.ts",
+            "--changed-file", "api/src/second.ts",
+            "--openspec-command", command,
+            "--target-ref", "origin/develop",
+            "--enforcement-mode", "STRICT",
+        ])
+        report_mock.assert_called_once_with(
+            root, "weighted-sale-change", ["api/src/first.ts", "api/src/second.ts"], command,
+            target_ref="origin/develop", environment_evidence=evidence,
+            enforcement_mode="STRICT",
+        )
+
+    def test_qa_read_only_main_preserves_default_selection_arguments(self):
+        root, evidence, report_mock = self._invoke_read_only_main("qa")
+        report_mock.assert_called_once_with(
+            root, diagnostic_module.CHANGE_ID, None, None, target_ref=None,
+            environment_evidence=evidence, enforcement_mode=None,
+        )
+
+    def test_prd_read_only_main_preserves_default_selection_arguments(self):
+        root, evidence, report_mock = self._invoke_read_only_main("prd")
+        report_mock.assert_called_once_with(
+            root, diagnostic_module.CHANGE_ID, None, None, target_ref=None,
+            environment_evidence=evidence, enforcement_mode=None,
+        )
 
     def test_diagnostic_report_exposes_baseline_and_cutover_states(self):
         report = diagnostic_report(Path(__file__).parents[2], validate_changes=False)

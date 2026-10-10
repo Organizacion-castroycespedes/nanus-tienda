@@ -13,6 +13,7 @@ export const CAPABILITY_METHODS = {
   "agent.security.pairingStart": "startAgentPairing",
   "agent.security.enrollmentEnvelope": "acceptAgentEnrollmentEnvelope",
   "scale.authorizationTest": "scaleAuthorizationTest",
+  "scale.capture": "scaleCapture",
   "logs.list": "listLogs",
 } as const;
 
@@ -85,7 +86,7 @@ export const getTerminalRuntime = async (
     agentApiVersion: value.agentApiVersion as number | null,
     capabilities: capabilityNames.filter((name) => advertised.includes(name)),
   };
-  if (info.bridgeContractVersion !== 1 || (info.agentApiVersion !== null && info.agentApiVersion !== 1)) {
+  if (info.bridgeContractVersion !== 1 || (info.agentApiVersion !== null && info.agentApiVersion !== 1 && info.agentApiVersion !== 2)) {
     return result("INCOMPATIBLE", "UNSUPPORTED_CONTRACT", [], info);
   }
   const capabilities = callable.filter((name) => info.capabilities.includes(name)

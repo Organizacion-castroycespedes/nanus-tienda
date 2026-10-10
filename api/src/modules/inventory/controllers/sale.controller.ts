@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   Inject,
+  Logger,
   NotFoundException,
   Param,
   Post,
@@ -26,7 +27,12 @@ import { RolesGuard } from "../../../common/guards/roles.guard";
 import { DELIVERY_PERMISSION_ACTIONS } from "../../deliveries/deliveries.constants";
 import { DeliveriesService } from "../../deliveries/deliveries.service";
 import { CreateSaleDeliveryDto } from "../../deliveries/dto/create-sale-delivery.dto";
+import type { SaleLineRequest } from "../repositories/sale.repository";
 import { SaleService } from "../services/sale.service";
+import {
+  logScaleObservationEvent,
+  logWeightCaptureCreationFailure,
+} from "../../scale-authorization/scale-observation-telemetry";
 
 type AuthRequest = Request & {
   user?: {
@@ -51,12 +57,7 @@ type CreateSaleBody = {
   customerId: string;
   orderId?: string | null;
   type: "CASH" | "CREDIT";
-  items: Array<{
-    productId: string;
-    quantity: number;
-    price: number;
-    orderItemId?: string | null;
-  }>;
+  items: SaleLineRequest[];
   payments?: Array<{
     paymentMethodId: string;
     amount: number;
@@ -77,6 +78,8 @@ const saleDeliveryValidationPipe = new ValidationPipe({
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
 export class SaleController {
+  private readonly logger = new Logger(SaleController.name);
+
   constructor(
     @Inject(SaleService)
     private readonly saleService: SaleService,
@@ -182,6 +185,28 @@ export class SaleController {
       items: body.items ?? [],
       payments: body.payments ?? [],
     }, this.getSaleContext(request), idempotencyKey);
+  }
+
+  @Post("weight-captures")
+  @RequireOpenCashSession()
+  @RequirePosSession()
+  @RequirePermission({ menuKey: "POS", level: "WRITE" })
+  async startWeightCapture(@Body() body: { productId?: string }, @Req() request: AuthRequest) {
+    logScaleObservationEvent(this.logger, "weight_capture.create.received", undefined, "request_received");
+    let stage = "request_validation";
+    try {
+      if (!body || typeof body.productId !== "string") throw new BadRequestException("productId is required");
+      stage = "capture_creation";
+      const result = await this.saleService.startWeightCapture(body.productId, this.getSaleContext(request));
+      const captureId = typeof result?.captureId === "string"
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(result.captureId)
+        ? result.captureId : undefined;
+      logScaleObservationEvent(this.logger, "weight_capture.create.succeeded", captureId, "capture_created");
+      return result;
+    } catch (error) {
+      logWeightCaptureCreationFailure(this.logger, undefined, stage, error);
+      throw error;
+    }
   }
 
   @Get("idempotency/:key")

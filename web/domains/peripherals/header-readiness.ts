@@ -1,5 +1,4 @@
 import type {
-  PeripheralAgentHealth,
   PeripheralDevice,
   PosTerminalResolvedConfig,
 } from "./types";
@@ -10,17 +9,24 @@ export type PeripheralHeaderState = {
   detail: string;
 };
 
-type AgentHealth = Pick<PeripheralAgentHealth, "status" | "mode" | "agentApiVersion"> | null;
+type AgentHealth = unknown;
 type TerminalConfig = Pick<
   PosTerminalResolvedConfig,
   "source" | "printerDeviceId" | "scaleDeviceId" | "features" | "mode" | "active"
 > | null;
 type SocketStatus = "CONNECTING" | "CONNECTED" | "DISCONNECTED";
 
-const isAgentReady = (health: AgentHealth) =>
-  health?.status.toLowerCase() === "ok" &&
-  health.mode === "REAL" &&
-  health.agentApiVersion === 1;
+const isAgentReady = (health: AgentHealth): boolean => {
+  if (!health || typeof health !== "object") return false;
+
+  const candidate = health as Record<string, unknown>;
+  return (
+    typeof candidate.status === "string" &&
+    candidate.status.toLowerCase() === "ok" &&
+    candidate.mode === "REAL" &&
+    (candidate.agentApiVersion === 1 || candidate.agentApiVersion === 2)
+  );
+};
 
 const metadataFlag = (device: PeripheralDevice | undefined, key: string) => {
   const value = device?.metadata?.[key];

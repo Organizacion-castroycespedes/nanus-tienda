@@ -506,6 +506,51 @@ describe("PricingService", () => {
     assert.equal(result.taxes[0]?.taxAmount, 23.95);
   });
 
+  it("preserves three-decimal weighted quantity for pricing and monetary totals", async () => {
+    const { service } = buildService(baseProduct({ price: 16000 }));
+
+    const result = await service.calculateWeightedLinePrice({
+      ...baseInput(),
+      quantity: 0.245,
+    });
+
+    assert.equal(result.quantity, 0.245);
+    assert.equal(result.lineTotal, 3920);
+  });
+
+  it("rounds weighted preview quantity to three decimals and preserves small and whole kg values", async () => {
+    const { service } = buildService(baseProduct({ price: 16000 }));
+
+    const small = await service.calculateWeightedLinePrice({
+      ...baseInput(),
+      quantity: 0.001,
+    });
+    const halfUp = await service.calculateWeightedLinePrice({
+      ...baseInput(),
+      quantity: 0.2455,
+    });
+    const whole = await service.calculateWeightedLinePrice({
+      ...baseInput(),
+      quantity: 1.0,
+    });
+
+    assert.equal(small.quantity, 0.001);
+    assert.equal(halfUp.quantity, 0.246);
+    assert.equal(whole.quantity, 1);
+  });
+
+  it("keeps legacy UNIT pricing at two-decimal quantity precision", async () => {
+    const { service } = buildService(baseProduct({ price: 16000 }));
+
+    const result = await service.calculateLinePrice({
+      ...baseInput(),
+      quantity: 0.245,
+    });
+
+    assert.equal(result.quantity, 0.25);
+    assert.equal(result.lineTotal, 4000);
+  });
+
   it("derives the included tax base from the charged line for quantity 12", async () => {
     const { service } = buildService(
       baseProduct({ price: 1000, taxRate: 0.19, taxIsIncluded: true })

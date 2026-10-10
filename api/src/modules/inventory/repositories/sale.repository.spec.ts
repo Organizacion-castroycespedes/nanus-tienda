@@ -148,6 +148,8 @@ const assertCreateSaleCall = (
       quantity: 2,
       price: 1250,
       order_item_id: ids.orderItem,
+      sale_item_id: null,
+      sale_mode: "UNIT",
     },
   ]);
   assert.deepEqual(JSON.parse(call.params[9] as string), [
@@ -405,6 +407,8 @@ test("SaleRepository serializes enriched pricing payload as snake_case", async (
       quantity: 2,
       price: 9500,
       order_item_id: ids.orderItem,
+      sale_item_id: null,
+      sale_mode: "UNIT",
       subtotal: 19000,
       price_without_tax: 7983.19,
       tax_total: 3033.62,

@@ -20,6 +20,7 @@ const api: ManusTerminalApi = {
   startAgentPairing: () => ipcRenderer.invoke(IPC_CHANNELS.startAgentPairing),
   acceptAgentEnrollmentEnvelope: (payload) => ipcRenderer.invoke(IPC_CHANNELS.acceptAgentEnrollmentEnvelope, payload),
   scaleAuthorizationTest: (payload) => ipcRenderer.invoke(IPC_CHANNELS.scaleAuthorizationTest, payload),
+  scaleCapture: (payload) => ipcRenderer.invoke(IPC_CHANNELS.scaleCapture, payload),
   listLogs: () => ipcRenderer.invoke(IPC_CHANNELS.listLogs),
 };
 

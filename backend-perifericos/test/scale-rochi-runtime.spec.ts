@@ -65,7 +65,10 @@ const buildRuntime = (capture: { port?: RochiA01eSimulatorPort } = {}) => {
     events,
     createRochiA01eSimulatorFactory(capture)
   );
-  return { scale, configured, capture, controller, scaleController: new ScaleController(scale) };
+  return { scale, configured, capture, controller, logs, scaleController: new ScaleController(scale, {
+    submitRealObservation: async () => ({ available: false }),
+    submitSaleCaptureObservation: async () => ({ status: "READY" }),
+  } as never, logs) };
 };
 
 test("REAL ROCHI reads configured serial device without claiming unit or stability", async () => {
@@ -188,8 +191,103 @@ test("REAL ROCHI exposes KG only after explicit local operator verification", as
     assert.equal(result.unitVerified, true);
     assert.equal(result.stable, null);
     assert.equal(result.stabilityVerified, false);
+    const realReadLog = runtime.logs.list().find((entry) => entry.event === "scale.current_weight.real");
+    assert.equal(realReadLog?.metadata.unitVerified, true);
+    assert.equal(realReadLog?.metadata.unit, "kg");
+    assert.equal(realReadLog?.metadata.stabilityVerified, false);
+    assert.equal(realReadLog?.metadata.observedAt, result.timestamp);
   } finally {
     if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
     else process.env.PERIPHERALS_MODE = previousMode;
   }
+});
+
+test("commercial capture reads the configured REAL ROCHI and submits its observation to the authenticated API client", async () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  const runtime = buildRuntime();
+  const submitted: Record<string, unknown>[] = [];
+  runtime.controller.update(runtime.configured.id, { metadata: { unitVerification: {
+    unit: "KG", method: "OPERATOR_CONFIRMATION", verifiedAt: new Date().toISOString(),
+  } } });
+  const controller = new ScaleController(runtime.scale, {
+    submitSaleCaptureObservation: async (input: Record<string, unknown>) => {
+      submitted.push(input); return { captureId: input.captureId, status: "READY", expiresAt: new Date(Date.now() + 60_000).toISOString() };
+    },
+  } as never, runtime.logs);
+  try {
+    const resultPromise = controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000001" });
+    runtime.capture.port!.emitFrame("000.245\r\n");
+    const result = await resultPromise;
+    assert.equal(result.status, "READY");
+    assert.equal(result.reading.weight, 0.245);
+    assert.equal(result.reading.source, "REAL");
+    assert.equal(result.reading.unit, "kg");
+    assert.equal(result.reading.unitVerified, true);
+    assert.equal(submitted.length, 1);
+    assert.equal(submitted[0].weight, 0.245);
+    assert.equal(submitted[0].source, "REAL");
+    const captureLogs = runtime.logs.list().filter((entry) => entry.event.startsWith("capture."));
+    assert.deepEqual(captureLogs.map((entry) => entry.event).reverse(), [
+      "capture.request_received", "capture.real_read_completed", "capture.local_validation_passed",
+    ]);
+    const readLog = captureLogs.find((entry) => entry.event === "capture.real_read_completed")!;
+    assert.equal(readLog.metadata.unitVerified, true);
+    assert.equal(readLog.metadata.source, "REAL");
+    assert.equal(readLog.metadata.logicalScaleId, runtime.configured.id);
+    assert.equal("weight" in readLog.metadata, false);
+    const serializedLogs = JSON.stringify(captureLogs).toLowerCase();
+    for (const sensitive of ["0.245", "authorization", "nonce", "verifier", "secret"]) {
+      assert.equal(serializedLogs.includes(sensitive), false);
+    }
+  } finally {
+    if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
+    else process.env.PERIPHERALS_MODE = previousMode;
+  }
+});
+
+test("commercial capture logs a safe local rejection stage for non-REAL, non-KG and unverified readings", async () => {
+  const rejectedReadings = [
+    { source: "MOCK", unit: "kg", unitVerified: true, expected: "SCALE_SOURCE_NOT_REAL" },
+    { source: "REAL", unit: "lb", unitVerified: true, expected: "SCALE_UNIT_NOT_KG" },
+    { source: "REAL", unit: "kg", unitVerified: false, expected: "SCALE_UNIT_UNVERIFIED" },
+  ];
+  for (const [index, scenario] of rejectedReadings.entries()) {
+    const logs = new LogsService();
+    const controller = new ScaleController({
+      getCurrentWeight: async () => ({ deviceId: "scale-safe-id", weight: 0.245, unit: scenario.unit,
+        stable: null, source: scenario.source, unitVerified: scenario.unitVerified,
+        stabilityVerified: false, timestamp: "2026-10-08T00:00:00.000Z" }),
+    } as never, { submitSaleCaptureObservation: async () => assert.fail("rejected reading must not be submitted") } as never, logs);
+
+    await assert.rejects(() => controller.captureForSale({
+      captureId: `00000000-0000-4000-8000-00000000000${index + 1}`,
+    }), /REAL_KG_VERIFIED_READING_REQUIRED/);
+    const rejection = logs.list().find((entry) => entry.event === "capture.local_validation_rejected");
+    assert.equal(rejection?.metadata.stage, "local_validation");
+    assert.equal(rejection?.metadata.httpStatus, 400);
+    assert.equal(rejection?.metadata.errorCode, scenario.expected);
+    assert.equal("weight" in (rejection?.metadata ?? {}), false);
+  }
+});
+
+test("commercial capture rejects an exact REAL zero with a semantic code before observation submission", async () => {
+  const logs = new LogsService();
+  const controller = new ScaleController({
+    getCurrentWeight: async () => ({ deviceId: "scale-safe-id", weight: 0, unit: "kg",
+      stable: null, source: "REAL", unitVerified: true, stabilityVerified: false,
+      timestamp: "2026-10-08T00:00:00.000Z" }),
+  } as never, { submitSaleCaptureObservation: async () => assert.fail("zero weight must not be submitted") } as never, logs);
+
+  await assert.rejects(() => controller.captureForSale({
+    captureId: "00000000-0000-4000-8000-000000000010",
+  }), /SCALE_WEIGHT_ZERO/);
+
+  const events = logs.list().filter((entry) => entry.event.startsWith("capture."));
+  const rejected = events.find((entry) => entry.event === "capture.local_validation_rejected");
+  assert.equal(rejected?.metadata.errorCode, "SCALE_WEIGHT_ZERO");
+  assert.equal(rejected?.metadata.httpStatus, 400);
+  assert.equal(events.some((entry) => entry.event === "capture.local_validation_passed"), false);
+  assert.equal(events.some((entry) => entry.event === "capture.observation_send_started"), false);
+  assert.equal("weight" in (rejected?.metadata ?? {}), false);
 });

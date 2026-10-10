@@ -67,3 +67,78 @@ test("scale missing or unconfigured stays fail-closed in the header", () => {
   assert.equal(resolveScaleHeaderState({ config: config(), devices: [], health }).tone, "warning");
   assert.equal(resolveScaleHeaderState({ config: null, devices: [scale()], health }).status, "Sin config.");
 });
+
+test("missing or malformed Agent health degrades safely for printer and scale", () => {
+  const unavailableValues: unknown[] = [
+    undefined,
+    null,
+    {},
+    { status: undefined },
+    { status: null },
+    { status: "" },
+    { status: "unknown", mode: "REAL", agentApiVersion: 1 },
+    { available: false, reason: "UNAVAILABLE" },
+  ];
+
+  for (const unavailableHealth of unavailableValues) {
+    assert.doesNotThrow(() =>
+      resolvePrinterHeaderState({
+        isElectron: true,
+        socketStatus: "DISCONNECTED",
+        printerName: null,
+        config: config(),
+        devices: [printer()],
+        health: unavailableHealth,
+      })
+    );
+    assert.equal(
+      resolvePrinterHeaderState({
+        isElectron: true,
+        socketStatus: "DISCONNECTED",
+        printerName: null,
+        config: config(),
+        devices: [printer()],
+        health: unavailableHealth,
+      }).tone,
+      "error"
+    );
+    assert.equal(
+      resolveScaleHeaderState({ config: config(), devices: [scale()], health: unavailableHealth }).tone,
+      "error"
+    );
+  }
+});
+
+test("valid Agent health states keep their existing readiness semantics", () => {
+  for (const validHealth of [health, { status: "OK", mode: "REAL", agentApiVersion: 2 }]) {
+    assert.equal(
+      resolvePrinterHeaderState({
+        isElectron: true,
+        socketStatus: "DISCONNECTED",
+        printerName: null,
+        config: config(),
+        devices: [printer()],
+        health: validHealth,
+      }).tone,
+      "ok"
+    );
+    assert.equal(resolveScaleHeaderState({ config: config(), devices: [scale()], health: validHealth }).tone, "ok");
+  }
+
+  for (const notReadyHealth of [
+    { status: "ok", mode: "MOCK", agentApiVersion: 1 },
+    { status: "ok", mode: "REAL", agentApiVersion: 3 },
+  ]) {
+    assert.equal(
+      resolvePrinterHeaderState({
+        isElectron: true,
+        socketStatus: "DISCONNECTED",
+        printerName: null,
+        config: config(),
+        devices: [printer()],
+        health: notReadyHealth,
+      }).tone,
+      "error"
+    );
+  }
+});

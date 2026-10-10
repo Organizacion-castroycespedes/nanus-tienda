@@ -1,16 +1,21 @@
 import {
-  BadRequestException, ConflictException, ForbiddenException, Inject, Injectable,
+  BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { createPublicKey, timingSafeEqual } from "node:crypto";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../common/db/database.service";
-import { AgentCredentialPersistence, ScaleBindingPersistence } from "./persistence/scale-authorization.repositories";
+import { AgentCredentialPersistence, ScaleBindingPersistence, WeightCapturePersistence } from "./persistence/scale-authorization.repositories";
 import { issueOpaqueAgentCredential, verifyOpaqueAgentCredential } from "./domain/agent-credential.domain";
 import { createAgentCredentialEnvelope, createSignedAgentPairingChallenge, publicKeyFingerprint, verifySignedAgentPairingChallenge, type SignedAgentPairingChallenge } from "./domain/agent-pairing.domain";
 import { deriveRealAvailability, type RealAvailabilityInput } from "./domain/real-availability.domain";
 import type { ScaleBindingContext } from "./domain/scale-binding.domain";
 import { readPairingSigningConfig } from "./pairing-config";
+import { logScaleObservationEvent, logScaleObservationFailure } from "./scale-observation-telemetry";
+
+// markReady runs four SQL statements under the Agent's 10-second observation deadline.
+// Each statement is server-cancelled after 1.5 seconds, leaving room for rollback and response.
+export const WEIGHT_CAPTURE_READY_STATEMENT_TIMEOUT_MS = 1_500;
 
 type Actor = { tenantId?: string; userId?: string; roles?: string[] };
 type EnrollmentRequest = { installationId: string; nonce: string; enrollmentPublicKeyPem: string };
@@ -18,11 +23,13 @@ type ApprovalRequest = { signedChallenge: SignedAgentPairingChallenge; pairingCo
 
 @Injectable()
 export class ScaleAuthorizationRuntimeService {
+  private readonly logger = new Logger(ScaleAuthorizationRuntimeService.name);
   private readonly challengeAttempts = new Map<string, number[]>();
   constructor(
     @Inject(DatabaseService) private readonly db: DatabaseService,
     @Inject(AgentCredentialPersistence) private readonly credentials: AgentCredentialPersistence,
     @Inject(ScaleBindingPersistence) private readonly bindings: ScaleBindingPersistence,
+    @Inject(WeightCapturePersistence) private readonly captures: WeightCapturePersistence,
   ) {}
 
   private signingConfig() {
@@ -171,6 +178,120 @@ export class ScaleAuthorizationRuntimeService {
       return { tenantId: row.tenant_id, terminalDeviceId: row.terminal_device_id,
         credentialId: match[1], credentialSecret: match[2] };
     } finally { client.release(); }
+  }
+
+  async submitCaptureObservation(auth: { tenantId: string; terminalDeviceId: string; credentialId: string }, input: {
+    captureId: string; deviceId: string; weight: number; unit: string | null; source: string; unitVerified: boolean; observedAt: string;
+  }) {
+    const captureId = typeof input?.captureId === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.captureId)
+      ? input.captureId : undefined;
+    let stage = "input_validation";
+    let now: number;
+    let observedAt: number;
+    try {
+      if (!captureId || typeof input.deviceId !== "string" || !input.deviceId.trim()
+        || input.source !== "REAL" || input.unit !== "kg" || input.unitVerified !== true
+        || !Number.isFinite(input.weight) || input.weight < 0) throw new BadRequestException("CAPTURE_OBSERVATION_INVALID");
+      observedAt = Date.parse(input.observedAt);
+      now = Date.now();
+      if (!Number.isFinite(observedAt) || observedAt > now || now - observedAt > 15_000) {
+        throw new ConflictException("CAPTURE_OBSERVATION_STALE");
+      }
+    } catch (error) {
+      logScaleObservationFailure(this.logger, captureId, stage, error);
+      throw error;
+    }
+    stage = "database_acquire";
+    let client: PoolClient;
+    try {
+      client = await this.db.getClient();
+    } catch (error) {
+      logScaleObservationFailure(this.logger, captureId, stage, error);
+      throw error;
+    }
+    stage = "transaction_begin";
+    let transactionAttempted = false;
+    let discardClient = false;
+    try {
+      transactionAttempted = true;
+      await client.query("BEGIN");
+      stage = "capture_load";
+      const capture = await client.query<QueryResultRow & { tenant_id: string; terminal_device_id: string; logical_scale_id: string; created_at: Date; expires_at: Date; status: string }>(
+        `SELECT tenant_id, terminal_device_id, logical_scale_id, created_at, expires_at, status
+         FROM terminal_scale_weight_captures WHERE capture_id = $1 FOR UPDATE`, [captureId],
+      );
+      const row = capture.rows[0];
+      logScaleObservationEvent(this.logger, "observation.capture_loaded", captureId, stage, { found: Boolean(row) });
+      stage = "capture_context_validation";
+      if (!row || row.tenant_id !== auth.tenantId || row.terminal_device_id !== auth.terminalDeviceId
+        || row.logical_scale_id !== input.deviceId) {
+        throw new ForbiddenException("CAPTURE_AGENT_CONTEXT_MISMATCH");
+      }
+      stage = "capture_state_validation";
+      if (row.status !== "PENDING" || row.expires_at.getTime() <= now
+        || observedAt < row.created_at.getTime()) throw new ConflictException("CAPTURE_NOT_PENDING_OR_EXPIRED");
+      logScaleObservationEvent(this.logger, "observation.capture_state_validated", captureId, stage);
+      stage = "agent_credential_validation";
+      const credential = await client.query<QueryResultRow>(
+        `SELECT 1 FROM terminal_device_credentials c JOIN terminal_devices d
+           ON d.id = c.terminal_device_id AND d.tenant_id = c.tenant_id
+         WHERE c.tenant_id = $1 AND c.terminal_device_id = $2 AND c.credential_id = $3
+           AND c.status = 'ACTIVE' AND c.expires_at > now() AND c.revoked_at IS NULL
+           AND d.registration_status <> 'REVOKED' FOR SHARE OF c, d`,
+        [auth.tenantId, auth.terminalDeviceId, auth.credentialId],
+      );
+      if (credential.rowCount !== 1) throw new ForbiddenException("AGENT_CREDENTIAL_INVALID");
+      stage = "capture_context_validation";
+      const liveContext = await client.query<QueryResultRow>(
+        `SELECT 1 FROM terminal_scale_weight_captures c
+         JOIN terminal_scale_bindings b ON b.id = c.terminal_scale_binding_id
+           AND b.tenant_id = c.tenant_id AND b.branch_id = c.branch_id
+           AND b.pos_terminal_id = c.pos_terminal_id AND b.operational_terminal_id = c.operational_terminal_id
+           AND b.terminal_device_id = c.terminal_device_id AND b.logical_scale_id = c.logical_scale_id
+           AND b.status = 'AUTHORIZED' AND b.unit_state = 'KG_VERIFIED'
+         JOIN pos_terminals p ON p.id = c.pos_terminal_id AND p.tenant_id = c.tenant_id
+           AND p.branch_id = c.branch_id AND p.operational_terminal_id = c.operational_terminal_id AND p.active IS TRUE
+         JOIN terminals t ON t.id = c.operational_terminal_id AND t.tenant_id = c.tenant_id
+           AND t.branch_id = c.branch_id AND t.is_active IS TRUE
+         JOIN terminal_device_bindings td ON td.tenant_id = c.tenant_id
+           AND td.terminal_id = c.operational_terminal_id AND td.device_id = c.terminal_device_id AND td.status = 'ACTIVE'
+         JOIN terminal_devices d ON d.id = c.terminal_device_id AND d.tenant_id = c.tenant_id
+           AND d.registration_status <> 'REVOKED'
+         JOIN pos_terminal_peripheral_settings ps ON ps.terminal_id = c.pos_terminal_id
+           AND ps.enable_scale IS TRUE AND ps.scale_device_id = c.logical_scale_id
+         JOIN pos_user_sessions s ON s.id = c.pos_session_id AND s.tenant_id = c.tenant_id
+           AND s.branch_id = c.branch_id AND s.terminal_id = c.operational_terminal_id AND s.is_active IS TRUE
+         JOIN products pr ON pr.id = c.product_id AND pr.tenant_id = c.tenant_id
+           AND pr.is_active IS TRUE AND pr.sale_type IN ('WEIGHT','BOTH') AND pr.measurement_unit = 'KG'
+         WHERE c.capture_id = $1 FOR SHARE OF b, p, t, td, d, ps, s, pr`, [captureId],
+      );
+      if (liveContext.rowCount !== 1) throw new ForbiddenException("CAPTURE_BINDING_CONTEXT_UNAVAILABLE");
+      logScaleObservationEvent(this.logger, "observation.context_validated", captureId, stage);
+      stage = "ready_update";
+      logScaleObservationEvent(this.logger, "observation.ready_update_started", captureId, stage);
+      await client.query("SELECT set_config('statement_timeout', $1, true)", [
+        `${WEIGHT_CAPTURE_READY_STATEMENT_TIMEOUT_MS}ms`,
+      ]);
+      const ready = await this.captures.markReady(client, { captureId: input.captureId, observation: {
+        value: input.weight, unit: "kg", source: "REAL", unitVerified: true, observedAt: input.observedAt,
+      }, now: new Date(now) });
+      logScaleObservationEvent(this.logger, "observation.ready_update_completed", captureId, stage, { status: ready.status });
+      stage = "transaction_commit";
+      await client.query("COMMIT");
+      transactionAttempted = false;
+      return { captureId: ready.capture_id, status: ready.status, expiresAt: ready.expires_at, weightKg: String(ready.weight_kg) };
+    } catch (error) {
+      logScaleObservationFailure(this.logger, captureId, stage, error);
+      if (transactionAttempted) {
+        try { await client.query("ROLLBACK"); }
+        catch { discardClient = true; }
+      }
+      throw error;
+    }
+    finally {
+      client.release(discardClient ? new Error("Scale observation rollback failed") : undefined);
+    }
   }
 
   async createBinding(input: { posTerminalId: string; logicalScaleId: string }, actor: Actor) {

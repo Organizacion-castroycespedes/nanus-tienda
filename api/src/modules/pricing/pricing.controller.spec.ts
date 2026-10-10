@@ -59,6 +59,54 @@ describe("PricingController", () => {
     assert.equal(calls[0].productId, productId);
   });
 
+  it("routes explicit WEIGHT previews to weighted pricing and UNIT or legacy previews to UNIT pricing", async () => {
+    const tenantId = randomUUID();
+    const branchId = randomUUID();
+    const productId = randomUUID();
+    const calls: string[] = [];
+    const service = {
+      calculateLinePrice: async (input: any) => {
+        calls.push(`UNIT:${input.quantity}:${input.saleMode ?? "omitted"}`);
+        return { quantity: input.quantity };
+      },
+      calculateWeightedLinePrice: async (input: any) => {
+        calls.push(`WEIGHT:${input.quantity}:${input.saleMode ?? "omitted"}`);
+        return { quantity: input.quantity };
+      },
+    };
+    const controller = new PricingController(service as any);
+    const request = { user: { tenantId } } as any;
+    const line = { branchId, productId, quantity: 0.245, channel: "POS" as const };
+
+    await controller.previewLine({ ...line, saleMode: "WEIGHT" }, request);
+    await controller.previewLine({ ...line, saleMode: "UNIT" }, request);
+    await controller.previewLine(line, request);
+
+    assert.deepEqual(calls, [
+      "WEIGHT:0.245:omitted",
+      "UNIT:0.245:omitted",
+      "UNIT:0.245:omitted",
+    ]);
+  });
+
+  it("rejects unknown preview sale modes", () => {
+    const tenantId = randomUUID();
+    const branchId = randomUUID();
+    const productId = randomUUID();
+    const controller = new PricingController({
+      calculateLinePrice: async () => ({}),
+      calculateWeightedLinePrice: async () => ({}),
+    } as any);
+
+    assert.throws(
+      () => controller.previewLine(
+        { branchId, productId, quantity: 1, channel: "POS", saleMode: "OTHER" as any },
+        { user: { tenantId } } as any
+      ),
+      /saleMode must be UNIT or WEIGHT/
+    );
+  });
+
   it("rejects preview without tenant context", async () => {
     const controller = new PricingController({
       calculateLinePrice: async () => ({}),

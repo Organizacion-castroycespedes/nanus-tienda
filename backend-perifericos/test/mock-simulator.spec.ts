@@ -112,7 +112,10 @@ const buildServices = () => {
     devicesController: new DevicesController(devicesService),
     printerController: new PrinterController(printerService),
     cashDrawerController: new CashDrawerController(cashDrawerService),
-    scaleController: new ScaleController(scaleService),
+    scaleController: new ScaleController(scaleService, {
+      submitRealObservation: async () => ({ available: false }),
+      submitSaleCaptureObservation: async () => ({ status: "READY" }),
+    } as never),
     scannerController: new ScannerController(scannerService),
     logsController: new LogsController(logsService),
   };

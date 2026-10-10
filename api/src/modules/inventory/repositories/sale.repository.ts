@@ -31,7 +31,9 @@ export type SaleCreateContext = {
 };
 
 export type CreateSaleItemInput = {
+  saleItemId?: string;
   productId: string;
+  saleMode?: "UNIT" | "WEIGHT";
   quantity: number;
   price: number;
   orderItemId?: string | null;
@@ -65,6 +67,27 @@ export type CreateSaleItemInput = {
     isIncluded: boolean;
   }>;
 };
+
+export type SaleLineRequest =
+  | {
+      productId: string;
+      saleMode?: "UNIT";
+      quantity: number;
+      price: number;
+      orderItemId?: string | null;
+      weightCapture?: never;
+    }
+  | {
+      productId: string;
+      saleMode: "WEIGHT";
+      weightCapture: { captureId: string; nonce: string };
+      orderItemId?: string | null;
+      quantity?: never;
+      price?: never;
+      weight?: never;
+      unit?: never;
+      source?: never;
+    };
 
 export type CreateSalePaymentInput = {
   paymentMethodId: string;
@@ -177,6 +200,8 @@ export class SaleRepository {
       quantity: item.quantity,
       price: item.price,
       order_item_id: item.orderItemId ?? null,
+      sale_item_id: item.saleItemId ?? null,
+      sale_mode: item.saleMode ?? "UNIT",
     };
 
     if (item.subtotal !== undefined) serializedItem.subtotal = item.subtotal;
@@ -700,6 +725,43 @@ export class SaleRepository {
     );
 
     return result.rows[0] ?? null;
+  }
+
+  async findActivePosTerminalId(
+    tenantId: string,
+    branchId: string,
+    operationalTerminalId: string,
+    client: PoolClient,
+  ): Promise<string | null> {
+    const result = await this.query<{ id: string }>(
+      `SELECT id
+       FROM pos_terminals
+       WHERE tenant_id = $1 AND branch_id = $2
+         AND operational_terminal_id = $3 AND active IS TRUE
+       LIMIT 1`,
+      [tenantId, branchId, operationalTerminalId],
+      client,
+    );
+    return result.rows[0]?.id ?? null;
+  }
+
+  async associateWeightCaptureToSaleItem(client: PoolClient, input: {
+    tenantId: string;
+    captureId: string;
+    saleId: string;
+    saleItemId: string;
+    rawWeightKg: string;
+    commercialQuantityKg: string;
+  }) {
+    await this.query(
+      `INSERT INTO sale_item_weight_captures (
+         tenant_id, capture_id, sale_id, sale_item_id,
+         raw_weight_kg, commercial_quantity_kg, created_at
+       ) VALUES ($1, $2, $3, $4, $5::numeric(18,6), $6::numeric(14,3), now())`,
+      [input.tenantId, input.captureId, input.saleId, input.saleItemId,
+        input.rawWeightKg, input.commercialQuantityKg],
+      client,
+    );
   }
 
   async assignFinancialInstitutionsToSalePayments(

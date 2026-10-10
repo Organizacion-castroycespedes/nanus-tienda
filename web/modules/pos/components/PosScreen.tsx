@@ -65,6 +65,7 @@ import {
 import { PosProductCard } from "./catalog/PosProductCard";
 import { PosDiagnosticsPanel } from "./hardware/PosDiagnosticsPanel";
 import {
+  createPosWeightCapture,
   createSale,
   getPosCustomers,
   getPosProducts,
@@ -74,6 +75,8 @@ import {
   type PosLinePricePreviewResponse,
   type PosSalePayload,
 } from "../services/pos.service";
+import { PeripheralAgentRequestError, requestPeripheral } from "../../../domains/peripherals/api";
+import { getScaleCaptureOperatorMessage } from "../utils/scale-capture-error";
 import {
   buildDefaultPayments,
   buildPaymentId,
@@ -639,8 +642,7 @@ export const PosScreen = () => {
     peripheralFeatureFlags.peripheralsEnabled &&
     peripheralFeatureFlags.scaleEnabled;
   const scaleUiVisible = scaleConfigState === "configured";
-  // Physical discovery/configuration is present, but commercial capture remains fail-closed.
-  const scaleCaptureControlsVisible = false;
+  const scaleCaptureControlsVisible = scaleUiVisible;
   const mockDeviceControlsEnabled =
     process.env.NODE_ENV !== "production" ||
     process.env.NEXT_PUBLIC_POS_MOCK_DEVICES === "true";
@@ -1492,7 +1494,12 @@ export const PosScreen = () => {
     [cartWithDerivedValues]
   );
   const refreshCartItemPricing = useCallback(
-    async (productId: string, quantity: number, pricingRequestKey: string) => {
+    async (
+      productId: string,
+      quantity: number,
+      pricingRequestKey: string,
+      saleMode: "UNIT" | "WEIGHT"
+    ) => {
       if (!activeBranchId) {
         return;
       }
@@ -1502,6 +1509,7 @@ export const PosScreen = () => {
           branchId: activeBranchId,
           productId,
           quantity,
+          saleMode,
           channel: "POS",
           customerId: selectedCustomerId ?? undefined,
         });
@@ -1574,7 +1582,12 @@ export const PosScreen = () => {
   );
 
   const queueCartItemPricing = useCallback(
-    (items: PosCartItem[], productId: string, quantity: number) => {
+    (
+      items: PosCartItem[],
+      productId: string,
+      quantity: number,
+      saleMode: "UNIT" | "WEIGHT"
+    ) => {
       if (!activeBranchId) {
         const message = "No hay una sucursal POS activa para calcular precio.";
         setCartItemsAndRef(
@@ -1601,7 +1614,7 @@ export const PosScreen = () => {
       );
 
       setCartItemsAndRef(nextItems);
-      void refreshCartItemPricing(productId, quantity, pricingRequestKey);
+      void refreshCartItemPricing(productId, quantity, pricingRequestKey, saleMode);
     },
     [
       activeBranchId,
@@ -1655,7 +1668,12 @@ export const PosScreen = () => {
         item.productId,
         item.quantity
       );
-      void refreshCartItemPricing(item.productId, item.quantity, pricingRequestKey);
+          void refreshCartItemPricing(
+            item.productId,
+            item.quantity,
+            pricingRequestKey,
+            item.saleMode ?? "UNIT"
+          );
     });
   }, [
     activeBranchId,
@@ -1673,7 +1691,12 @@ export const PosScreen = () => {
       );
       if (pendingItems.length > 0) {
         pendingItems.forEach((item) => {
-          void refreshCartItemPricing(item.productId, item.quantity, item.pricingRequestKey || "");
+          void refreshCartItemPricing(
+            item.productId,
+            item.quantity,
+            item.pricingRequestKey || "",
+            item.saleMode ?? "UNIT"
+          );
         });
       }
     };
@@ -1712,17 +1735,21 @@ export const PosScreen = () => {
 
       if (existing) {
         queueCartItemPricing(
-          currentCart.map((item) =>
-            item.productId === product.id ? { ...item, quantity } : item
-          ),
+          currentCart.map((item) => {
+            if (item.productId !== product.id) return item;
+            const { weightCapture: _weightCapture, ...unitItem } = item;
+            return { ...unitItem, saleMode: "UNIT", quantity };
+          }),
           product.id,
-          quantity
+          quantity,
+          "UNIT"
         );
         return true;
       }
 
       const nextItem: PosCartItem = {
         productId: product.id,
+        saleMode: "UNIT",
         name: product.name,
         sku: product.sku,
         quantity,
@@ -1733,7 +1760,7 @@ export const PosScreen = () => {
         baseUnitPrice: Number(product.priceWithTax ?? product.price),
         basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
       };
-      queueCartItemPricing([...currentCart, nextItem], product.id, quantity);
+      queueCartItemPricing([...currentCart, nextItem], product.id, quantity, "UNIT");
       return true;
     },
     [allowSaleSubmissionRetry, queueCartItemPricing, showToast]
@@ -1780,9 +1807,15 @@ export const PosScreen = () => {
         id: product.id,
         name: product.name,
       });
-      if (getProductSaleType(product) === "BOTH") {
+      const saleType = getProductSaleType(product);
+      if (saleType === "BOTH") {
         setBothSelectionProduct(product);
         setScannerLastResult("Selecciona Unidad o Peso para continuar");
+        return;
+      }
+      if (saleType === "WEIGHT") {
+        void handleReadScaleForProduct(product);
+        setScannerLastResult("Iniciando lectura REAL de peso");
         return;
       }
       const added = addToCart(product);
@@ -1795,7 +1828,7 @@ export const PosScreen = () => {
       setScannerLastResult(message);
       showToast(message, "success");
     },
-    [addToCart, scannerHidLogger, showToast]
+    [addToCart, handleReadScaleForProduct, scannerHidLogger, showToast]
   );
 
   const handleScannerConnectionError = useCallback(
@@ -1890,23 +1923,60 @@ export const PosScreen = () => {
     setScaleMockStatus("disabled");
   }, [scaleUiVisible]);
 
-  const handleReadScaleForProduct = useCallback(
-    async (product: ProductResponse) => {
+  async function handleReadScaleForProduct(product: ProductResponse) {
       if (!scaleUiVisible) {
         const message = "La balanza no está disponible o autorizada para esta terminal";
         setScaleLastResult(message);
         showToast(message, "warning");
         return;
       }
-      void product;
-      const message = "La lectura REAL de balanza aún no está disponible";
-      setScaleLastResult(message);
-      showToast(message, "warning");
-    },
-    [scaleUiVisible, showToast]
-  );
+      const existing = cartRef.current.find((item) => item.productId === product.id);
+      if (existing && existing.saleMode !== "WEIGHT") {
+        const message = "Retira el producto del carrito antes de cambiar su modo de venta";
+        setScaleLastResult(message); showToast(message, "warning"); return;
+      }
+      try {
+        const capture = await createPosWeightCapture(product.id);
+        const accepted = await requestPeripheral<{ captureId: string; status: string; reading: { weight: number; unit: string; source: string; unitVerified: boolean } }>(
+          "/scale/capture", { method: "POST", body: JSON.stringify({ captureId: capture.captureId }) },
+        );
+        if (accepted.captureId === capture.captureId && accepted.status === "READY"
+          && accepted.reading?.source === "REAL" && accepted.reading.unit === "kg"
+          && accepted.reading.unitVerified === true && accepted.reading.weight === 0) {
+          throw new PeripheralAgentRequestError("SCALE_WEIGHT_ZERO", "SCALE_WEIGHT_ZERO");
+        }
+        if (accepted.captureId !== capture.captureId || accepted.status !== "READY"
+          || accepted.reading?.source !== "REAL" || accepted.reading.unit !== "kg"
+          || accepted.reading.unitVerified !== true || !Number.isFinite(accepted.reading.weight)
+          || accepted.reading.weight <= 0) throw new Error("La captura REAL no fue aceptada");
+        const quantity = Number(accepted.reading.weight.toFixed(3));
+        const nextItem: PosCartItem = {
+          productId: product.id, saleMode: "WEIGHT",
+          weightCapture: { captureId: capture.captureId, nonce: capture.nonce, expiresAt: capture.expiresAt },
+          name: product.name, sku: product.sku, quantity,
+          price: Number(product.priceWithTax ?? product.price), stock: Number(product.stock ?? 0),
+          taxId: product.taxId ?? null, priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+          baseUnitPrice: Number(product.priceWithTax ?? product.price),
+          basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+        };
+        const nextCart = existing
+          ? cartRef.current.map((item) => item.productId === product.id ? nextItem : item)
+          : [...cartRef.current, nextItem];
+        queueCartItemPricing(nextCart, product.id, quantity, "WEIGHT");
+        setScaleLastResult(`Peso REAL leído: ${quantity.toFixed(3)} kg`);
+      } catch (error) {
+        const message = getScaleCaptureOperatorMessage(error)
+          ?? (error instanceof Error ? error.message : "No se pudo completar la captura REAL");
+        setScaleLastResult(message); showToast(message, "error");
+      }
+  }
 
   const handleReadScaleFromCart = useCallback(async () => {
+    const product = firstWeighableCartProduct;
+    if (product) {
+      await handleReadScaleForProduct(product);
+      return;
+    }
     if (!scaleUiVisible) {
       const message = "Esta terminal no tiene una balanza configurada y habilitada";
       setScaleLastResult(message);
@@ -1914,10 +1984,10 @@ export const PosScreen = () => {
       return;
     }
 
-    const message = "La lectura REAL de balanza aún no está disponible";
+    const message = "Agrega un producto pesable al carrito antes de leer la balanza";
     setScaleLastResult(message);
     showToast(message, "warning");
-  }, [scaleUiVisible, showToast]);
+  }, [firstWeighableCartProduct, handleReadScaleForProduct, scaleUiVisible, showToast]);
 
   const handleProductCardAction = useCallback(
     (product: ProductResponse) => {
@@ -2059,7 +2129,8 @@ export const PosScreen = () => {
         return [{ ...item, quantity: safeQuantity }];
       }),
       productId,
-      safeQuantity
+      safeQuantity,
+      target.saleMode ?? "UNIT"
     );
   };
 
@@ -2543,6 +2614,13 @@ export const PosScreen = () => {
       setSubmitError(validationError);
       return;
     }
+    const invalidWeightCapture = cartWithDerivedValues.find((item) => item.saleMode === "WEIGHT"
+      && (!item.weightCapture || !Number.isFinite(Date.parse(item.weightCapture.expiresAt))
+        || Date.parse(item.weightCapture.expiresAt) <= Date.now()));
+    if (invalidWeightCapture) {
+      setSubmitError("La captura de peso venció o ya no está disponible. Retira y vuelve a leer el producto.");
+      return;
+    }
 
     const effectivePayments = buildEffectivePayments(localParsed, derived.overpayment);
     const paymentTotal = round(
@@ -2565,8 +2643,13 @@ export const PosScreen = () => {
         {
           customerId: customerIdForSubmit!,
           type: saleType,
-          items: cartWithDerivedValues.map((item) => ({
+          items: cartWithDerivedValues.map((item) => item.saleMode === "WEIGHT"
+            ? { productId: item.productId, saleMode: "WEIGHT" as const, weightCapture: {
+                captureId: item.weightCapture!.captureId, nonce: item.weightCapture!.nonce,
+              } }
+            : {
             productId: item.productId,
+            saleMode: "UNIT" as const,
             quantity: item.quantity,
             price: item.finalUnitPrice ?? item.price,
             taxes: item.taxes.map((tax) => ({
@@ -2580,7 +2663,7 @@ export const PosScreen = () => {
               taxAmount: tax.taxAmount,
               isIncluded: tax.isIncluded,
             })),
-          })),
+          }),
           payments: effectivePayments.map((payment) => ({
             paymentMethodId: payment.paymentMethodId,
             amount: payment.amount,
