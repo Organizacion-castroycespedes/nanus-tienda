@@ -50,6 +50,7 @@ import { ProductImageService } from "./services/product-image.service";
 import { ProductSubcategoryService } from "./services/product-subcategory.service";
 import { PurchaseService } from "./services/purchase.service";
 import { SaleService } from "./services/sale.service";
+import { WeightCapturePersistence } from "../scale-authorization/persistence/scale-authorization.repositories";
 import { StockAdjustmentService } from "./services/stock-adjustment.service";
 import { StockMovementService } from "./services/stock-movement.service";
 import { StockMovementLotService } from "./services/stock-movement-lot.service";
@@ -147,6 +148,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     ProductCategoryRepository,
     ProductSubcategoryRepository,
     SaleRepository,
+    WeightCapturePersistence,
     StockMovementLotRepository,
     SupplierRepository,
     UnitRepository,

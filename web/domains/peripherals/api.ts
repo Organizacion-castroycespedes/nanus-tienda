@@ -29,7 +29,32 @@ export type PeripheralAgentRequestErrorCode =
   | "CONNECTION_REFUSED"
   | "PRINT_ERROR"
   | "PRINTER_NOT_CONFIGURED"
+  | "SCALE_WEIGHT_ZERO"
   | "HTTP_ERROR";
+
+type ScaleCaptureIpcResult =
+  | { kind: "scale-capture-result-v1"; ok: true; value: unknown }
+  | { kind: "scale-capture-result-v1"; ok: false; errorCode: string };
+
+const isScaleCaptureIpcResult = (value: unknown): value is ScaleCaptureIpcResult =>
+  Boolean(value && typeof value === "object"
+    && (value as { kind?: unknown }).kind === "scale-capture-result-v1"
+    && typeof (value as { ok?: unknown }).ok === "boolean");
+
+const unwrapScaleCaptureIpcResult = <T>(value: unknown): T => {
+  if (!isScaleCaptureIpcResult(value)) return value as T;
+  if (value.ok) return value.value as T;
+  if (value.errorCode === "SCALE_WEIGHT_ZERO") {
+    throw new PeripheralAgentRequestError("SCALE_WEIGHT_ZERO", "SCALE_WEIGHT_ZERO");
+  }
+  if (value.errorCode === "AGENT_UNAVAILABLE") {
+    throw new PeripheralAgentRequestError("AGENT_OFFLINE", "El backend de perifericos no esta disponible en Electron.");
+  }
+  if (value.errorCode === "AGENT_TIMEOUT") {
+    throw new PeripheralAgentRequestError("TIMEOUT", "La conexion con el backend de perifericos excedio el tiempo de espera.");
+  }
+  throw new PeripheralAgentRequestError("HTTP_ERROR", "No se pudo completar la captura REAL.");
+};
 
 export type PeripheralAgentConfig = {
   httpUrl: string;
@@ -238,6 +263,11 @@ export type ElectronPeripheralBridge = {
   openCashDrawer: (payload: unknown) => Promise<unknown>;
   simulateScanner: (payload: unknown) => Promise<unknown>;
   currentWeight: (payload: unknown) => Promise<unknown>;
+  agentSecurityStatus?: () => Promise<unknown>;
+  startAgentPairing?: () => Promise<unknown>;
+  acceptAgentEnrollmentEnvelope?: (payload: unknown) => Promise<unknown>;
+  scaleAuthorizationTest?: (payload: unknown) => Promise<unknown>;
+  scaleCapture?: (payload: unknown) => Promise<unknown>;
   listLogs: () => Promise<unknown>;
 };
 
@@ -351,6 +381,25 @@ export const requestPeripheral = async <T>(
     if (path === "/cash-drawer/open" && init?.method === "POST") return invoke("drawer.open", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path === "/scanner/simulate" && init?.method === "POST") return invoke("scanner.simulate", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path.startsWith("/scale/current-weight") && (!init || init.method === undefined || init.method === "GET")) return invoke("scale.currentWeight", Object.fromEntries(new URLSearchParams(path.split("?")[1] ?? ""))) as Promise<T>;
+    if (path === "/agent-security/status" && (!init || init.method === undefined || init.method === "GET")) return invoke("agent.security.status") as Promise<T>;
+    if (path === "/agent-security/pairing/start" && init?.method === "POST") return invoke("agent.security.pairingStart") as Promise<T>;
+    if (path === "/agent-security/pairing/envelope" && init?.method === "POST") return invoke("agent.security.enrollmentEnvelope", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/scale/authorization-test" && init?.method === "POST") return invoke("scale.authorizationTest", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    if (path === "/scale/capture" && init?.method === "POST") {
+      try {
+        const result = await invoke("scale.capture", JSON.parse(String(init.body ?? "{}")));
+        return unwrapScaleCaptureIpcResult<T>(result);
+      } catch (error) {
+        const code = error && typeof error === "object" && "code" in error
+          ? (error as { code?: unknown }).code
+          : undefined;
+        if (error instanceof PeripheralAgentRequestError) throw error;
+        if (code === "SCALE_WEIGHT_ZERO") {
+          throw new PeripheralAgentRequestError("SCALE_WEIGHT_ZERO", "SCALE_WEIGHT_ZERO");
+        }
+        throw new PeripheralAgentRequestError("HTTP_ERROR", "No se pudo completar la captura REAL.", { cause: error });
+      }
+    }
     if (path === "/logs" && (!init || init.method === undefined || init.method === "GET")) return invoke("logs.list") as Promise<T>;
     throw new PeripheralAgentRequestError("HTTP_ERROR", "Esta operación aún no está disponible en Manus POS.");
   }
@@ -402,6 +451,9 @@ const classifyAgentHttpError = (
   status: number,
   message: string
 ): PeripheralAgentRequestErrorCode => {
+  if (message.trim() === "SCALE_WEIGHT_ZERO") {
+    return "SCALE_WEIGHT_ZERO";
+  }
   const normalized = message.toLowerCase();
   if (status === 404 || normalized.includes("device not found")) {
     return "DEVICE_NOT_FOUND";

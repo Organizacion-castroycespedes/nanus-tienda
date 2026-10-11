@@ -80,6 +80,11 @@ export const buildFallbackPosTerminalConfig = (
   mode: "MOCK",
   active: true,
   source: "FALLBACK_MOCK",
+  scale: {
+    assignment: "ASSIGNED",
+    classification: "MOCK",
+    deviceId: DEFAULT_SCALE_DEVICE_ID,
+  },
   printerDeviceId: DEFAULT_PRINTER_DEVICE_ID,
   cashDrawerDeviceId: DEFAULT_CASH_DRAWER_DEVICE_ID,
   scaleDeviceId: DEFAULT_SCALE_DEVICE_ID,

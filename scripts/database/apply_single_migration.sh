@@ -80,8 +80,25 @@ chmod 600 "$SNAPSHOT_FILE" 2>/dev/null || true
 }
 MIGRATION_FILE="$SNAPSHOT_FILE"
 
-# shellcheck disable=SC1090
-source "$ENV_FILE"
+ENV_PAYLOAD="$(python -B "$ROOT_DIR/scripts/database/load_migration_env.py" "$ENV_FILE")" || {
+  echo "[apply_single_migration] Invalid environment file; no executor call." >&2
+  exit 1
+}
+while IFS=$'\t' read -r var_name encoded_value; do
+  [[ -n "$var_name" ]] || continue
+  case "$var_name" in
+    DB_HOST|DB_PORT|DB_NAME|DB_SCHEMA|DB_USER|DB_PASSWORD|DB_ADMIN_USER|DB_ADMIN_PASSWORD|ENVIRONMENT|MIGRATION_TARGET_ENV|MIGRATION_PROD_APPROVED|MIGRATION_DRY_RUN|MIGRATION_GOVERNANCE_ERA|GOVERNANCE_CUTOVER_APPROVED|MIGRATION_EXPECTED_PREDECESSOR_KIND|MIGRATION_EXPECTED_PREDECESSOR_VERSION|MIGRATION_EXPECTED_PREDECESSOR_CHECKSUM|MIGRATION_EXPECTED_CHECKSUM|MIGRATION_EXECUTION_BINDING) ;;
+    *) echo "[apply_single_migration] Unexpected environment key; no executor call." >&2; exit 1 ;;
+  esac
+  decoded_value="$( { printf '%s' "$encoded_value" | base64 -d && printf '\001'; } )" || {
+    echo "[apply_single_migration] Invalid encoding for ${var_name}; no executor call." >&2
+    exit 1
+  }
+  decoded_value="${decoded_value%$'\001'}"
+  printf -v "$var_name" '%s' "$decoded_value"
+  export "$var_name"
+done <<< "$ENV_PAYLOAD"
+unset ENV_PAYLOAD var_name encoded_value decoded_value
 TARGET_ENV="${MIGRATION_TARGET_ENV:-QA}"
 TARGET_ENV="${TARGET_ENV^^}"
 DB_SCHEMA="${DB_SCHEMA:-public}"
@@ -318,6 +335,8 @@ transaction_status=0
 # migration_checksum is the validated exact-byte CHECKSUM above.
 set +e
 transaction_output="$("${PSQL[@]}" --single-transaction \
+  -v VERBOSITY=verbose \
+  --echo-errors \
   -c "DO \$governance\$
 DECLARE
   lock_acquired boolean;
@@ -401,6 +420,37 @@ if (( transaction_status != 0 )); then
     *) reason="MIGRATION_TRANSACTION_FAILED" ;;
   esac
   echo "[apply_single_migration] ${reason}: ${VERSION}" >&2
+  # Do not print psql's captured output: --echo-errors includes SQL text and
+  # server diagnostics can include values. Emit only its primary error, with
+  # connection secrets/URIs redacted and no DETAIL, CONTEXT, or echoed SQL.
+  pg_diagnostic="$(printf '%s\n' "$transaction_output" | python -B -c '
+import os
+import re
+import sys
+
+lines = sys.stdin.read().splitlines()
+error = next((line for line in lines if re.search(r"\bERROR:", line)), "")
+if not error:
+    print("PG_SQLSTATE=UNAVAILABLE PG_CONTEXT=unavailable PG_MESSAGE=unavailable")
+    raise SystemExit(0)
+
+context_match = re.search(r":([0-9]+):\s*ERROR:", error)
+context = f"line {context_match.group(1)}" if context_match else "line unavailable"
+error_match = re.search(r"\bERROR:\s*(?:([0-9A-Z]{5}):\s*)?(.*)$", error)
+sqlstate = error_match.group(1) if error_match and error_match.group(1) else "UNAVAILABLE"
+message = error_match.group(2).strip() if error_match else "unavailable"
+
+for name in ("DB_PASSWORD", "DB_ADMIN_PASSWORD", "PGPASSWORD", "DB_USER", "DB_ADMIN_USER", "DB_HOST", "DB_NAME"):
+    secret = os.environ.get(name, "")
+    if secret:
+        message = message.replace(secret, "[REDACTED]")
+message = re.sub(r"(?i)\bpostgres(?:ql)?://[^\s]+", "postgresql://[REDACTED]", message)
+message = re.sub(r"(?i)\b(password|pwd|token|secret)=([^\s,;]+)", r"\1=[REDACTED]", message)
+message = re.sub(r"[\r\n\t\x00-\x1f\x7f]", " ", message)
+message = message[:500]
+print(f"PG_SQLSTATE={sqlstate} PG_CONTEXT={context} PG_MESSAGE={message}")
+')" || pg_diagnostic="PG_SQLSTATE=UNAVAILABLE PG_CONTEXT=unavailable PG_MESSAGE=unavailable"
+  echo "[apply_single_migration] PostgreSQL diagnostic for ${VERSION}: ${pg_diagnostic}" >&2
   exit 1
 fi
 

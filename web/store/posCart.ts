@@ -41,6 +41,8 @@ export type PosCartAppliedTax = {
 
 export type PosCartItem = {
   productId: string;
+  saleMode?: "UNIT" | "WEIGHT";
+  weightCapture?: { captureId: string; nonce: string; expiresAt: string };
   name: string;
   sku: string;
   quantity: number;
@@ -584,18 +586,19 @@ export const persistPosCartState = (state: PosCartState) => {
       return;
     }
 
+    const stripCaptures = (items: PosCartItem[]) => items.map(({ weightCapture: _weightCapture, ...item }) => item);
     const accountsToPersist = state.accounts.map((acc) => {
       if (acc.id === state.activeAccountId) {
         return {
           ...acc,
-          items: state.items,
+          items: stripCaptures(state.items),
           selectedCustomerId: state.selectedCustomerId,
           payments: state.payments,
           saleStatus: state.saleStatus,
           saleAttempt: state.saleAttempt,
         };
       }
-      return acc;
+      return { ...acc, items: stripCaptures(acc.items) };
     });
 
     window.localStorage.setItem(

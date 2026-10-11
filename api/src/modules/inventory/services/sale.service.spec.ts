@@ -226,11 +226,22 @@ const makePreview = (
 
 class FakePricingService {
   readonly calls: CalculateLinePriceInput[] = [];
+  readonly weightedCalls: CalculateLinePriceInput[] = [];
 
   constructor(private readonly previews: LinePricePreview[] = []) {}
 
   async calculateLinePrice(input: CalculateLinePriceInput) {
     this.calls.push(input);
+    const preview = this.previews.shift() ?? makePreview();
+    return {
+      ...preview,
+      productId: input.productId,
+      quantity: input.quantity,
+    };
+  }
+
+  async calculateWeightedLinePrice(input: CalculateLinePriceInput) {
+    this.weightedCalls.push(input);
     const preview = this.previews.shift() ?? makePreview();
     return {
       ...preview,
@@ -758,6 +769,19 @@ const buildCreateSaleService = (
   const client = new FakeCreateSaleClient(includeTaxSnapshot, saleItemTaxRows);
   const repository = new FakeCreateSaleRepository(paymentMethodRecord);
   const pricingService = new FakePricingService([...previews]);
+  const productRepository = {
+    ...(billing?.productRepository ?? {}),
+    findById: async (id: string, tenantId: string) => {
+      const product = billing?.productRepository
+        ? await billing.productRepository.findById(id, tenantId)
+        : [ids.product, ids.productTwo].includes(id)
+          ? { id, isActive: true, saleType: "UNIT", measurementUnit: "UND" }
+          : null;
+      return product
+        ? { isActive: true, saleType: "UNIT", measurementUnit: "UND", ...product }
+        : null;
+    },
+  };
   const createdPayments: unknown[] = [];
   const auditEvents: unknown[] = [];
   const outboxEvents: Array<unknown> = [];
@@ -803,7 +827,7 @@ const buildCreateSaleService = (
         }
       : undefined,
     billing?.customerRepository as never,
-    billing?.productRepository as never,
+    productRepository as never,
     billing?.taxRepository as never,
     billing?.invoicingCustomersRepository as never
   );
@@ -2082,4 +2106,109 @@ test("SaleService sends a six-decimal unit price that rebuilds the line base", a
   assert.equal(line.subtotalAmount, "10084.03");
   assert.equal(line.totalAmount, "12000.00");
   assert.equal(Math.round(Number(line.unitPrice) * 12 * 100) / 100, 10084.03);
+});
+
+test("SaleService keeps legacy UNIT input and requires capture-only WEIGHT input", () => {
+  const { service } = buildCreateSaleService([]);
+  const validate = (service as unknown as { ensureSaleInput: (data: unknown) => void })
+    .ensureSaleInput.bind(service);
+
+  assert.doesNotThrow(() => validate({
+    customerId: ids.customer,
+    type: "CASH",
+    items: [{ productId: ids.product, quantity: 2, price: 1250 }],
+  }));
+  assert.doesNotThrow(() => validate({
+    customerId: ids.customer,
+    type: "CASH",
+    items: [{
+      productId: ids.product,
+      saleMode: "WEIGHT",
+      weightCapture: {
+        captureId: "40000000-0000-4000-8000-000000000024",
+        nonce: "A".repeat(43),
+      },
+    }],
+  }));
+  assert.throws(() => validate({
+    customerId: ids.customer,
+    type: "CASH",
+    items: [{
+      productId: ids.product,
+      saleMode: "WEIGHT",
+      quantity: 0.245,
+      weightCapture: {
+        captureId: "40000000-0000-4000-8000-000000000024",
+        nonce: "A".repeat(43),
+      },
+    }],
+  }), /WEIGHT sale line cannot provide measurement or price authority/);
+  assert.throws(() => validate({
+    customerId: ids.customer,
+    type: "CASH",
+    items: [{
+      productId: ids.product,
+      saleMode: "WEIGHT",
+      weightCapture: { captureId: ids.product, nonce: "invalid" },
+    }],
+  }), /weightCapture captureId and nonce are required/);
+});
+
+test("weighted POS pricing preserves the canonical 0.245 kg quantity", async () => {
+  const { service, pricingService } = buildCreateSaleService([
+    makePreview({ quantity: 0.245, lineSubtotal: 24.5, lineTotal: 24.5 }),
+  ]);
+  const calculate = (service as unknown as {
+    calculatePricedPosItems: (input: unknown) => Promise<CreateSaleInput["items"]>;
+  }).calculatePricedPosItems.bind(service);
+
+  const [pricedItem] = await calculate({
+    tenantId: ids.tenant,
+    branchId: ids.branch,
+    customerId: ids.customer,
+    pricingCalculatedAt: new Date("2026-10-07T12:00:00.000Z"),
+    items: [{
+      saleItemId: "10000000-0000-0000-0000-000000000025",
+      saleMode: "WEIGHT",
+      productId: ids.product,
+      quantity: 0.245,
+      price: 0,
+    }],
+  });
+
+  assert.equal(pricingService.calls.length, 0);
+  assert.equal(pricingService.weightedCalls[0].quantity, 0.245);
+  assert.equal(pricedItem.quantity, 0.245);
+});
+
+test("SaleService starts PENDING capture from trusted POS context and returns the nonce once", async () => {
+  const statements: string[] = [];
+  const client = { query: async (sql: string) => {
+    statements.push(sql.trim());
+    if (sql.includes("FROM pos_terminals p")) return { rows: [{ binding_id: "binding", logical_scale_id: "scale", terminal_device_id: "device" }], rowCount: 1 };
+    return { rows: [], rowCount: 1 };
+  }, release: () => undefined };
+  const issued = { captureId: "capture-id", nonce: "one-time-nonce", expiresAt: new Date(Date.now() + 60_000) };
+  const service = Object.assign(Object.create(SaleService.prototype), {
+    db: { getClient: async () => client },
+    repository: {
+      validateActivePosSession: async (context: Record<string, string>) => context.posSessionId === ids.posSession,
+      findActivePosTerminalId: async () => "pos-terminal",
+    },
+    productRepository: { findById: async () => ({ isActive: true, saleType: "BOTH", measurementUnit: "KG" }) },
+    weightCapturePersistence: { createPending: async (_client: unknown, scope: Record<string, string>, ttlMs: number) => {
+      assert.deepEqual(scope, { tenantId: ids.tenant, branchId: ids.branch, posTerminalId: "pos-terminal",
+        operationalTerminalId: ids.terminal, posSessionId: ids.posSession, productId: ids.product,
+        logicalScaleId: "scale", bindingId: "binding", terminalDeviceId: "device" });
+      assert.equal(ttlMs, 60_000); return issued;
+    } },
+  }) as SaleService;
+  const result = await service.startWeightCapture(ids.product, {
+    tenantId: ids.tenant, userId: ids.user, branchId: ids.branch, terminalId: ids.terminal,
+    posSessionId: ids.posSession,
+  } as never);
+  assert.deepEqual(result, { captureId: "capture-id", nonce: "one-time-nonce", expiresAt: issued.expiresAt.toISOString() });
+  assert.equal(statements[0], "BEGIN");
+  assert.match(statements[1], /FROM pos_terminals p/);
+  assert.equal(statements[statements.length - 1], "COMMIT");
 });

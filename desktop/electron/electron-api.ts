@@ -16,6 +16,28 @@ export type ShellInfo = {
   agentAvailable: boolean;
 };
 
+export type ScaleCaptureIpcErrorCode =
+  | "AGENT_UNAVAILABLE"
+  | "AGENT_HTTP_ERROR"
+  | "AGENT_TIMEOUT"
+  | "SCALE_WEIGHT_ZERO";
+
+export type ScaleCaptureIpcResult<T> =
+  | { kind: "scale-capture-result-v1"; ok: true; value: T }
+  | { kind: "scale-capture-result-v1"; ok: false; errorCode: ScaleCaptureIpcErrorCode };
+
+export const scaleCaptureIpcSuccess = <T>(value: T): ScaleCaptureIpcResult<T> => ({
+  kind: "scale-capture-result-v1",
+  ok: true,
+  value,
+});
+
+export const scaleCaptureIpcFailure = (errorCode: ScaleCaptureIpcErrorCode): ScaleCaptureIpcResult<never> => ({
+  kind: "scale-capture-result-v1",
+  ok: false,
+  errorCode,
+});
+
 export const IPC_CHANNELS = {
   getRuntimeInfo: "manusTerminal.getRuntimeInfo",
   getShellInfo: "manusTerminal.getShellInfo",
@@ -30,6 +52,11 @@ export const IPC_CHANNELS = {
   openCashDrawer: "manusTerminal.openCashDrawer",
   simulateScanner: "manusTerminal.simulateScanner",
   currentWeight: "manusTerminal.currentWeight",
+  agentSecurityStatus: "manusTerminal.agentSecurityStatus",
+  startAgentPairing: "manusTerminal.startAgentPairing",
+  acceptAgentEnrollmentEnvelope: "manusTerminal.acceptAgentEnrollmentEnvelope",
+  scaleAuthorizationTest: "manusTerminal.scaleAuthorizationTest",
+  scaleCapture: "manusTerminal.scaleCapture",
   listLogs: "manusTerminal.listLogs",
 } as const;
 
@@ -47,13 +74,19 @@ export type ManusTerminalApi = {
   openCashDrawer: (payload: unknown) => Promise<unknown>;
   simulateScanner: (payload: unknown) => Promise<unknown>;
   currentWeight: (payload: unknown) => Promise<unknown>;
+  agentSecurityStatus: () => Promise<unknown>;
+  startAgentPairing: () => Promise<unknown>;
+  acceptAgentEnrollmentEnvelope: (payload: unknown) => Promise<unknown>;
+  scaleAuthorizationTest: (payload: unknown) => Promise<unknown>;
+  scaleCapture: (payload: unknown) => Promise<ScaleCaptureIpcResult<unknown>>;
   listLogs: () => Promise<unknown[]>;
 };
 
 export const RUNTIME_CAPABILITIES = [
   "agent.health", "devices.list", "devices.discover", "devices.create",
   "devices.update", "printer.testPrint", "printer.printTicket", "drawer.open",
-  "scanner.simulate", "scale.currentWeight", "logs.list",
+  "scanner.simulate", "scale.currentWeight", "agent.security.status", "agent.security.pairingStart",
+  "agent.security.enrollmentEnvelope", "scale.authorizationTest", "scale.capture", "logs.list",
 ] as const;
 
 export type RuntimeCapability = typeof RUNTIME_CAPABILITIES[number];
@@ -68,8 +101,8 @@ export const buildRuntimeInfo = (electronRuntimeVersion: string, health: AgentHe
   electronRuntimeVersion,
   bridgeContractVersion: 1,
   agentApiVersion: health.available ? health.agentApiVersion ?? null : null,
-  capabilities: health.available && health.agentApiVersion === 1
-    ? [...RUNTIME_CAPABILITIES]
+  capabilities: health.available && (health.agentApiVersion === 1 || health.agentApiVersion === 2)
+    ? RUNTIME_CAPABILITIES.filter((capability) => health.agentApiVersion === 2 || capability !== "scale.capture")
     : ["agent.health"],
 });
 

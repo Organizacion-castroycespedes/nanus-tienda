@@ -19,7 +19,7 @@ const descriptor = (name: string, source: string, nativeIdentifier: string, valu
   descriptor: { agentInstallationId: "fixture", deviceId: `${source}-${name}`, nativeIdentifier, fingerprint: { source, values }, platform: "WINDOWS" as const, architecture: "amd64" },
 });
 
-test("productive controller preserves reconciled PnP, queue and ambiguous printers", () => {
+test("productive controller preserves reconciled PnP, queue and ambiguous printers", async () => {
   const previousMode = process.env.PERIPHERALS_MODE;
   process.env.PERIPHERALS_MODE = "REAL";
   const discovery: UsbPrinterDiscovery = {
@@ -34,7 +34,7 @@ test("productive controller preserves reconciled PnP, queue and ambiguous printe
   };
   const service = new DevicesService(new LogsService(), new EventsService(), discovery, store, paths);
   const controller = new DevicesController(service);
-  const discovered = controller.discover().devices;
+  const discovered = (await controller.discover()).devices;
   const listed = controller.getDevices();
   assert.equal(listed.filter((device) => device.id.startsWith("mock-")).length, 0);
   assert.equal(discovered.filter((device) => device.id.startsWith("mock-")).length, 0);
@@ -51,7 +51,7 @@ test("productive controller preserves reconciled PnP, queue and ambiguous printe
   else process.env.PERIPHERALS_MODE = previousMode;
 });
 
-test("productive queue association persists through refresh and discovery", () => {
+test("productive queue association persists through refresh and discovery", async () => {
   const previousMode = process.env.PERIPHERALS_MODE;
   process.env.PERIPHERALS_MODE = "REAL";
   const discovery: UsbPrinterDiscovery = {
@@ -62,7 +62,7 @@ test("productive queue association persists through refresh and discovery", () =
   };
   const service = new DevicesService(new LogsService(), new EventsService(), discovery, store, paths);
   const controller = new DevicesController(service);
-  const first = controller.discover().devices.find((device) => device.name === "XP-58");
+  const first = (await controller.discover()).devices.find((device) => device.name === "XP-58");
   assert.ok(first);
   const configured = controller.create({
     id: "xp58-configured",
@@ -77,7 +77,7 @@ test("productive queue association persists through refresh and discovery", () =
   });
   assert.equal(updated.usb?.windowsQueueName, "XP-58 Queue");
   assert.equal(controller.getDevices().find((device) => device.id === configured.id)?.usb?.windowsQueueName, "XP-58 Queue");
-  controller.discover();
+  await controller.discover();
   assert.equal(controller.getDevices().find((device) => device.id === configured.id)?.usb?.windowsQueueName, "XP-58 Queue");
   if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
   else process.env.PERIPHERALS_MODE = previousMode;

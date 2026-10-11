@@ -224,3 +224,21 @@ describe("POS sale submission recovery", () => {
     assert.equal(removed.accounts[0].id, account1Id);
   });
 });
+
+describe("weighted sale capture storage", () => {
+  it("does not persist capture nonce in localStorage", () => {
+    const storage = installStorage();
+    const context = { tenantId: "tenant-w", branchId: "branch-w", terminalId: "terminal-w", userId: "user-w", posSessionId: "session-w" };
+    const scoped = posCartReducer(initialPosCartState, setPosCartContext(context));
+    const withWeight = posCartReducer(scoped, setCartItems([{
+      productId: "product-w", saleMode: "WEIGHT", weightCapture: {
+        captureId: "capture-w", nonce: "never-persist-this-nonce", expiresAt: "2026-10-08T00:01:00.000Z",
+      }, name: "Weight", sku: "W-1", quantity: 0.245, price: 100, stock: 4, taxId: null, priceWithoutTax: 100,
+    }]));
+    persistPosCartState(withWeight);
+    const serialized = storage.get(withWeight.contextKey!) ?? "";
+    assert.doesNotMatch(serialized, /never-persist-this-nonce/);
+    assert.doesNotMatch(serialized, /capture-w/);
+    assert.match(serialized, /"saleMode":"WEIGHT"/);
+  });
+});

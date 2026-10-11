@@ -35,7 +35,7 @@ Incluye:
 - Simulacion de `CASH_DRAWER_PULSE` para caja registradora.
 - Logs tecnicos con `jobId`, `terminalId`, `deviceId`, `ticketType`, `commandCount` y `previewLength`.
 
-No incluye drivers, USB, serial, HID, `node-escpos` ni hardware real.
+No incluye drivers propietarios ni hardware real. La Fase 2 agrega soporte serial ROCHI aislado; no abre puertos autom?ticamente.
 
 ## Device Profiles y Print Adapters - Fase 4.2
 
@@ -68,7 +68,7 @@ Seleccion actual:
 - `NETWORK + PRINTER` usa `NetworkEscposPrinterAdapter` solo si `PERIPHERALS_ENABLE_REAL_ADAPTERS=true`.
 - `USB + PRINTER` usa `UsbSystemPrinterAdapter` y una cola local descubierta del SO solo si `PERIPHERALS_ENABLE_REAL_ADAPTERS=true`.
 - `NETWORK`, `USB`, `SERIAL`, `HID` y cualquier adapter real quedan bloqueados si `PERIPHERALS_ENABLE_REAL_ADAPTERS` no es `true`.
-- `SERIAL`, `HID` y `BLUETOOTH` siguen fuera de alcance y responden `Adapter for connection type ... is not implemented yet.` cuando el flag real esta activo.
+- `SERIAL` gen?rico, `HID` y `BLUETOOTH` siguen fuera de alcance. El adapter ROCHI serial es interno al m?dulo `scale` y todav?a no est? conectado a un endpoint ni al flujo POS.
 
 Los dispositivos MOCK incluyen `profileId`. Las respuestas de impresion y apertura de caja agregan `profile` y `capabilities` sin remover campos existentes.
 
@@ -86,7 +86,7 @@ Real peripheral adapters are disabled. Enable PERIPHERALS_ENABLE_REAL_ADAPTERS=t
 ```
 
 - Se implementan `NETWORK + PRINTER` y `USB + PRINTER`.
-- USB usa la cola de impresion del sistema; no usa WebUSB, `serialport`, HID, Electron ni Capacitor.
+- USB usa la cola de impresion del sistema; no usa WebUSB, HID, Electron ni Capacitor. `serialport` se usa solo por el adapter ROCHI aislado.
 - No se conecta hardware automaticamente.
 - No se usa `node-escpos`.
 - No se imprime si falta `network.host` o `network.port`.
@@ -143,7 +143,7 @@ Seguridad:
 - No conecta balanzas reales.
 - No conecta cajas reales.
 - No usa ESC/POS real salvo `NETWORK + PRINTER` con feature flag explicito.
-- No usa `serialport`.
+- El adapter ROCHI usa `serialport@12` de forma expl?cita y configurable; no se abre al iniciar el agent.
 - No usa HID real. USB requiere una cola de impresora/driver instalado en el SO.
 - No envia bytes ESC/POS reales si el feature flag esta apagado.
 - No descubre hardware automaticamente.
@@ -182,6 +182,44 @@ ws://localhost:4050/peripherals
 ```bash
 npm run build
 ```
+
+## ROCHI RC-A01E: comunicacion Windows validada; integracion comercial pendiente
+
+Estado auditado: el parser, el transporte serial y el QA f?sico Windows del equipo ROCHI ensayado est?n validados para las capturas documentadas. Siguen pendientes la validaci?n Linux, la homologaci?n metrol?gica y la conexi?n de la lectura al POS. La referencia hist?rica a hardware pendiente no significa que se haya validado producci?n ni exactitud comercial.
+
+El parser `src/modules/scale/rochi-a01e.parser.ts` procesa tramas ASCII estrictas `DDD.DDD` terminadas en `CR LF`. Soporta fragmentaci?n, varias tramas por chunk, corrupci?n recuperable y l?mite de b?fer. La unidad `KG` o `LB` debe configurarse expl?citamente; para este protocolo ROCHI, `LB` se convierte a kilogramos con factor `0.5` seg?n las capturas de laboratorio.
+
+El parser no abre puertos, no detecta COM3, no infiere unidad y no declara estabilidad metrol?gica. El transporte local ya cubre USB-SERIAL CH340, 9600 8N1, desconexi?n y puerto ocupado para QA expl?cito; quedan pendientes la validaci?n Linux, la homologaci?n f?sica y la conexi?n comercial al POS. Las pruebas usan las capturas documentadas `000.000`, `000.245`, `000.270` y `000.490`, sin habilitar ventas reales.
+
+Diagn?stico f?sico acotado, solo con autorizaci?n del operador:
+
+```bash
+npm run build
+npm run qa:rochi -- --port COM3 --unit KG --duration-ms 3000
+```
+
+El runner limita la captura a 3 segundos y 8 errores. Reporta `code`, entrada en hexadecimal acotada, mensaje acotado, tiempo relativo, tramas v?lidas, fragmento pendiente y estado de cierre. No inicia autom?ticamente, no usa POS y no guarda logs permanentes. `COM3` es solo un ejemplo: usar el puerto confirmado por Windows.
+
+Al abrir el puerto, el transporte sincroniza en el primer `CR LF`: conserva una primera trama completa v?lida, conserva una trama v?lida fragmentada y descarta ?nicamente el primer candidato inv?lido de arranque. Despu?s de esa sincronizaci?n, todo frame inv?lido sigue siendo reportado.
+
+## QA local de desconexion y reconexion ROCHI
+
+El ejemplo usa marcadores solo para mostrar la forma del comando. No ejecutar `...`: reemplazarlo por el PnP ID completo que Windows confirme para el CH340. El puerto tambi?n debe ser el COM vigente confirmado en esa terminal; no asumir `COM3`.
+
+Usar solo en Windows, con el PnP ID exacto confirmado por el operador:
+
+```bash
+npm run build
+npm run qa:rochi:disconnect -- --port COM3 --pnp-id "USB\\VID_1A86&PID_7523\\..." --unit KG
+```
+
+El ejecutor solicita un `YES` independiente antes de cada gate: `OPEN`, `DISCONNECT`, `RECONNECT USB` y `RECOVERY`. Valida el PnP ID CH340 antes de cada apertura, acepta reasignacion de COM solo con el mismo PnP ID, limita cada captura a 3 segundos y cada espera a 10 segundos, y cierra en `finally` o Ctrl+C. No reconecta automaticamente, no usa POS y no habilita ventas.
+
+Ante `DISCONNECTED` o `ERROR`, el transporte invalida de inmediato la lectura, el parser y los fragmentos pendientes. El snapshot debe mostrar `reading` ausente y `stale: true`.
+
+Cada pausa del runner tiene timeout real. `--phase-timeout-ms` limita cada confirmacion a 10 segundos y `--max-duration-ms` limita toda la sesion a 60 segundos por defecto; ambos valores tienen tope. El runner reporta `TIMEOUT`, `CANCELLED`, `EOF` o `INVALID_CONFIRMATION`, no avanza por un `YES` tardio y cierra el adapter una sola vez en `finally`.
+
+La reconexion exige dos confirmaciones distintas: `reconnect` autoriza reconectar fisicamente el USB; luego el runner enumera el CH340, valida el PnP ID exacto y muestra el COM vigente. Solo `RECOVERY` autoriza `scale.reconnect()` o una reapertura por COM reasignado.
 
 ## Windows x64 portable P0
 
@@ -911,7 +949,7 @@ Las respuestas no incluyen stack trace.
 - Hay descubrimiento de colas USB locales. No hay escaneo automatico de red ni identificacion garantizada de modelo/fabricante.
 - No hay drivers nativos.
 - `NETWORK + PRINTER` y `USB + PRINTER` son adapters reales implementados y estan apagados por defecto.
-- Adapters reales `SERIAL`, `HID` y `BLUETOOTH` no estan implementados.
+- El adapter ROCHI serial existe como componente interno; `SERIAL` gen?rico, `HID` y `BLUETOOTH` no est?n implementados.
 
 ## Guardrails
 
@@ -921,4 +959,4 @@ Las respuestas no incluyen stack trace.
 - Mantener `PERIPHERALS_ENABLE_REAL_ADAPTERS=false` como default.
 - No introducir drivers nativos.
 - No importar codigo de `api/`, `web/` ni `backend-reporteria/`.
-- No usar WebUSB, serialport, HID, Electron ni Capacitor; USB se limita a colas de impresion del SO.
+- No usar WebUSB, HID, Electron ni Capacitor para balanzas; `serialport` solo se permite dentro del adapter ROCHI y con puerto configurado expl?citamente.

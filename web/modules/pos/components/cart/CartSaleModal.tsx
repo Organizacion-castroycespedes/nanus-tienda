@@ -52,7 +52,7 @@ type CartSaleModalProps = {
   canCharge: boolean;
   hasPricingPending: boolean;
   pricingErrorMessage: string | null;
-  scaleMockEnabled: boolean;
+  scaleControlsVisible: boolean;
   scaleReading: boolean;
   resolvePresentation: (item: CartSaleLineItem) => CartSaleItemPresentation;
   formatCurrency: (value: number) => string;
@@ -77,7 +77,7 @@ export const CartSaleModal = ({
   canCharge,
   hasPricingPending,
   pricingErrorMessage,
-  scaleMockEnabled,
+  scaleControlsVisible,
   scaleReading,
   resolvePresentation,
   formatCurrency,
@@ -235,7 +235,9 @@ export const CartSaleModal = ({
 
                           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                             <div className="space-y-1.5">
-                              <div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+                              {item.saleMode === "WEIGHT" ? (
+                                <span className="px-3 py-2 text-sm font-semibold">{item.quantity.toFixed(3)} kg</span>
+                              ) : <div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -266,13 +268,13 @@ export const CartSaleModal = ({
                                 >
                                   <Plus className="h-4 w-4" />
                                 </button>
-                              </div>
+                              </div>}
 
-                              {presentation.isWeighable ? (
+                              {presentation.isWeighable && scaleControlsVisible ? (
                                 <button
                                   type="button"
                                   onClick={() => onReadScale(item.productId)}
-                                  disabled={!scaleMockEnabled || scaleReading}
+                                  disabled={scaleReading}
                                   className="inline-flex h-8 items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20"
                                 >
                                   {scaleReading ? (

@@ -22,6 +22,7 @@ import {
 } from "../../finance/payments/payments.repository";
 import { PaymentsService } from "../../finance/payments/payments.service";
 import { PricingService } from "../../pricing/pricing.service";
+import { WeightCapturePersistence, type CaptureScope } from "../../scale-authorization/persistence/scale-authorization.repositories";
 import {
   calculatePercentageTaxAmount,
   resolveLineTaxBase,
@@ -45,8 +46,10 @@ import {
   SaleRepository,
   type CreateSalePaymentInput,
   type CreateSaleInput,
+  type SaleLineRequest,
   type SaleRow,
 } from "../repositories/sale.repository";
+import { roundCommercialWeightKg } from "../weighted-sale-quantity";
 import {
   buildSaleIdempotencyHash,
   normalizeSaleIdempotencyKey,
@@ -111,6 +114,7 @@ type SaleItemRow = {
   sale_id: string;
   product_id: string;
   order_item_id: string | null;
+  sale_mode?: "UNIT" | "WEIGHT" | null;
   quantity: string | number;
   price: string | number;
   price_without_tax: string | number;
@@ -234,6 +238,7 @@ type ProductLotRequirementRow = {
 type PricedSaleItem = {
   saleItemId: string;
   productId: string;
+  saleMode: "UNIT" | "WEIGHT";
   quantity: number;
   price: number;
   orderItemId?: string | null;
@@ -267,6 +272,20 @@ type PricedSaleItem = {
     isIncluded: boolean;
   }>;
 };
+
+type PreparedWeightCapture = {
+  saleItemId: string;
+  captureId: string;
+  nonce: string;
+  rawWeightKg: string;
+  commercialQuantityKg: string;
+  scope: CaptureScope;
+};
+
+type CreateSaleRequestData = Omit<
+  CreateSaleInput,
+  "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId" | "items"
+> & { items: SaleLineRequest[] };
 
 type InheritableOrderPayment = {
   payment: PaymentRecord;
@@ -435,6 +454,9 @@ export class SaleService {
     @Optional()
     @Inject(IntegrationOutboxDispatcher)
     private readonly integrationOutboxDispatcher?: IntegrationOutboxDispatcher,
+    @Optional()
+    @Inject(WeightCapturePersistence)
+    private readonly weightCapturePersistence?: WeightCapturePersistence,
   ) {}
 
   private toNumber(value: string | number) {
@@ -504,6 +526,8 @@ export class SaleService {
       tenantId: row.tenant_id,
       saleId: row.sale_id,
       productId: row.product_id,
+      saleMode: row.sale_mode ?? "UNIT",
+      measurementUnit: row.sale_mode === "WEIGHT" ? "KG" : "UND",
       orderItemId: row.order_item_id,
       quantity: this.toNumber(row.quantity),
       price: this.toNumber(row.price),
@@ -588,7 +612,7 @@ export class SaleService {
     };
   }
 
-  private ensureSaleInput(data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">) {
+  private ensureSaleInput(data: CreateSaleRequestData) {
     if (!data.customerId) {
       throw new BadRequestException("customerId is required");
     }
@@ -598,6 +622,208 @@ export class SaleService {
     if (!["CASH", "CREDIT"].includes(data.type)) {
       throw new BadRequestException("type is invalid");
     }
+    for (const item of data.items) {
+      if (!item || typeof item !== "object" || typeof item.productId !== "string") {
+        throw new BadRequestException("sale item is invalid");
+      }
+      const line = item as unknown as Record<string, unknown>;
+      if (item.saleMode === "WEIGHT") {
+        if (["quantity", "weight", "unit", "source", "price"].some((key) =>
+          Object.prototype.hasOwnProperty.call(line, key)
+        )) {
+          throw new BadRequestException("WEIGHT sale line cannot provide measurement or price authority");
+        }
+        if (
+          typeof item.weightCapture?.captureId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.weightCapture.captureId) ||
+          typeof item.weightCapture?.nonce !== "string" ||
+          !/^[A-Za-z0-9_-]{43}$/.test(item.weightCapture.nonce)
+        ) {
+          throw new BadRequestException("weightCapture captureId and nonce are required");
+        }
+      } else {
+        if (item.saleMode !== undefined && item.saleMode !== "UNIT") {
+          throw new BadRequestException("saleMode must be UNIT or WEIGHT");
+        }
+        if (Object.prototype.hasOwnProperty.call(line, "weightCapture")) {
+          throw new BadRequestException("UNIT sale line cannot include weightCapture");
+        }
+        if (typeof item.quantity !== "number" || typeof item.price !== "number") {
+          throw new BadRequestException("UNIT sale line quantity and price are required");
+        }
+      }
+    }
+  }
+
+  async startWeightCapture(productId: string, actor?: SaleContext) {
+    if (!productId || !this.weightCapturePersistence || !this.productRepository) {
+      throw new BadRequestException("WEIGHT_CAPTURE_UNAVAILABLE");
+    }
+    const context = await this.normalizeSaleContext(actor);
+    if (!context.branchId || !context.terminalId || !context.posSessionId) {
+      throw new UnauthorizedException("WEIGHT sale requires complete POS context");
+    }
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const activeSession = await this.repository.validateActivePosSession({
+        tenantId: context.tenantId, branchId: context.branchId, terminalId: context.terminalId,
+        userId: context.userId, posSessionId: context.posSessionId,
+      }, client);
+      if (!activeSession) throw new UnauthorizedException("POS session is required");
+      const product = await this.productRepository.findById(productId, context.tenantId, client);
+      if (!product?.isActive || !["WEIGHT", "BOTH"].includes(product.saleType) || product.measurementUnit !== "KG") {
+        throw new BadRequestException("WEIGHT_CAPTURE_PRODUCT_INVALID");
+      }
+      const scopeResult = await client.query<{ id: string; logical_scale_id: string; terminal_device_id: string; binding_id: string }>(
+        `SELECT b.id AS binding_id, b.logical_scale_id, b.terminal_device_id
+         FROM pos_terminals p
+         JOIN terminal_scale_bindings b ON b.tenant_id = p.tenant_id AND b.branch_id = p.branch_id
+           AND b.pos_terminal_id = p.id AND b.operational_terminal_id = p.operational_terminal_id
+         JOIN pos_terminal_peripheral_settings ps ON ps.terminal_id = p.id
+           AND ps.enable_scale IS TRUE AND ps.scale_device_id = b.logical_scale_id
+         JOIN terminal_device_bindings td ON td.tenant_id = b.tenant_id
+           AND td.terminal_id = b.operational_terminal_id AND td.device_id = b.terminal_device_id
+           AND td.status = 'ACTIVE'
+         JOIN terminal_devices d ON d.id = b.terminal_device_id AND d.tenant_id = b.tenant_id
+           AND d.registration_status <> 'REVOKED'
+         JOIN terminal_device_credentials c ON c.tenant_id = d.tenant_id AND c.terminal_device_id = d.id
+           AND c.status = 'ACTIVE' AND c.expires_at > now() AND c.revoked_at IS NULL
+         WHERE p.tenant_id = $1 AND p.branch_id = $2 AND p.operational_terminal_id = $3
+           AND p.active IS TRUE AND b.status = 'AUTHORIZED' AND b.unit_state = 'KG_VERIFIED'
+         LIMIT 2 FOR SHARE OF p, b, td, d`,
+        [context.tenantId, context.branchId, context.terminalId],
+      );
+      if (scopeResult.rowCount !== 1) throw new ConflictException("AUTHORIZED_SCALE_BINDING_UNAVAILABLE");
+      const posTerminalId = await this.repository.findActivePosTerminalId(
+        context.tenantId, context.branchId, context.terminalId, client,
+      );
+      if (!posTerminalId) throw new UnauthorizedException("active POS terminal is required for WEIGHT sale");
+      const binding = scopeResult.rows[0];
+      const capture = await this.weightCapturePersistence.createPending(client, {
+        tenantId: context.tenantId, branchId: context.branchId, posTerminalId,
+        operationalTerminalId: context.terminalId, posSessionId: context.posSessionId,
+        productId, logicalScaleId: binding.logical_scale_id, bindingId: binding.binding_id,
+        terminalDeviceId: binding.terminal_device_id,
+      }, 60_000);
+      await client.query("COMMIT");
+      return { captureId: capture.captureId, nonce: capture.nonce, expiresAt: new Date(capture.expiresAt).toISOString() };
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
+  }
+
+  private async prepareSaleItemsForPricing(
+    items: SaleLineRequest[],
+    context: Awaited<ReturnType<SaleService["normalizeSaleContext"]>>,
+    client: PoolClient,
+  ) {
+    if (!this.productRepository) {
+      throw new BadRequestException("product repository is not configured");
+    }
+
+    const preparedItems: CreateSaleInput["items"] = [];
+    const captures: PreparedWeightCapture[] = [];
+    let posTerminalId: string | null = null;
+
+    for (const item of items) {
+      const product = await this.productRepository.findById(item.productId, context.tenantId, client);
+      if (!product || !product.isActive) {
+        throw new BadRequestException("product not found or inactive for tenant");
+      }
+
+      const saleMode = item.saleMode ?? (product.saleType === "UNIT" ? "UNIT" : null);
+      if (!saleMode) {
+        throw new BadRequestException("saleMode is required for WEIGHT and BOTH products");
+      }
+      const modeAllowed = saleMode === "UNIT"
+        ? product.saleType === "UNIT" || product.saleType === "BOTH"
+        : product.saleType === "WEIGHT" || product.saleType === "BOTH";
+      if (!modeAllowed) {
+        throw new BadRequestException("saleMode is not supported by product");
+      }
+
+      const saleItemId = crypto.randomUUID();
+      if (saleMode === "UNIT") {
+        const unitItem = item as Extract<SaleLineRequest, { saleMode?: "UNIT" }>;
+        preparedItems.push({
+          saleItemId,
+          saleMode,
+          productId: item.productId,
+          quantity: unitItem.quantity,
+          price: unitItem.price,
+          orderItemId: unitItem.orderItemId ?? null,
+        });
+        continue;
+      }
+
+      if (product.measurementUnit !== "KG") {
+        throw new BadRequestException("WEIGHT sale requires product measurementUnit KG");
+      }
+      if (!this.weightCapturePersistence) {
+        throw new BadRequestException("weight capture persistence is not configured");
+      }
+      const weightCapture = (item as Extract<SaleLineRequest, { saleMode: "WEIGHT" }>).weightCapture;
+      if (!weightCapture) {
+        throw new BadRequestException("weightCapture captureId and nonce are required");
+      }
+      if (!context.branchId || !context.terminalId || !context.posSessionId) {
+        throw new UnauthorizedException("WEIGHT sale requires complete POS context");
+      }
+      if (!posTerminalId) {
+        posTerminalId = await this.repository.findActivePosTerminalId(
+          context.tenantId,
+          context.branchId,
+          context.terminalId,
+          client,
+        );
+      }
+      if (!posTerminalId) {
+        throw new UnauthorizedException("active POS terminal is required for WEIGHT sale");
+      }
+
+      let capture: Awaited<ReturnType<WeightCapturePersistence["lockReadyForSale"]>>;
+      try {
+        capture = await this.weightCapturePersistence.lockReadyForSale(client, {
+          captureId: weightCapture.captureId,
+          nonce: weightCapture.nonce,
+          expected: {
+            tenantId: context.tenantId,
+            branchId: context.branchId,
+            posTerminalId,
+            operationalTerminalId: context.terminalId,
+            posSessionId: context.posSessionId,
+            productId: item.productId,
+          },
+        });
+      } catch (error) {
+        if (error instanceof Error && /^(CAPTURE_|AUTHORIZED_SCALE_BINDING_REQUIRED)/.test(error.message)) {
+          throw new ConflictException("weight capture is expired, unavailable, or does not match this POS sale");
+        }
+        throw error;
+      }
+      const commercialQuantityKg = roundCommercialWeightKg(capture.weightKg);
+      if (commercialQuantityKg === "0.000") {
+        throw new BadRequestException("captured weight rounds to zero commercial kg");
+      }
+      preparedItems.push({
+        saleItemId,
+        saleMode,
+        productId: item.productId,
+        quantity: Number(commercialQuantityKg),
+        price: 0,
+        orderItemId: item.orderItemId ?? null,
+      });
+      captures.push({
+        saleItemId,
+        captureId: capture.captureId,
+        nonce: weightCapture.nonce,
+        rawWeightKg: capture.weightKg,
+        commercialQuantityKg,
+        scope: capture.scope,
+      });
+    }
+
+    return { items: preparedItems, captures };
   }
 
   private normalizePayments(payments: CreateSalePaymentInput[] | undefined) {
@@ -826,7 +1052,10 @@ export class SaleService {
     const items: CreateSaleInput["items"] = [];
 
     for (const item of input.items) {
-      const preview = await this.pricingService.calculateLinePrice({
+      const calculatePrice = item.saleMode === "WEIGHT"
+        ? this.pricingService.calculateWeightedLinePrice.bind(this.pricingService)
+        : this.pricingService.calculateLinePrice.bind(this.pricingService);
+      const preview = await calculatePrice({
         tenantId: input.tenantId,
         branchId: input.branchId,
         customerId: input.customerId,
@@ -844,7 +1073,9 @@ export class SaleService {
           : 0;
 
       items.push({
+        saleItemId: item.saleItemId ?? crypto.randomUUID(),
         productId: item.productId,
+        saleMode: item.saleMode ?? "UNIT",
         quantity: preview.quantity,
         price: preview.finalUnitPrice,
         orderItemId: item.orderItemId ?? null,
@@ -2813,7 +3044,7 @@ export class SaleService {
   }
 
   async createSale(
-    data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">,
+    data: CreateSaleRequestData,
     context: SaleContext,
     idempotencyKey?: string | string[] | null,
   ) {
@@ -2890,11 +3121,16 @@ export class SaleService {
 
       const payments = this.normalizePayments(data.payments);
       const pricingCalculatedAt = new Date();
+      const preparedSaleItems = await this.prepareSaleItemsForPricing(
+        data.items,
+        saleContext,
+        client,
+      );
       const pricedItems = await this.calculatePricedPosItems({
         tenantId: saleContext.tenantId,
         branchId: saleContext.branchId,
         customerId: data.customerId,
-        items: data.items,
+        items: preparedSaleItems.items,
         pricingCalculatedAt,
       });
       const backendTotal = this.calculateBackendSaleTotal(pricedItems);
@@ -2917,6 +3153,35 @@ export class SaleService {
       );
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
+      }
+
+      for (const capture of preparedSaleItems.captures) {
+        const saleItem = pricedItems.find((item) => item.saleItemId === capture.saleItemId);
+        if (!saleItem || !this.weightCapturePersistence) {
+          throw new BadRequestException("weighted sale item correlation is unavailable");
+        }
+        await this.repository.associateWeightCaptureToSaleItem(client, {
+          tenantId: saleContext.tenantId,
+          captureId: capture.captureId,
+          saleId: saleRow.id,
+          saleItemId: capture.saleItemId,
+          rawWeightKg: capture.rawWeightKg,
+          commercialQuantityKg: capture.commercialQuantityKg,
+        });
+        try {
+          await this.weightCapturePersistence.consume(client, {
+            captureId: capture.captureId,
+            nonce: capture.nonce,
+            expected: capture.scope,
+            saleId: saleRow.id,
+            consumerUserId: saleContext.userId,
+          });
+        } catch (error) {
+          if (error instanceof Error && /^(CAPTURE_|AUTHORIZED_SCALE_BINDING_REQUIRED)/.test(error.message)) {
+            throw new ConflictException("weight capture could not be consumed; sale transaction was rolled back");
+          }
+          throw error;
+        }
       }
 
       const saleCashSessionId =
@@ -3290,6 +3555,7 @@ export class SaleService {
             sale_id,
             product_id,
             order_item_id,
+            sale_mode,
             quantity,
             price,
             price_without_tax,

@@ -2,10 +2,34 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  DEFAULT_AGENT_LOOPBACK_ORIGIN,
+  resolveAgentRoutingConfig,
   resolveElectronConfig,
   type ElectronConfigEnv,
   validateVersionedShellConfig,
 } from "./config.js";
+
+describe("resolveAgentRoutingConfig", () => {
+  const packaged = {
+    environment: "qa" as const,
+    frontendUrl: "https://portal.emaus.centrivosoft.com",
+    allowedOrigins: ["https://portal.emaus.centrivosoft.com"],
+    agentLoopbackOrigin: DEFAULT_AGENT_LOOPBACK_ORIGIN,
+  };
+
+  it("uses the fixed loopback Agent in development without shell config", () => {
+    assert.deepEqual(resolveAgentRoutingConfig(false, null), {
+      agentLoopbackOrigin: DEFAULT_AGENT_LOOPBACK_ORIGIN,
+    });
+  });
+
+  it("keeps packaged routing dependent on validated shell config", () => {
+    assert.deepEqual(resolveAgentRoutingConfig(true, packaged), {
+      agentLoopbackOrigin: DEFAULT_AGENT_LOOPBACK_ORIGIN,
+    });
+    assert.equal(resolveAgentRoutingConfig(true, null), null);
+  });
+});
 
 const resolve = (env: ElectronConfigEnv = {}) => resolveElectronConfig(env);
 

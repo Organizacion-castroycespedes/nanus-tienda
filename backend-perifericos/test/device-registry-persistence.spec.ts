@@ -168,12 +168,12 @@ test("corrupt registry file is handled without crash", () => {
   );
 });
 
-test("configured and discovered USB device does not duplicate on restart", () => {
+test("configured and discovered USB device does not duplicate on restart", async () => {
   const context = createTestPaths();
   const discovery = new FakeUsbDiscovery();
   const first = buildPersistentBundle(discovery, context.paths);
 
-  first.devicesController.discover();
+  await first.devicesController.discover();
   first.devicesController.create({
     id: "printer-xp80t-usb-qa-001",
     type: DeviceType.PRINTER,
@@ -187,10 +187,10 @@ test("configured and discovered USB device does not duplicate on restart", () =>
     },
   });
 
-  first.devicesController.discover();
+  await first.devicesController.discover();
 
   const second = buildPersistentBundle(discovery, context.paths);
-  second.devicesController.discover();
+  await second.devicesController.discover();
   const devices = second.devicesController.getDevices();
 
   assert.equal(
@@ -205,12 +205,12 @@ test("configured and discovered USB device does not duplicate on restart", () =>
   );
 });
 
-test("USB profile selection persists through restart and rediscovery", () => {
+test("USB profile selection persists through restart and rediscovery", async () => {
   const context = createTestPaths();
   const discovery = new FakeUsbDiscovery();
   const first = buildPersistentBundle(discovery, context.paths);
 
-  first.devicesController.discover();
+  await first.devicesController.discover();
   first.devicesController.create({
     id: "printer-xp58-usb-qa-001",
     type: DeviceType.PRINTER,
@@ -226,10 +226,10 @@ test("USB profile selection persists through restart and rediscovery", () => {
   first.devicesController.update("printer-xp58-usb-qa-001", {
     profileId: "THERMAL_58MM",
   });
-  first.devicesController.discover();
+  await first.devicesController.discover();
 
   const second = buildPersistentBundle(discovery, context.paths);
-  second.devicesController.discover();
+  await second.devicesController.discover();
   const restored = second.devicesController
     .getDevices()
     .find((device) => device.id === "printer-xp58-usb-qa-001");
@@ -246,12 +246,12 @@ test("USB profile selection persists through restart and rediscovery", () => {
   );
 });
 
-test("USB drawer certification metadata persists through restart and rediscovery", () => {
+test("USB drawer certification metadata persists through restart and rediscovery", async () => {
   const context = createTestPaths();
   const discovery = new FakeUsbDiscovery();
   const first = buildPersistentBundle(discovery, context.paths);
 
-  first.devicesController.discover();
+  await first.devicesController.discover();
   const created = first.devicesController.create({
     id: "printer-xp58-usb-certified-001",
     type: DeviceType.PRINTER,
@@ -268,10 +268,10 @@ test("USB drawer certification metadata persists through restart and rediscovery
   first.devicesController.update(created.id, {
     metadata: { usbRawCashDrawerPulseCertified: true },
   });
-  first.devicesController.discover();
+  await first.devicesController.discover();
 
   const second = buildPersistentBundle(discovery, context.paths);
-  second.devicesController.discover();
+  await second.devicesController.discover();
   const restored = second.devicesController
     .getDevices()
     .find((device) => device.id === "printer-xp58-usb-certified-001");

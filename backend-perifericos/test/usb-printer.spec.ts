@@ -105,9 +105,9 @@ const buildUsbPrinter = (metadata?: Record<string, unknown>): PeripheralDevice =
   ...(metadata ? { metadata } : {}),
 });
 
-test("USB discovery returns stable agent-generated printer descriptor", () => {
+test("USB discovery returns stable agent-generated printer descriptor", async () => {
   const { controller } = buildDevices();
-  const result = controller.discover();
+  const result = await controller.discover();
   const device = result.devices.find(
     (candidate) => candidate.usb?.deviceId === discoveredUsbPrinter.deviceId
   );
@@ -118,12 +118,12 @@ test("USB discovery returns stable agent-generated printer descriptor", () => {
   assert.equal(device.usb?.printerName, "Xprinter XP-80T USB");
 });
 
-test("REAL discovery reports REAL and excludes MOCK seed devices", () => {
+test("REAL discovery reports REAL and excludes MOCK seed devices", async () => {
   const previousMode = process.env.PERIPHERALS_MODE;
   process.env.PERIPHERALS_MODE = "REAL";
   try {
     const { controller, logsService } = buildDevices();
-    const result = controller.discover();
+    const result = await controller.discover();
     assert.equal(result.mode, "REAL");
     assert.equal(result.devices.some((device) => device.connectionType === "MOCK"), false);
     assert.equal(
@@ -139,14 +139,14 @@ test("REAL discovery reports REAL and excludes MOCK seed devices", () => {
   }
 });
 
-test("REAL discovery exposes physical discovery failures instead of returning mocks", () => {
+test("REAL discovery exposes physical discovery failures instead of returning mocks", async () => {
   const previousMode = process.env.PERIPHERALS_MODE;
   process.env.PERIPHERALS_MODE = "REAL";
   try {
     const { controller, logsService } = buildDevices(new FailingUsbDiscovery());
-    assert.throws(
+    await assert.rejects(
       () => controller.discover(),
-      /Physical printer discovery failed: Get-Printer unavailable/
+      /printer discovery failed: Get-Printer unavailable/
     );
     assert.equal(
       logsService.list().some((entry) => entry.metadata.outcome === "FAILED"),
@@ -161,9 +161,9 @@ test("REAL discovery exposes physical discovery failures instead of returning mo
   }
 });
 
-test("USB printer registration requires discovered device and not network fields", () => {
+test("USB printer registration requires discovered device and not network fields", async () => {
   const { controller } = buildDevices();
-  controller.discover();
+  await controller.discover();
 
   const created = controller.create({
     ...buildUsbPrinter(),
@@ -176,9 +176,9 @@ test("USB printer registration requires discovered device and not network fields
   assert.equal(created.profileId, "THERMAL_80MM");
 });
 
-test("USB printer registration rejects an undiscovered device", () => {
+test("USB printer registration rejects an undiscovered device", async () => {
   const { controller } = buildDevices();
-  controller.discover();
+  await controller.discover();
 
   assert.throws(
     () =>
@@ -464,7 +464,7 @@ test("USB adapter returns a controlled print error", () => {
 test("USB unavailable queue emits a controlled printer failure event", async () => {
   const discovery = new FakeUsbDiscovery();
   const { controller, service, logsService, eventsService } = buildDevices(discovery);
-  controller.discover();
+  await controller.discover();
   controller.create({ ...buildUsbPrinter(), usb: { deviceId: discoveredUsbPrinter.deviceId } });
   discovery.setDevices([]);
   const previous = process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS;

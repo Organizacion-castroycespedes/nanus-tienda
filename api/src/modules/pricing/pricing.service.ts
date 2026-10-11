@@ -534,7 +534,7 @@ export class PricingService {
     };
   }
 
-  private async prepareBaseLine(input: CalculateLinePriceInput) {
+  private async prepareBaseLine(input: CalculateLinePriceInput, quantityScale: 2 | 3 = 2) {
     this.assertInput(input);
     const pricingDate = this.resolveDate(input.date);
 
@@ -550,7 +550,7 @@ export class PricingService {
       throw new BadRequestException("product is inactive");
     }
 
-    const quantity = this.roundCurrency(input.quantity);
+    const quantity = this.roundQuantity(input.quantity, quantityScale);
     const basePreview = this.calculateLinePreview({
       product,
       quantity,
@@ -661,8 +661,21 @@ export class PricingService {
   async calculateLinePrice(
     input: CalculateLinePriceInput
   ): Promise<LinePricePreview> {
+    return this.calculateLinePriceAtQuantityScale(input, 2);
+  }
+
+  async calculateWeightedLinePrice(
+    input: CalculateLinePriceInput
+  ): Promise<LinePricePreview> {
+    return this.calculateLinePriceAtQuantityScale(input, 3);
+  }
+
+  private async calculateLinePriceAtQuantityScale(
+    input: CalculateLinePriceInput,
+    quantityScale: 2 | 3,
+  ): Promise<LinePricePreview> {
     const { product, quantity, pricingDate, basePreview } =
-      await this.prepareBaseLine(input);
+      await this.prepareBaseLine(input, quantityScale);
     const baseUnitPrice = basePreview.baseUnitPrice;
     const promotions = await this.pricingRepository.findApplicablePromotions({
       tenantId: input.tenantId,
@@ -690,6 +703,11 @@ export class PricingService {
       explanation:
         "products.price is treated as the visible unit price with tax included; active non-stackable promotion applied by priority, discount and recency.",
     });
+  }
+
+  private roundQuantity(value: number, scale: number) {
+    const multiplier = 10 ** scale;
+    return Math.round((value + Number.EPSILON) * multiplier) / multiplier;
   }
 
   async calculateProposedLine(input: {

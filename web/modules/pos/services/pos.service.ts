@@ -12,6 +12,7 @@ export type PosSalePayload = {
   type: "CASH" | "CREDIT";
   items: Array<{
     productId: string;
+    saleMode: "UNIT";
     quantity: number;
     price: number;
     orderItemId?: string | null;
@@ -26,6 +27,11 @@ export type PosSalePayload = {
       taxAmount: number;
       isIncluded: boolean;
     }>;
+  } | {
+    productId: string;
+    saleMode: "WEIGHT";
+    weightCapture: { captureId: string; nonce: string };
+    orderItemId?: string | null;
   }>;
   payments?: Array<{
     paymentMethodId: string;
@@ -57,6 +63,7 @@ export type PosLinePricePreviewPayload = {
   branchId: string;
   productId: string;
   quantity: number;
+  saleMode: "UNIT" | "WEIGHT";
   channel: "POS";
   customerId?: string;
   date?: string;
@@ -108,6 +115,11 @@ export const createSale = (payload: PosSalePayload, headers?: HeadersInit) =>
     headers,
     includePosSession: true,
     body: JSON.stringify(payload),
+  });
+
+export const createPosWeightCapture = (productId: string, headers?: HeadersInit) =>
+  apiClient<{ captureId: string; nonce: string; expiresAt: string }>("/sales/weight-captures", {
+    method: "POST", headers, includePosSession: true, body: JSON.stringify({ productId }),
   });
 
 export const reconcileSale = (idempotencyKey: string, headers?: HeadersInit) =>
