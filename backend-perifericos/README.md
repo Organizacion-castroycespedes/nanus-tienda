@@ -305,7 +305,7 @@ npm ci
 
 ```powershell
 cd backend-perifericos
-$env:MANUS_INSTALLER_OUTPUT_NAME="ManusTerminalSetup-0.1.1-qa.11-win-x64.exe"
+$env:MANUS_INSTALLER_OUTPUT_NAME="ManusTerminalSetup-0.1.1-qa.13-win-x64.exe"
 npm run installer:windows-x64:qa
 ```
 
@@ -326,7 +326,7 @@ QA:
 ```powershell
 cd C:\Users\icast\Documents\Proyectos\nanus-tienda\backend-perifericos
 
-$env:MANUS_INSTALLER_OUTPUT_NAME="ManusTerminalSetup-0.1.1-qa.11-win-x64.exe"
+$env:MANUS_INSTALLER_OUTPUT_NAME="ManusTerminalSetup-0.1.1-qa.13-win-x64.exe"
 
 npm run installer:windows-x64:qa
 ```
@@ -346,6 +346,8 @@ Los comandos anteriores hacen todo el flujo: configuran el ambiente, generan
 crean el instalador y ejecutan la validación.
 
 Salida final:
+
+Note: QA uses internal Agent version `0.1.1-qa.13`. `MANUS_INSTALLER_OUTPUT_NAME` changes only the artifact label; a historical `qa.11` filename does not change internal metadata.
 
 ```text
 backend-perifericos\dist-installer\windows-x64\ManusTerminalSetup-<nombre>.exe
