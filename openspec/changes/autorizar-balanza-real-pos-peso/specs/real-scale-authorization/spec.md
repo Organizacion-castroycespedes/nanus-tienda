@@ -43,7 +43,7 @@ This runtime authorization phase SHALL NOT connect capture consumption to `SaleS
 - **THEN** no weighted sale is accepted until the separate `SaleService` capture-consumption phase is complete.
 
 ### Requirement: Scope migration version evaluation separately from promotion
-A DEV_TO_QA migration-version evaluation SHALL use fresh same-operation repository and read-only QA history/schema evidence and SHALL expose only DEV_QA_SAFE_VERSION. It SHALL NOT imply PRD compatibility, global historical certification, version reservation, migration execution or production promotion. QA_TO_PRD/GLOBAL evaluation SHALL continue to require fresh PRD evidence and the separate promotion authorization gates. Historical replay, artificial history backfill, rename/renumber/overwrite and retroactive certification remain prohibited.
+A DEV_TO_QA migration-version evaluation SHALL use fresh same-operation repository evidence and read-only QA history/schema evidence, and MAY expose only DEV_QA_SAFE_VERSION. It SHALL NOT imply PRD compatibility, migration execution, version reservation or production promotion. QA_TO_PRD/GLOBAL evaluation still requires fresh PRD evidence and separate promotion authorization. Historical replay, artificial backfill, renumbering and retroactive certification remain prohibited.
 
 #### Scenario: Development version is evaluated without PRD access
 - **WHEN** repository and QA evidence are verified and fresh for a DEV_TO_QA evaluation
@@ -54,7 +54,7 @@ A DEV_TO_QA migration-version evaluation SHALL use fresh same-operation reposito
 - **THEN** it is not reserved and cannot authorize QA-to-PRD promotion or migration execution.
 
 ### Requirement: Persist scale authorization without historical replay
-The persistence foundation SHALL use one forward-only DEV_TO_QA migration selected from fresh same-operation repository and read-only QA evidence. It SHALL support only clean DEV with both legacy tables absent and the exact known empty QA-compatible shapes, reject unknown/incompatible shapes, and SHALL NOT replay or certify historical V094/V095 or alter migration history. Persistent version reservation is unsupported; creation of the V103 migration file occupies its repository identity, and collision SHALL be re-evaluated before integration/promotion.
+The persistence foundation SHALL use one forward-only DEV_TO_QA migration selected from fresh repository and read-only QA evidence. It SHALL support clean DEV and only the known empty QA-compatible legacy shapes, reject unknown or incompatible shapes, and SHALL NOT replay V094/V095 or alter migration history. The migration file occupies its repository version identity; any collision SHALL be re-evaluated before integration or promotion.
 
 #### Scenario: Existing known QA tables are adopted
 - **WHEN** both credential and scale-binding tables match their validated known QA shapes and contain no rows
@@ -68,14 +68,14 @@ Credential persistence SHALL contain a public identifier, verifier version/hash 
 - **THEN** only the verifier is stored and KG evidence is explicit and tenant/context scoped.
 
 ### Requirement: Durable capture consumption is atomic and sale-disconnected
-The persistence layer SHALL store nonce verifier/hash, exact tenant/branch/terminal/session/product/device/scale/binding context, expiry and authoritative REAL/kg/unit-verified measurement. Consumption SHALL be a single conditional transaction-safe claim that records canonical sale and consumer and returns persisted weight; no second claimant or replay succeeds. This persistence MAY support authenticated Agent/readiness endpoints, but SHALL remain disconnected from productive `SaleService` and weighted-sale POS UI until a later approved sale phase.
+Capture persistence SHALL store the nonce verifier, exact operational context, expiry and authoritative REAL/kg/unit-verified measurement. Consumption SHALL use one transaction-safe conditional claim that records the canonical sale and consumer and returns persisted weight; replay or a second claimant SHALL fail. The persistence MAY support Agent/readiness endpoints but SHALL remain disconnected from productive SaleService and weighted-sale UI until an approved sale phase.
 
 #### Scenario: Two transactions attempt the same capture
 - **WHEN** concurrent callers claim the same valid READY capture
 - **THEN** at most one conditional update returns the authoritative persisted weight, and the other caller receives no claim.
 
 ### Requirement: Pair Agent using a pinned Ed25519 trust anchor
-The Node Peripheral Agent SHALL initiate enrollment directly to its fixed HTTPS API endpoint using a locally generated RSA enrollment keypair protected at rest with Windows DPAPI under the service identity. The API SHALL sign a short-lived challenge binding audience, installation/device identity, public-key fingerprint, nonce, pairing code, expiry and credential identifier with the environment Ed25519 private key. The Agent SHALL verify it with a pinned public key from trusted installer configuration. The browser SHALL NOT supply or replace the API trust key, API endpoint or Agent public key bound by the signature.
+The Peripheral Agent SHALL enroll against its fixed HTTPS API using a locally generated RSA enrollment keypair protected with Windows DPAPI. The API SHALL sign the enrollment challenge with the environment Ed25519 key, binding the required identity, fingerprint, nonce, pairing code, expiry and credential ID. The Agent SHALL verify a pinned installer-provided public key; the browser SHALL NOT replace the API trust key, API endpoint or signed Agent key.
 
 #### Scenario: Browser substitutes an enrollment key
 - **WHEN** browser approval supplies a public key whose fingerprint differs from the signed Agent challenge
@@ -88,6 +88,17 @@ The API SHALL persist only credential verifier/hash and lifecycle metadata, and 
 - **WHEN** the Agent receives a valid, unexpired envelope for its pending challenge
 - **THEN** it stores the credential under DPAPI and returns only non-secret status metadata.
 
+### Requirement: Read DPAPI credentials without mutating ACLs
+The Agent SHALL read existing version 1 DPAPI records without changing their filesystem ACL. New state directories and protected files SHALL continue to receive the restrictive LocalService, SYSTEM and Administrators ACL during creation/write. Reads SHALL fail closed for malformed records or DPAPI unprotect errors and SHALL clear temporary ciphertext and entropy buffers after unprotect completes.
+
+#### Scenario: Existing protected credential is read by its DPAPI identity
+- **WHEN** a process with file-read access reads a valid version 1 record under the DPAPI identity that protected it
+- **THEN** it SHALL return the unprotected bytes to the trusted caller without invoking an ACL mutation or requiring `WRITE_DAC`.
+
+#### Scenario: Credential record or DPAPI protection is invalid
+- **WHEN** a protected record is malformed or DPAPI unprotect fails
+- **THEN** the Agent SHALL reject the read without returning plaintext, modifying ACLs or weakening file permissions.
+
 ### Requirement: Authenticate Agent requests and derive runtime readiness
 Agent cloud requests SHALL use credential identifier plus possession secret over TLS; API verifies the V103 verifier, lifecycle and tenant/device ownership. REAL readiness SHALL be backend-derived from an active authenticated Agent, current terminal/device relationship, matching authorized KG-verified binding and fresh REAL/kg observation. REAL_AVAILABLE is never persisted; MOCK, stale and mismatched context fail closed.
 
@@ -95,8 +106,19 @@ Agent cloud requests SHALL use credential identifier plus possession secret over
 - **WHEN** an active credential is revoked or the configured logical scale identity changes
 - **THEN** readiness is false; a changed physical identity requires revoke/rebind rather than retaining authorization.
 
+### Requirement: Separate existing credential runtime authentication from pairing trust
+An enrolled Agent SHALL authenticate runtime validation and observation requests with its DPAPI-protected credential and fixed API base URL; these requests SHALL NOT require pairing trust fields. Pairing start, challenge verification and envelope acceptance SHALL require the complete pinned Ed25519 trust configuration and fail closed if it is missing or invalid. Missing or rejected runtime credentials SHALL NOT trigger pairing, anonymous access or READY state.
+
+#### Scenario: Existing credential is validated without pairing trust configuration
+- **WHEN** the Agent has a DPAPI-protected credential and fixed API base URL but no pairing public key, audience or key ID
+- **THEN** runtime credential validation and authenticated observations may use the API verifier, while pairing remains unavailable and no pairing request is initiated.
+
+#### Scenario: Pairing trust is absent or invalid
+- **WHEN** pairing start or envelope acceptance is requested without a pinned Ed25519 public key, audience or key ID
+- **THEN** the operation fails before network or credential-persistence side effects.
+
 ### Requirement: Collect REAL scale evidence before explicit KG operator confirmation
-A recent finite REAL numeric observation from the exact configured ROCHI, Agent installation, POS/operational terminal and pending binding SHALL be valid evidence for the operator confirmation step even when the device protocol reports `unit=null` and `unitVerified=false`. The UI SHALL display the numeric REAL reading and clearly state that its unit is not verified. It SHALL NOT infer KG from the model, serial frame, numeric value, COM port or physical configuration, and SHALL NOT infer stability. Confirmation SHALL remain an explicit operator action that calls the authenticated backend transition; only after a successful backend response may the UI mirror the returned `OPERATOR_CONFIRMATION` evidence into the Agent's local device metadata so later REAL observations report the verified unit. Stale, MOCK, non-finite, wrong-device, wrong-installation or mismatched-terminal/binding evidence SHALL remain blocked.
+A fresh finite REAL observation from the exact configured device, Agent installation, terminal and pending binding SHALL be valid evidence for operator confirmation even when unit is null and unverified. The UI SHALL display the numeric REAL reading as unit-unverified and SHALL NOT infer KG or stability. Confirmation remains an explicit authenticated backend action; only after success may verified-unit evidence be mirrored locally. Stale, MOCK or mismatched evidence SHALL remain blocked.
 
 #### Scenario: ROCHI REAL protocol does not declare a unit
 - **WHEN** a fresh reading is `source=REAL`, has a finite numeric weight, `unit=null`, `unitVerified=false`, and matches the current configured device and pending binding
@@ -108,3 +130,33 @@ The operator status refresh SHALL query Agent enrollment status, configured devi
 #### Scenario: Operator refreshes state
 - **WHEN** the operator activates “Actualizar estado”
 - **THEN** Agent, device and backend authorization views are reloaded and the UI reports completion or partial failure without changing commercial state.
+
+### Requirement: Trace commercial capture stages without sensitive data
+The Peripheral Agent SHALL emit captureId-correlated diagnostics for capture receipt, REAL read completion, local validation, observation submission/response, failure and READY confirmation. Diagnostics MAY include safe source/unit/stability/device metadata, timestamps and HTTP status, but SHALL NOT include measured weight, bodies, authorization headers, nonce, verifier or credential material. Local validation SHALL stay fail-closed and record a sanitized stage/reason code.
+
+#### Scenario: A REAL observation is rejected locally
+- **WHEN** the read source is not REAL, the unit is not kg, or unit verification is false
+- **THEN** the Agent records the capture ID, local-validation stage and a safe rejection code, and returns the same rejection response without submitting an observation.
+
+#### Scenario: The authenticated API rejects or cannot receive an observation
+- **WHEN** the observation request receives a non-success HTTP response or fails due to a network error/timeout
+- **THEN** the Agent records the HTTP status or safe network classification for that capture without logging response content or credentials.
+
+#### Scenario: The API confirms READY
+- **WHEN** the authenticated observation response reports `status=READY`
+- **THEN** the Agent records READY for the same capture ID without logging the measurement or nonce.
+
+### Requirement: Bound PostgreSQL work for capture readiness
+Every PostgreSQL statement issued by WeightCapturePersistence.markReady SHALL run with a transaction-local statement_timeout of 1,500 ms inside the existing observation transaction. The setting SHALL end with the transaction before pool release. Cancellation SHALL use the existing READY_UPDATE logging, rollback and rethrow path without changing capture validation, atomic update, HTTP mapping or Agent timeout. If rollback fails, preserve the original error and destroy the client.
+
+#### Scenario: PostgreSQL cancels a stalled READY statement
+- **WHEN** a `markReady` statement exceeds the transaction-local statement timeout
+- **THEN** PostgreSQL cancels the statement, the API emits the existing sanitized `observation.failed` event at `READY_UPDATE`, rolls back the transaction so the capture remains `PENDING`, and returns the same HTTP error semantics without a late READY update.
+
+#### Scenario: The timeout does not leak to a later pooled request
+- **WHEN** the observation transaction commits or rolls back
+- **THEN** its local timeout setting is cleared before the connection is released to the pool.
+
+#### Scenario: Rollback cannot clear the transaction-local setting
+- **WHEN** rollback fails after a READY statement error
+- **THEN** the API preserves the original statement error and destroys the client rather than returning an open transaction to the pool.

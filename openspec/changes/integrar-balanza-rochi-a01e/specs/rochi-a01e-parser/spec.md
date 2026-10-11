@@ -162,6 +162,12 @@ The scale endpoint SHALL return physical readings with `source=REAL` and SHALL n
 - **WHEN** ROCHI produces a valid physical frame before KG confirmation
 - **THEN** the response has `unit=null`, `stable=null`, `unitVerified=false`, and `stabilityVerified=false`
 
+The structured `scale.current_weight.real` diagnostic SHALL mirror the actual response `unit`, `unitVerified`, and `stabilityVerified` fields and its observation timestamp; it SHALL NOT claim fixed verification values that differ from the returned reading.
+
+#### Scenario: operator-confirmed unit appears in REAL diagnostics
+- **WHEN** a REAL read returns `unit=kg`, `unitVerified=true`, and `stabilityVerified=false`
+- **THEN** the log metadata records those same values and timestamp without logging the measured weight.
+
 ### Requirement: explicit KG operator confirmation
 The installer UI SHALL persist KG only after an explicit operator confirmation following a successful REAL read.
 

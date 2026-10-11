@@ -8,6 +8,8 @@ import {
   DISCOVERY_REQUEST_TIMEOUT_MS,
   PRINT_TICKET_REQUEST_TIMEOUT_MS,
   discoverAgentDevices,
+  captureAgentWeightForSale,
+  captureAgentWeightForSaleIpc,
   getAgentHealth,
   getAgentCurrentWeight,
   openAgentCashDrawer,
@@ -109,6 +111,26 @@ describe("getAgentHealth", () => {
     await withServer((_request, response) => response.end("x".repeat(70 * 1024)), async (port) => {
       assert.deepEqual(await getAgentHealth(configForPort(port)), { available: false, reason: "INVALID_RESPONSE" });
     });
+  });
+});
+
+describe("captureAgentWeightForSale", () => {
+  it("sends only the commercial capture reference to the local Agent", async () => {
+    let method = "";
+    let target = "";
+    let body = "";
+    await withServer((request, response) => {
+      method = request.method ?? "";
+      target = request.url ?? "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk: string) => { body += chunk; });
+      request.on("end", () => response.end(JSON.stringify({ status: "READY" })));
+    }, async (port) => {
+      assert.deepEqual(await captureAgentWeightForSale(configForPort(port), { captureId: "capture-1" }), { status: "READY" });
+    });
+    assert.equal(method, "POST");
+    assert.equal(target, "/scale/capture");
+    assert.deepEqual(JSON.parse(body), { captureId: "capture-1" });
   });
 });
 
@@ -215,6 +237,74 @@ describe("physical Agent action timeouts", () => {
 });
 
 describe("controlled Agent HTTP errors", () => {
+  it("preserves the safe zero-weight capture code", async () => {
+    await withServer((_request, response) => {
+      response.statusCode = 400;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ statusCode: 400, message: "SCALE_WEIGHT_ZERO" }));
+    }, async (port) => {
+      await assert.rejects(
+        captureAgentWeightForSale(configForPort(port), { captureId: "capture-1" }),
+        (error: unknown) => error instanceof AgentHttpError
+          && error.statusCode === 400
+          && error.code === "SCALE_WEIGHT_ZERO"
+          && error.message === "SCALE_WEIGHT_ZERO",
+      );
+    });
+  });
+
+  it("returns SCALE_WEIGHT_ZERO as a structured IPC result", async () => {
+    await withServer((_request, response) => {
+      response.statusCode = 400;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ statusCode: 400, message: "SCALE_WEIGHT_ZERO" }));
+    }, async (port) => {
+      assert.deepEqual(await captureAgentWeightForSaleIpc(configForPort(port), { captureId: "capture-1" }), {
+        kind: "scale-capture-result-v1",
+        ok: false,
+        errorCode: "SCALE_WEIGHT_ZERO",
+      });
+    });
+  });
+
+  it("preserves a successful positive weight result in the IPC envelope", async () => {
+    const reading = { captureId: "capture-1", status: "READY", reading: { weight: 0.245, unit: "kg", source: "REAL", unitVerified: true } };
+    await withServer((_request, response) => {
+      response.statusCode = 200;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify(reading));
+    }, async (port) => {
+      assert.deepEqual(await captureAgentWeightForSaleIpc(configForPort(port), { captureId: "capture-1" }), {
+        kind: "scale-capture-result-v1",
+        ok: true,
+        value: reading,
+      });
+    });
+  });
+
+  it("maps Agent connection failures to the safe unavailable IPC code", async () => {
+    const unavailableConfig = { ...config, agentLoopbackOrigin: "http://127.0.0.1:1" };
+    assert.deepEqual(await captureAgentWeightForSaleIpc(unavailableConfig, { captureId: "capture-1" }), {
+      kind: "scale-capture-result-v1",
+      ok: false,
+      errorCode: "AGENT_UNAVAILABLE",
+    });
+  });
+
+  it("does not expose unknown Agent errors through the IPC result", async () => {
+    await withServer((_request, response) => {
+      response.statusCode = 500;
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ message: "private stack and path" }));
+    }, async (port) => {
+      assert.deepEqual(await captureAgentWeightForSaleIpc(configForPort(port), { captureId: "capture-1" }), {
+        kind: "scale-capture-result-v1",
+        ok: false,
+        errorCode: "AGENT_HTTP_ERROR",
+      });
+    });
+  });
+
   it("preserves safe status and known code without exposing response text", async () => {
     await withServer((_request, response) => {
       response.statusCode = 400;

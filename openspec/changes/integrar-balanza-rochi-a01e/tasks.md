@@ -72,3 +72,4 @@
 - [x] 10.7 Limpiar el estado administrado LocalService mediante `uninstall --remove-data`, sin seguir reparse points ni borrar padres compartidos.
 - [x] 10.6 Excluir migraciones, terminal auth/bindings, secure-secret future, enrollment y metrología.
 - [x] 10.8 Permitir asociar o desasociar explícitamente un SCALE descubierto en los settings existentes de la terminal, preservando el fail-closed comercial.
+- [x] Ensure REAL scale diagnostic metadata reflects the actual response unit-verification and stability fields without logging weight. Evidence: `scale-rochi-runtime.spec.ts` verifies metadata matches the REAL response; build and full Agent suite PASS.

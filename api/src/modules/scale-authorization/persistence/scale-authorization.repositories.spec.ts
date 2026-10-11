@@ -5,6 +5,24 @@ import { AgentCredentialPersistence, ScaleBindingPersistence, WeightCapturePersi
 
 const fakeDb = {} as never;
 
+test("commercial capture creation returns a one-time nonce and persists only its SHA-256 verifier", async () => {
+  const statements: Array<{ sql: string; values: unknown[] }> = [];
+  const client = { query: async (sql: string, values: unknown[]) => {
+    statements.push({ sql, values });
+    if (statements.length === 1) return { rows: [{ id: "binding" }], rowCount: 1 };
+    return { rows: [{ capture_id: values[0], expires_at: values[5] }], rowCount: 1 };
+  } } as never;
+  const capture = await new WeightCapturePersistence(fakeDb).createPending(client, {
+    tenantId: "t", branchId: "b", posTerminalId: "p", operationalTerminalId: "o",
+    posSessionId: "s", productId: "product", terminalDeviceId: "device",
+    logicalScaleId: "scale", bindingId: "binding",
+  }, 60_000);
+  assert.match(capture.nonce, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(statements[1].values.includes(capture.nonce), false);
+  assert.equal(statements[1].values[3], verifierFor(capture.nonce));
+  assert.match(statements[1].sql, /'PENDING'/);
+});
+
 test("credential persistence stores only a verifier and applies tenant/device scoping", async () => {
   let captured: { sql: string; values: unknown[] } | undefined;
   const client = { query: async (sql: string, values: unknown[]) => {
@@ -127,6 +145,89 @@ test("capture consumption is one conditional UPDATE returning persisted weight",
   assert.equal(captured.values[1], verifierFor("raw-one-time-nonce"));
 });
 
+test("sale lock reads the exact persisted raw weight without consuming the capture", async () => {
+  let statement = "";
+  let values: unknown[] = [];
+  const expected = {
+    tenantId: "t", branchId: "b", posTerminalId: "p", operationalTerminalId: "o",
+    posSessionId: "s", productId: "product",
+  };
+  const client = { query: async (sql: string, params: unknown[]) => {
+    statement = sql;
+    values = params;
+    return { rows: [{
+      capture_id: "capture", tenant_id: "t", branch_id: "b", pos_terminal_id: "p",
+      operational_terminal_id: "o", pos_session_id: "s", product_id: "product",
+      terminal_device_id: "device", logical_scale_id: "scale", terminal_scale_binding_id: "binding",
+      nonce_verifier_sha256: verifierFor("raw-one-time-nonce"), status: "READY",
+      expires_at: new Date(Date.now() + 60_000), weight_kg: "0.245000", measurement_source: "REAL",
+      measurement_unit: "kg", unit_verified: true, observed_at: new Date(),
+    }], rowCount: 1 };
+  } } as never;
+
+  const capture = await new WeightCapturePersistence(fakeDb).lockReadyForSale(client, {
+    captureId: "capture", nonce: "raw-one-time-nonce", expected,
+  });
+
+  assert.equal(capture.weightKg, "0.245000");
+  assert.deepEqual(capture.scope, {
+    ...expected, logicalScaleId: "scale", bindingId: "binding", terminalDeviceId: "device",
+  });
+  assert.match(statement, /c\.status = 'READY'/);
+  assert.match(statement, /c\.expires_at > \$9/);
+  assert.match(statement, /measurement_source = 'REAL'/);
+  assert.match(statement, /measurement_unit = 'kg'/);
+  assert.match(statement, /unit_verified IS TRUE/);
+  assert.match(statement, /b\.status = 'AUTHORIZED'/);
+  assert.match(statement, /b\.unit_state = 'KG_VERIFIED'/);
+  assert.match(statement, /FOR UPDATE OF c/);
+  assert.match(statement, /FOR SHARE OF b, d, p/);
+  assert.equal(values[1], verifierFor("raw-one-time-nonce"));
+});
+
+test("markReady binds decimal weights as NUMERIC without changing commercial precision", async () => {
+  const cases = [
+    { value: 0.245, persisted: "0.245000" },
+    { value: 0.001, persisted: "0.001000" },
+    { value: 1.0, persisted: "1.000000" },
+  ];
+  const now = new Date("2030-01-01T00:00:00.000Z");
+
+  for (const item of cases) {
+    const statements: Array<{ sql: string; values: unknown[] }> = [];
+    const client = { query: async (sql: string, values: unknown[] = []) => {
+      statements.push({ sql, values });
+      if (statements.length === 1) return { rows: [{
+        tenant_id: "t", branch_id: "b", pos_terminal_id: "p", operational_terminal_id: "o",
+        terminal_device_id: "device", logical_scale_id: "scale", terminal_scale_binding_id: "binding",
+      }], rowCount: 1 };
+      if (statements.length === 2) return { rows: [{ id: "binding" }], rowCount: 1 };
+      if (statements.length === 3) return { rows: [{
+        capture_id: "capture", tenant_id: "t", branch_id: "b", pos_terminal_id: "p",
+        operational_terminal_id: "o", pos_session_id: "session", product_id: "product",
+        terminal_device_id: "device", logical_scale_id: "scale", terminal_scale_binding_id: "binding",
+        nonce_verifier_sha256: "a".repeat(64), status: "PENDING", expires_at: new Date(now.getTime() + 60_000),
+        weight_kg: null, measurement_source: null, measurement_unit: null, unit_verified: null, observed_at: null,
+      }], rowCount: 1 };
+      return { rows: [{ capture_id: "capture", weight_kg: item.persisted, status: "READY",
+        expires_at: new Date(now.getTime() + 60_000) }], rowCount: 1 };
+    } } as never;
+
+    const ready = await new WeightCapturePersistence(fakeDb).markReady(client, {
+      captureId: "capture",
+      observation: { source: "REAL", value: item.value, unit: "kg", unitVerified: true, observedAt: now.toISOString() },
+      now,
+    });
+
+    assert.equal(ready.weight_kg, item.persisted);
+    assert.equal(statements.length, 4);
+    const update = statements[3];
+    assert.match(update.sql, /weight_kg = \$2::numeric/);
+    assert.match(update.sql, /AND \$2::numeric >= 0/);
+    assert.equal(update.values[1], item.value);
+  }
+});
+
 test("MOCK or unverified observations never reach persistence", async () => {
   let calls = 0;
   const client = { query: async () => { calls += 1; return { rows: [], rowCount: 0 }; } } as never;
@@ -136,6 +237,9 @@ test("MOCK or unverified observations never reach persistence", async () => {
   }), /CAPTURE_OBSERVATION_NOT_COMMERCIAL/);
   await assert.rejects(() => captures.markReady(client, {
     captureId: "capture", observation: { source: "REAL", value: 1, unit: "kg", unitVerified: false, observedAt: new Date().toISOString() },
+  }), /CAPTURE_OBSERVATION_NOT_COMMERCIAL/);
+  await assert.rejects(() => captures.markReady(client, {
+    captureId: "capture", observation: { source: "REAL", value: -0.001, unit: "kg", unitVerified: true, observedAt: new Date().toISOString() },
   }), /CAPTURE_OBSERVATION_NOT_COMMERCIAL/);
   assert.equal(calls, 0);
 });

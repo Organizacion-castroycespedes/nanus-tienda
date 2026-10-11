@@ -260,6 +260,82 @@ const captureDomainValue = (row: CaptureRow): WeightCapture => ({
 export class WeightCapturePersistence {
   constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
 
+  async lockReadyForSale(client: Queryable, input: {
+    captureId: string;
+    nonce: string;
+    expected: Pick<CaptureScope, "tenantId" | "branchId" | "posTerminalId" | "operationalTerminalId" | "posSessionId" | "productId">;
+    now?: Date;
+  }) {
+    const now = input.now ?? new Date();
+    const result = await client.query<CaptureRow>(
+      `SELECT c.*
+       FROM terminal_scale_weight_captures c
+       JOIN terminal_scale_bindings b
+         ON b.id = c.terminal_scale_binding_id
+        AND b.tenant_id = c.tenant_id
+        AND b.branch_id = c.branch_id
+        AND b.pos_terminal_id = c.pos_terminal_id
+        AND b.operational_terminal_id = c.operational_terminal_id
+        AND b.terminal_device_id = c.terminal_device_id
+        AND b.logical_scale_id = c.logical_scale_id
+       JOIN terminal_devices d
+         ON d.id = c.terminal_device_id AND d.tenant_id = c.tenant_id
+       JOIN pos_terminals p
+         ON p.id = c.pos_terminal_id
+        AND p.tenant_id = c.tenant_id
+        AND p.branch_id = c.branch_id
+        AND p.operational_terminal_id = c.operational_terminal_id
+       WHERE c.capture_id = $1
+         AND c.nonce_verifier_sha256 = $2
+         AND c.tenant_id = $3
+         AND c.branch_id = $4
+         AND c.pos_terminal_id = $5
+         AND c.operational_terminal_id = $6
+         AND c.pos_session_id = $7
+         AND c.product_id = $8
+         AND c.status = 'READY'
+         AND c.expires_at > $9
+         AND c.measurement_source = 'REAL'
+         AND c.measurement_unit = 'kg'
+         AND c.unit_verified IS TRUE
+         AND c.weight_kg IS NOT NULL
+         AND c.weight_kg > 0
+         AND c.observed_at IS NOT NULL
+         AND b.status = 'AUTHORIZED'
+         AND b.unit_state = 'KG_VERIFIED'
+         AND d.registration_status <> 'REVOKED'
+         AND p.active IS TRUE
+       FOR UPDATE OF c
+       FOR SHARE OF b, d, p`,
+      [input.captureId, verifierFor(input.nonce), input.expected.tenantId,
+        input.expected.branchId, input.expected.posTerminalId,
+        input.expected.operationalTerminalId, input.expected.posSessionId,
+        input.expected.productId, now],
+    );
+    if (result.rowCount !== 1) throw new Error("CAPTURE_NOT_READY_FOR_SALE");
+
+    const row = result.rows[0];
+    const context: WeightCaptureContext = {
+      tenantId: input.expected.tenantId,
+      branchId: input.expected.branchId,
+      posTerminalId: input.expected.posTerminalId,
+      operationalTerminalId: input.expected.operationalTerminalId,
+      posSessionId: input.expected.posSessionId,
+      productId: input.expected.productId,
+      logicalScaleId: row.logical_scale_id,
+      bindingId: row.terminal_scale_binding_id,
+    };
+    consumeWeightCapture(captureDomainValue(row), input.nonce, context, now);
+    return {
+      captureId: row.capture_id,
+      weightKg: String(row.weight_kg),
+      scope: {
+        ...context,
+        terminalDeviceId: row.terminal_device_id,
+      } satisfies CaptureScope,
+    };
+  }
+
   async createPending(client: Queryable, scope: CaptureScope, ttlMs: number, now = new Date()) {
     const issued = createWeightCapture(scope, ttlMs, now);
     const binding = await client.query<QueryResultRow>(
@@ -326,10 +402,10 @@ export class WeightCapturePersistence {
     if (ready.status !== "READY") throw new Error(ready.status === "EXPIRED" ? "CAPTURE_EXPIRED" : "CAPTURE_OBSERVATION_NOT_COMMERCIAL");
     const result = await client.query<CaptureRow>(
       `UPDATE terminal_scale_weight_captures c
-       SET status = 'READY', weight_kg = $2, measurement_source = 'REAL',
+       SET status = 'READY', weight_kg = $2::numeric, measurement_source = 'REAL',
            measurement_unit = 'kg', unit_verified = true, observed_at = $3
        WHERE c.capture_id = $1 AND c.status = 'PENDING' AND c.expires_at > $4
-         AND $2 >= 0 AND EXISTS (SELECT 1 FROM terminal_scale_bindings b
+         AND $2::numeric >= 0 AND EXISTS (SELECT 1 FROM terminal_scale_bindings b
            WHERE b.id = c.terminal_scale_binding_id AND b.tenant_id = c.tenant_id
              AND b.branch_id = c.branch_id AND b.pos_terminal_id = c.pos_terminal_id
              AND b.operational_terminal_id = c.operational_terminal_id

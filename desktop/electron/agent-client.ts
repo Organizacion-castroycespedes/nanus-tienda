@@ -1,6 +1,12 @@
 import http from "node:http";
 
-import type { AgentHealth } from "./electron-api.js";
+import {
+  scaleCaptureIpcFailure,
+  scaleCaptureIpcSuccess,
+  type AgentHealth,
+  type ScaleCaptureIpcErrorCode,
+  type ScaleCaptureIpcResult,
+} from "./electron-api.js";
 import type { AgentRoutingConfig } from "./config.js";
 
 export const DEFAULT_AGENT_REQUEST_TIMEOUT_MS = 2500;
@@ -12,6 +18,7 @@ const MAX_RESPONSE_BYTES = 64 * 1024;
 type RequestOptions = { timeoutMs?: number };
 
 const SAFE_AGENT_ERROR_CODES = new Set([
+  "SCALE_WEIGHT_ZERO",
   "PRINT_TRANSPORT_NOT_READY",
   "WINDOWS_PRINT_QUEUE_REQUIRED",
 ]);
@@ -170,4 +177,24 @@ export const getAgentSecurityStatus = (config: AgentRoutingConfig) => requestJso
 export const startAgentPairing = (config: AgentRoutingConfig) => requestJson(config, "/agent-security/pairing/start", "POST", {});
 export const acceptAgentEnrollmentEnvelope = (config: AgentRoutingConfig, payload: unknown) => requestJson(config, "/agent-security/pairing/envelope", "POST", payload, { timeoutMs: 10_000 });
 export const testAgentAuthorizationReading = (config: AgentRoutingConfig, payload: unknown) => requestJson(config, "/scale/authorization-test", "POST", payload, { timeoutMs: 15_000 });
+export const captureAgentWeightForSale = (config: AgentRoutingConfig, payload: unknown) => requestJson(config, "/scale/capture", "POST", payload, { timeoutMs: 15_000 });
+export const captureAgentWeightForSaleIpc = async (
+  config: AgentRoutingConfig,
+  payload: unknown,
+): Promise<ScaleCaptureIpcResult<unknown>> => {
+  try {
+    return scaleCaptureIpcSuccess(await captureAgentWeightForSale(config, payload));
+  } catch (error) {
+    let errorCode: ScaleCaptureIpcErrorCode = "AGENT_HTTP_ERROR";
+    if (error instanceof AgentHttpError) {
+      if (safeAgentErrorCode(error.code) === "SCALE_WEIGHT_ZERO") errorCode = "SCALE_WEIGHT_ZERO";
+    } else if (error instanceof Error && error.message === "AGENT_TIMEOUT") {
+      errorCode = "AGENT_TIMEOUT";
+    } else if (error && typeof error === "object" && "code" in error
+      && ["ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETUNREACH", "ETIMEDOUT"].includes(String(error.code))) {
+      errorCode = "AGENT_UNAVAILABLE";
+    }
+    return scaleCaptureIpcFailure(errorCode);
+  }
+};
 export const listAgentLogs = (config: AgentRoutingConfig) => requestJson(config, "/logs").then((value) => Array.isArray(value) ? value : []);

@@ -235,7 +235,9 @@ export const CartSaleModal = ({
 
                           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                             <div className="space-y-1.5">
-                              <div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+                              {item.saleMode === "WEIGHT" ? (
+                                <span className="px-3 py-2 text-sm font-semibold">{item.quantity.toFixed(3)} kg</span>
+                              ) : <div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -266,7 +268,7 @@ export const CartSaleModal = ({
                                 >
                                   <Plus className="h-4 w-4" />
                                 </button>
-                              </div>
+                              </div>}
 
                               {presentation.isWeighable && scaleControlsVisible ? (
                                 <button
