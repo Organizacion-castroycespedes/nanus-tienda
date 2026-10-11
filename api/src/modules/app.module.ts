@@ -20,6 +20,7 @@ import { DeliveriesModule } from "./deliveries/deliveries.module";
 import { OperationalSalesModule } from "./operational-sales/operational-sales.module";
 import { ParametersModule } from "./parameters/parameters.module";
 import { TerminalRuntimeModule } from "./terminal-runtime/terminal-runtime.module";
+import { ScaleAuthorizationRuntimeModule } from "./scale-authorization/scale-authorization.runtime.module";
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { TerminalRuntimeModule } from "./terminal-runtime/terminal-runtime.modul
     DeliveriesModule,
     OperationalSalesModule,
     TerminalRuntimeModule,
+    ScaleAuthorizationRuntimeModule,
   ],
 })
 export class AppModule {}

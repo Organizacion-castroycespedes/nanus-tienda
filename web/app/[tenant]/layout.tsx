@@ -80,14 +80,24 @@ import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
 import type { CashSession } from "../../modules/finance/types";
 import {
+  getPeripheralAgentHealth,
   getPeripheralDevices,
   getPeripheralFeatureFlags,
   subscribePeripheralEvents,
   type PeripheralSocketStatus,
 } from "../../domains/peripherals/contracts";
-import type { PeripheralDevice } from "../../domains/peripherals/types";
+import type {
+  PeripheralAgentHealth,
+  PeripheralDevice,
+  PosTerminalResolvedConfig,
+} from "../../domains/peripherals/types";
+import { isElectronTerminal } from "../../domains/peripherals/api";
 import { resolveCurrentPosTerminalConfig } from "../../domains/peripherals/terminal-config";
 import { resolvePrinterDisplayName } from "../../domains/peripherals/printer-display";
+import {
+  resolvePrinterHeaderState,
+  resolveScaleHeaderState,
+} from "../../domains/peripherals/header-readiness";
 import {
   HeaderPeripheralStatus,
   HeaderPeripheralStatusGroup,
@@ -251,9 +261,12 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
+  const [isElectronRuntime, setIsElectronRuntime] = useState(false);
   const [printerSocketStatus, setPrinterSocketStatus] = useState<PeripheralSocketStatus>("CONNECTING");
   const [printerName, setPrinterName] = useState<string | null>(null);
   const [peripheralDevices, setPeripheralDevices] = useState<PeripheralDevice[]>([]);
+  const [peripheralConfig, setPeripheralConfig] = useState<PosTerminalResolvedConfig | null>(null);
+  const [peripheralAgentHealth, setPeripheralAgentHealth] = useState<PeripheralAgentHealth | null>(null);
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
     if (!name) return "";
@@ -282,26 +295,52 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       peripheralDevices.find((device) => device.type === type),
     [peripheralDevices]
   );
-  const scaleDevice = findPeripheral("SCALE");
+  const discoveredScaleDevice = findPeripheral("SCALE");
+  const scaleDevice = isElectronRuntime
+    ? peripheralConfig?.source === "CONFIGURED" && peripheralConfig.features.scale
+      ? peripheralDevices.find(
+          (device) => device.id === peripheralConfig.scaleDeviceId && device.type === "SCALE"
+        )
+      : undefined
+    : discoveredScaleDevice;
   const scannerDevice = findPeripheral("SCANNER");
-  const printerHeaderStatus =
+  const legacyPrinterHeaderStatus =
     printerSocketStatus === "CONNECTED"
       ? "OK"
       : printerSocketStatus === "CONNECTING"
         ? "Conectando"
         : "Error";
-  const printerHeaderTone: HeaderPeripheralTone =
+  const legacyPrinterHeaderTone: HeaderPeripheralTone =
     printerSocketStatus === "CONNECTED"
       ? "ok"
       : printerSocketStatus === "CONNECTING"
         ? "warning"
         : "error";
-  const printerHeaderDetail =
+  const legacyPrinterHeaderDetail =
     printerSocketStatus === "CONNECTED"
       ? printerName ?? "Nombre no disponible"
       : printerSocketStatus === "CONNECTING"
         ? "Conectando con el servicio de impresión"
         : "Revise el Peripheral Agent";
+  const printerHeader = isElectronRuntime
+    ? resolvePrinterHeaderState({
+        isElectron: true,
+        socketStatus: printerSocketStatus,
+        printerName,
+        config: peripheralConfig,
+        devices: peripheralDevices,
+        health: peripheralAgentHealth,
+      })
+    : {
+        status: legacyPrinterHeaderStatus,
+        tone: legacyPrinterHeaderTone,
+        detail: legacyPrinterHeaderDetail,
+      };
+  const scaleHeader = resolveScaleHeaderState({
+    config: peripheralConfig,
+    devices: peripheralDevices,
+    health: peripheralAgentHealth,
+  });
   const isNetworkOffline =
     connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE";
   const networkHeaderStatus =
@@ -330,6 +369,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   );
 
   useAutoClearState(toastMessage, setToastMessage);
+
+  useEffect(() => {
+    setIsElectronRuntime(isElectronTerminal());
+  }, []);
 
   useEffect(() => {
     const handleConnectivityState = (event: Event) => {
@@ -362,30 +405,37 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       if (!flags.peripheralsEnabled || !authUser?.tenantId) {
         setPrinterName(null);
         setPeripheralDevices([]);
+        setPeripheralConfig(null);
+        setPeripheralAgentHealth(null);
         return;
       }
 
       try {
-        const [configResult, devicesResult] = await Promise.all([
+        const [configResult, devicesResult, healthResult] = await Promise.all([
           resolveCurrentPosTerminalConfig({
             tenantId: authUser.tenantId,
             branchId: authUser.branchId,
           }),
           getPeripheralDevices(),
+          isElectronTerminal() ? getPeripheralAgentHealth() : Promise.resolve(null),
         ]);
 
         if (cancelled) {
           return;
         }
 
+        setPeripheralConfig(configResult);
+        setPeripheralAgentHealth(healthResult?.success ? healthResult.data : null);
+        setPeripheralDevices(devicesResult.success ? devicesResult.data : []);
         setPrinterName(
-          resolvePrinterDisplayName(configResult, devicesResult.data ?? [])
+          resolvePrinterDisplayName(configResult, devicesResult.success ? devicesResult.data : [])
         );
-        setPeripheralDevices(devicesResult.data ?? []);
       } catch {
         if (!cancelled) {
           setPrinterName(null);
           setPeripheralDevices([]);
+          setPeripheralConfig(null);
+          setPeripheralAgentHealth(null);
         }
       }
     };
@@ -1452,21 +1502,21 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               ) : null}
               {isPosRoute ? (
                 <HeaderPeripheralStatusGroup>
-                  {scaleDevice ? (
+                  {isElectronRuntime || scaleDevice ? (
                     <HeaderPeripheralStatus
                       label="Balanza"
                       Icon={Weight}
-                      status={peripheralStatusLabel(scaleDevice)}
-                      tone={peripheralStatusTone(scaleDevice)}
-                      detail={peripheralStatusDetail(scaleDevice)}
+                      status={isElectronRuntime ? scaleHeader.status : peripheralStatusLabel(scaleDevice)}
+                      tone={isElectronRuntime ? scaleHeader.tone : peripheralStatusTone(scaleDevice)}
+                      detail={isElectronRuntime ? scaleHeader.detail : peripheralStatusDetail(scaleDevice)}
                     />
                   ) : null}
                   <HeaderPeripheralStatus
                     label="Impresora"
                     Icon={Printer}
-                    status={printerHeaderStatus}
-                    tone={printerHeaderTone}
-                    detail={printerHeaderDetail}
+                    status={printerHeader.status}
+                    tone={printerHeader.tone}
+                    detail={printerHeader.detail}
                     pulse={printerSocketStatus === "CONNECTING"}
                   />
                   {scannerDevice ? (

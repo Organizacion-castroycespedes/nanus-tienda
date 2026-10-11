@@ -97,9 +97,17 @@ def valid_pattern(pattern: str) -> bool:
     normalized = normalize_path(pattern)
     if not normalized or normalized.startswith("/") or ".." in normalized.split("/"):
         return False
-    if any(char in normalized for char in "*?[]") and not normalized.endswith("/**"):
+    if any(not segment for segment in normalized.split("/")):
         return False
-    return normalized not in {"*", "**", "**/*", "./", "."}
+
+    if normalized.endswith("/**"):
+        prefix = normalized[:-3].rstrip("/")
+        return bool(prefix) and not any(char in prefix for char in "*?")
+
+    # Brackets are literal path characters (for example Next.js route groups).
+    # Exact patterns do not implement glob syntax; only a terminal /** above is
+    # supported as a recursive prefix pattern.
+    return not any(char in normalized for char in "*?") and normalized not in {".", "./"}
 
 
 def path_matches(pattern: str, path: str) -> bool:
@@ -266,6 +274,14 @@ def resolve_target_ref(root: Path, requested: str | None = None) -> dict[str, st
     candidates = [requested] if requested else ["origin/develop", "develop"]
     for candidate in candidates:
         if not candidate:
+            continue
+        # A governance target must be a named Git ref, not an object ID or
+        # revision expression supplied as a convenient substitute for source
+        # identity.  Resolve it only after Git accepts the complete ref name.
+        if re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", candidate):
+            continue
+        ref_code, _ = run(["git", "check-ref-format", "--allow-onelevel", candidate], root)
+        if ref_code != 0:
             continue
         code, output = run(["git", "rev-parse", "--verify", f"{candidate}^{{commit}}"], root)
         if code == 0 and output.strip():
@@ -1311,8 +1327,11 @@ def main() -> int:
     if args.qa_read_only:
         root = Path(args.root).resolve()
         qa_evidence = qa_read_only_reconcile(root)
-        report = diagnostic_report(root, environment_evidence=qa_evidence,
-                                   enforcement_mode=args.enforcement_mode)
+        report = diagnostic_report(
+            root, args.change, args.changed_file, args.openspec_command,
+            target_ref=args.target_ref, environment_evidence=qa_evidence,
+            enforcement_mode=args.enforcement_mode,
+        )
         print(render_warning_console(report), file=sys.stderr)
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return int(report["enforcement"]["exit_code"])
@@ -1323,8 +1342,11 @@ def main() -> int:
             ssh_user=args.prd_ssh_user, ssh_key_path=args.prd_ssh_key,
             remote_env_path=args.prd_remote_env,
         )
-        report = diagnostic_report(root, environment_evidence=prd_evidence,
-                                   enforcement_mode=args.enforcement_mode)
+        report = diagnostic_report(
+            root, args.change, args.changed_file, args.openspec_command,
+            target_ref=args.target_ref, environment_evidence=prd_evidence,
+            enforcement_mode=args.enforcement_mode,
+        )
         print(render_warning_console(report), file=sys.stderr)
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return int(report["enforcement"]["exit_code"])

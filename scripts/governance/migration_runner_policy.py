@@ -24,6 +24,13 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CUTOVER_BOUNDARY_VERSION_RE = re.compile(r"^V[0-9]{3}$")
 NUMERIC_VERSION_RE = re.compile(r"^V([0-9]{3})$", re.IGNORECASE)
 NEXT_VERSION_ALGORITHM = "FIRST_FREE_VERSION_ABOVE_CUTOVER_FROM_AUTHORITATIVE_UNION"
+VERSION_EVALUATION_SCOPES = {
+    # DEV -> QA allocation is intentionally narrower than production safety.
+    "DEV_TO_QA": ("REPOSITORY", "QA"),
+    # Production/global evaluation retains all current authoritative sources.
+    "QA_TO_PRD": ("REPOSITORY", "TARGET", "QA", "PRD"),
+    "GLOBAL": ("REPOSITORY", "TARGET", "QA", "PRD"),
+}
 CUTOVER_STATES = ("NOT_APPROVED", "APPROVED_NOT_ACTIVE", "ACTIVE")
 ENFORCEMENT_MODES = ("WARNING", "STRICT")
 ENFORCEMENT_STATE_STATUSES = ("DEFAULT_ACTIVE", "ACTIVE", "ROLLED_BACK")
@@ -515,37 +522,73 @@ def next_safe_version_evaluation(
     target_verified: bool = True,
     target_revalidated: bool = True,
     same_operation_live_evidence_required: bool = True,
+    evaluation_scope: str = "GLOBAL",
 ) -> dict[str, object]:
-    """Select a synthetic next-version proposal without any I/O.
+    """Select a scoped version proposal without any I/O or reservation.
 
     Each source must provide ``status`` and ``occupied_numeric_identities``.
-    Environment sources that participate in a real calculation must also mark
-    ``evidence_type=LIVE`` and ``same_operation=True``. This function never
-    reserves a number, creates a file, or authorizes promotion/execution.
+    DEV_TO_QA consumes only Repository + fresh live QA evidence. QA_TO_PRD and
+    GLOBAL additionally require Target and fresh live PRD evidence. A DEV_TO_QA
+    proposal never populates the global-safe output and never authorizes
+    production promotion. This function never reserves a number, creates a
+    file, or authorizes migration execution.
     """
     reasons: list[str] = []
-    normalized_sources = {str(name).upper(): value for name, value in required_sources.items()}
+    scope = str(evaluation_scope).upper()
+    required_scope_sources = VERSION_EVALUATION_SCOPES.get(scope)
+    if required_scope_sources is None:
+        return {
+            "status": "BLOCKED", "decision": "VERSION_EVALUATION_SCOPE_INVALID",
+            "evaluation_scope": scope, "candidate": None,
+            "dev_qa_safe_version": "UNVERIFIED", "dev_qa_version_status": "UNVERIFIED",
+            "global_safe_version": "UNVERIFIED", "prd_promotion_status": "NOT_EVALUATED",
+            "version_reserved": False, "version_reservation_created": False,
+            "reasons": ["VERSION_EVALUATION_SCOPE_INVALID"],
+        }
+    supplied_sources = {str(name).upper(): value for name, value in required_sources.items()}
+    normalized_sources = {
+        name: supplied_sources[name]
+        for name in required_scope_sources
+        if name in supplied_sources
+    }
     source_names = sorted(normalized_sources)
+    is_dev_qa = scope == "DEV_TO_QA"
+    needs_target = "TARGET" in required_scope_sources
     result: dict[str, object] = {
         "status": "UNVERIFIED",
-        "decision": "NEXT_SAFE_VERSION_UNVERIFIED",
+        "decision": f"{scope}_VERSION_UNVERIFIED",
+        "evaluation_scope": scope,
+        # Keep the legacy generic field non-certifying for a DEV_TO_QA result.
         "next_safe_version": "UNVERIFIED",
         "candidate": None,
+        "candidate_scope": scope,
         "algorithm": NEXT_VERSION_ALGORITHM,
         "cutover_boundary_version": str(cutover_boundary_version),
-        "required_sources": source_names,
+        "required_sources": list(required_scope_sources),
+        "ignored_sources": sorted(set(supplied_sources) - set(required_scope_sources)),
         "verified_sources": [],
         "occupied_union": [],
         "occupied_by_source": {},
+        "known_drift": [],
         "reasons": reasons,
-        "target_verified": bool(target_verified),
-        "target_revalidated": bool(target_revalidated),
-        "same_operation_live_evidence_required": bool(same_operation_live_evidence_required),
+        "target_verified": bool(target_verified) if needs_target else None,
+        "target_revalidated": bool(target_revalidated) if needs_target else None,
+        "same_operation_live_evidence_required": any(
+            name in {"LOCAL", "QA", "PRD"} for name in required_scope_sources
+        ),
         "candidate_is_proposal": False,
         "candidate_is_reservation": False,
+        "version_reserved": False,
         "version_reservation_created": False,
         "promotion_authorized": False,
         "migration_execution_authorized": False,
+        "historical_sql_replay_allowed": False,
+        "history_backfill_allowed": False,
+        "historical_certification_claimed": False,
+        "dev_qa_safe_version": "UNVERIFIED" if is_dev_qa else "NOT_EVALUATED",
+        "dev_qa_version_status": "UNVERIFIED" if is_dev_qa else "NOT_EVALUATED",
+        "global_safe_version": "UNVERIFIED",
+        "prd_promotion_status": "NOT_EVALUATED" if is_dev_qa else "NOT_AUTHORIZED",
     }
 
     boundary_match = NUMERIC_VERSION_RE.fullmatch(str(cutover_boundary_version).strip())
@@ -553,7 +596,13 @@ def next_safe_version_evaluation(
         result.update(status="BLOCKED", decision="NEXT_SAFE_VERSION_BLOCKED")
         reasons.append("INVALID_CUTOVER_BOUNDARY_VERSION")
         return result
-    if not normalized_sources or not {"REPOSITORY", "TARGET"}.issubset(normalized_sources):
+    missing_sources = set(required_scope_sources) - set(normalized_sources)
+    if missing_sources:
+        unavailable_environments = sorted(missing_sources & {"QA", "PRD"})
+        if unavailable_environments:
+            reasons.extend(f"{name}_SOURCE_UNVERIFIED" for name in unavailable_environments)
+            result["decision"] = f"{scope}_VERSION_UNVERIFIED"
+            return result
         result.update(status="BLOCKED", decision="NEXT_SAFE_VERSION_BLOCKED")
         reasons.append("AUTHORITATIVE_SOURCE_SET_INVALID")
         return result
@@ -580,9 +629,9 @@ def next_safe_version_evaluation(
         reasons.append("OPENSPEC_GOVERNANCE_PREREQUISITE_UNVERIFIED")
     if str(governance_status).upper() != "VERIFIED":
         reasons.append("GOVERNANCE_PREREQUISITE_UNVERIFIED")
-    if not target_verified:
+    if needs_target and not target_verified:
         reasons.append("TARGET_SOURCE_UNVERIFIED")
-    if not target_revalidated:
+    if needs_target and not target_revalidated:
         reasons.append("TARGET_REVALIDATION_REQUIRED")
 
     occupied_by_source: dict[str, list[str]] = {}
@@ -595,15 +644,20 @@ def next_safe_version_evaluation(
         elif status != "VERIFIED":
             reasons.append(f"{source_name}_SOURCE_UNVERIFIED")
         is_environment = source_name in {"LOCAL", "QA", "PRD"}
-        if is_environment and same_operation_live_evidence_required:
+        # Every supported scope is evidence-based. Keep the legacy flag in the
+        # signature for callers, but never let it disable scope-required
+        # freshness for QA/PRD environment sources.
+        if is_environment:
             evidence_type = str(source.get("evidence_type", "")).upper()
             if evidence_type != "LIVE":
                 reasons.append(f"{source_name}_LIVE_EVIDENCE_REQUIRED")
             if source.get("same_operation") is not True:
                 reasons.append(f"{source_name}_SAME_OPERATION_EVIDENCE_REQUIRED")
             freshness = str(source.get("freshness_status", "UNSPECIFIED_BY_OPENSPEC")).upper()
-            if freshness in {"STALE", "UNKNOWN", "UNVERIFIED"}:
+            if freshness != "FRESH":
                 reasons.append(f"{source_name}_EVIDENCE_FRESHNESS_UNVERIFIED")
+        if source_name == "QA" and is_dev_qa and source.get("schema_evidence_status") != "VERIFIED":
+            reasons.append("QA_SCHEMA_EVIDENCE_UNVERIFIED")
         raw_identities = source.get("occupied_numeric_identities", ())
         normalized: set[str] = set()
         if not isinstance(raw_identities, (list, tuple, set, frozenset)):
@@ -617,7 +671,26 @@ def next_safe_version_evaluation(
             number = int(match.group(1))
             normalized.add(f"V{number:03d}")
             occupied_numbers.add(number)
+        raw_db_only = source.get("db_only_identities", ())
+        if not isinstance(raw_db_only, (list, tuple, set, frozenset)):
+            reasons.append(f"{source_name}_DB_ONLY_IDENTITIES_INVALID")
+            raw_db_only = ()
+        for raw_identity in raw_db_only:
+            match = NUMERIC_VERSION_RE.fullmatch(str(raw_identity).strip())
+            if not match:
+                reasons.append(f"{source_name}_DB_ONLY_IDENTITY_INVALID")
+                continue
+            number = int(match.group(1))
+            normalized.add(f"V{number:03d}")
+            occupied_numbers.add(number)
         occupied_by_source[source_name] = sorted(normalized, key=lambda value: int(value[1:]))
+        drift = source.get("known_drift", ())
+        if isinstance(drift, (list, tuple)):
+            result["known_drift"].extend(
+                {"source": source_name, "finding": str(item)} for item in drift
+            )
+        elif drift:
+            reasons.append(f"{source_name}_KNOWN_DRIFT_INVALID")
         if status == "VERIFIED":
             result["verified_sources"].append(source_name)
 
@@ -625,19 +698,33 @@ def next_safe_version_evaluation(
     result["occupied_union"] = [f"V{number:03d}" for number in sorted(occupied_numbers)]
     if reasons:
         result["status"] = "BLOCKED" if any("BLOCKED" in reason or "INVALID" in reason for reason in reasons) else "UNVERIFIED"
-        result["decision"] = "NEXT_SAFE_VERSION_BLOCKED" if result["status"] == "BLOCKED" else "NEXT_SAFE_VERSION_UNVERIFIED"
+        result["decision"] = f"{scope}_VERSION_BLOCKED" if result["status"] == "BLOCKED" else f"{scope}_VERSION_UNVERIFIED"
         return result
 
     candidate_number = next((number for number in range(boundary + 1, 1000) if number not in occupied_numbers), None)
     if candidate_number is None:
-        result.update(status="UNVERIFIED", decision="NEXT_SAFE_VERSION_UNVERIFIED")
+        result.update(status="UNVERIFIED", decision=f"{scope}_VERSION_UNVERIFIED")
         reasons.append("VERSION_NAMESPACE_EXHAUSTED_OR_UNREPRESENTABLE")
         return result
     candidate = f"V{candidate_number:03d}"
-    result.update(status="VERIFIED", decision="NEXT_SAFE_VERSION_PROPOSAL",
-                  next_safe_version=candidate, candidate=candidate,
-                  candidate_is_proposal=True)
-    reasons.append("FIRST_FREE_VERSION_ABOVE_CUTOVER_SELECTED")
+    result.update(status="VERIFIED", candidate=candidate, candidate_is_proposal=True)
+    if is_dev_qa:
+        result.update(
+            decision="DEV_TO_QA_VERSION_PROPOSAL",
+            dev_qa_safe_version=candidate,
+            dev_qa_version_status="VERIFIED",
+            global_safe_version="UNVERIFIED",
+            prd_promotion_status="NOT_EVALUATED",
+        )
+        reasons.append("FIRST_FREE_VERSION_ABOVE_CUTOVER_FOR_DEV_TO_QA")
+    else:
+        result.update(
+            decision=f"{scope}_VERSION_PROPOSAL",
+            next_safe_version=candidate,
+            global_safe_version=candidate,
+            prd_promotion_status="EVIDENCE_VERIFIED_NOT_AUTHORIZED",
+        )
+        reasons.append("FIRST_FREE_VERSION_ABOVE_CUTOVER_FOR_GLOBAL_SCOPE")
     return result
 
 

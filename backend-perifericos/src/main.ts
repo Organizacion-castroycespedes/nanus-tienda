@@ -53,7 +53,7 @@ async function bootstrap() {
   if (config.realAdaptersEnabled) {
     const devicesService = app.get(DevicesService);
     setImmediate(() => {
-      devicesService.discoverOnStartup();
+      void devicesService.discoverOnStartup();
     });
   }
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -31,6 +32,7 @@ type installerReadOnlyBridge struct {
 	baseURL              string
 	mu                   sync.Mutex
 	devices              map[string]map[string]any
+	scaleReads           map[string]map[string]any
 	expectedAgentVersion string
 	diagnosticPath       string
 	drawerRequestID      uint64
@@ -44,7 +46,7 @@ type installerStatePayload struct {
 }
 
 func newInstallerReadOnlyBridge() *installerReadOnlyBridge {
-	return &installerReadOnlyBridge{client: &http.Client{Timeout: 5 * time.Second}, baseURL: peripheralAgentBaseURL, devices: map[string]map[string]any{}}
+	return &installerReadOnlyBridge{client: &http.Client{Timeout: 5 * time.Second}, baseURL: peripheralAgentBaseURL, devices: map[string]map[string]any{}, scaleReads: map[string]map[string]any{}}
 }
 
 func newInstallerReadOnlyBridgeForVersion(expectedVersion string) *installerReadOnlyBridge {
@@ -203,14 +205,20 @@ func (b *installerReadOnlyBridge) saveDeviceConfiguration(deviceID, profileID, l
 			return nil, errors.New("deviceId inválido")
 		}
 	}
-	if profileID != "THERMAL_58MM" && profileID != "THERMAL_80MM" {
-		return nil, errors.New("perfil de impresora no soportado")
-	}
 	b.mu.Lock()
 	device, ok := b.devices[deviceID]
 	b.mu.Unlock()
-	if !ok || device["type"] != "PRINTER" {
+	if !ok {
 		return nil, errors.New("deviceId no pertenece a un dispositivo descubierto")
+	}
+	if device["type"] == "SCALE" && profileID == "ROCHI_A01E" {
+		return b.saveScaleDeviceConfiguration(deviceID, device)
+	}
+	if profileID != "THERMAL_58MM" && profileID != "THERMAL_80MM" {
+		return nil, errors.New("perfil no soportado para este dispositivo")
+	}
+	if device["type"] != "PRINTER" {
+		return nil, errors.New("el perfil no coincide con el tipo de dispositivo")
 	}
 	terminalID, _ := device["terminalId"].(string)
 	if strings.TrimSpace(terminalID) == "" {
@@ -232,6 +240,104 @@ func (b *installerReadOnlyBridge) saveDeviceConfiguration(deviceID, profileID, l
 	}
 	b.mu.Lock()
 	b.devices[deviceID] = updated
+	b.mu.Unlock()
+	return updated, nil
+}
+
+func (b *installerReadOnlyBridge) saveScaleDeviceConfiguration(deviceID string, device map[string]any) (map[string]any, error) {
+	if connection, _ := device["connectionType"].(string); connection != "SERIAL" {
+		return nil, errors.New("ROCHI requiere conexion SERIAL")
+	}
+	serial, ok := device["serial"].(map[string]any)
+	if !ok || strings.TrimSpace(stringValue(serial["port"])) == "" {
+		return nil, errors.New("el candidato ROCHI no contiene configuracion serial")
+	}
+	terminalID, _ := device["terminalId"].(string)
+	if strings.TrimSpace(terminalID) == "" {
+		terminalID = "local-terminal"
+	}
+	body, err := json.Marshal(map[string]any{
+		"terminalId":     terminalID,
+		"profileId":      "ROCHI_A01E",
+		"connectionType": "SERIAL",
+		"serial":         serial,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var updated map[string]any
+	if err := b.requestJSON(http.MethodPatch, b.baseURL+"/devices/"+url.PathEscape(deviceID), body, &updated); err != nil {
+		return nil, err
+	}
+	b.mu.Lock()
+	b.devices[deviceID] = updated
+	b.mu.Unlock()
+	return updated, nil
+}
+
+func (b *installerReadOnlyBridge) testScaleReading(deviceID string) (map[string]any, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	b.mu.Lock()
+	device, ok := b.devices[deviceID]
+	b.mu.Unlock()
+	if !ok || device["type"] != "SCALE" || device["profileId"] != "ROCHI_A01E" {
+		return nil, errors.New("deviceId no pertenece a una ROCHI configurada")
+	}
+	terminalID, _ := device["terminalId"].(string)
+	if terminalID == "" {
+		terminalID = "local-terminal"
+	}
+	query := url.Values{"terminalId": []string{terminalID}, "deviceId": []string{deviceID}}
+	var result map[string]any
+	if err := b.requestJSON(http.MethodGet, b.baseURL+"/scale/current-weight?"+query.Encode(), nil, &result); err != nil {
+		return nil, err
+	}
+	if result["source"] != "REAL" {
+		return nil, errors.New("la lectura no proviene de source REAL")
+	}
+	if _, ok := result["weight"].(float64); !ok {
+		return nil, errors.New("respuesta REAL sin peso numerico")
+	}
+	b.mu.Lock()
+	b.scaleReads[deviceID] = result
+	b.mu.Unlock()
+	return result, nil
+}
+
+func (b *installerReadOnlyBridge) confirmScaleKilograms(deviceID string) (map[string]any, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	b.mu.Lock()
+	device, deviceOK := b.devices[deviceID]
+	reading, readingOK := b.scaleReads[deviceID]
+	b.mu.Unlock()
+	if !deviceOK || device["type"] != "SCALE" || device["profileId"] != "ROCHI_A01E" {
+		return nil, errors.New("ROCHI no configurada")
+	}
+	if !readingOK || reading["source"] != "REAL" {
+		return nil, errors.New("se requiere una lectura REAL exitosa antes de confirmar KG")
+	}
+	metadata := map[string]any{}
+	if existing, ok := device["metadata"].(map[string]any); ok {
+		for key, value := range existing {
+			metadata[key] = value
+		}
+	}
+	metadata["unitVerification"] = map[string]any{
+		"unit":       "KG",
+		"method":     "OPERATOR_CONFIRMATION",
+		"verifiedAt": time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	body, err := json.Marshal(map[string]any{"metadata": metadata})
+	if err != nil {
+		return nil, err
+	}
+	var updated map[string]any
+	if err := b.requestJSON(http.MethodPatch, b.baseURL+"/devices/"+url.PathEscape(deviceID), body, &updated); err != nil {
+		return nil, err
+	}
+	b.mu.Lock()
+	b.devices[deviceID] = updated
+	delete(b.scaleReads, deviceID)
 	b.mu.Unlock()
 	return updated, nil
 }

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,9 +14,13 @@ if (environment.name === "dev") {
   throw new Error("dev does not generate an installer. Use npm run dev:local in desktop/electron.");
 }
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCliPath = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+const npmPackagePath = join(dirname(npmCliPath), "..", "package.json");
+if (!existsSync(npmCliPath) || !existsSync(npmPackagePath)) {
+  throw new Error(`Compatible npm-cli.js is missing beside runtime: ${npmCliPath}`);
+}
 const run = (cwd, args) => {
-  const result = spawnSync(npmCommand, args, {
+  const result = spawnSync(process.execPath, [npmCliPath, ...args], {
     cwd,
     env: {
       ...process.env,
@@ -24,7 +29,7 @@ const run = (cwd, args) => {
     },
     stdio: "inherit",
     windowsHide: true,
-    shell: process.platform === "win32",
+    shell: false,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);

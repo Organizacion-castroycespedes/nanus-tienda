@@ -1,5 +1,6 @@
 import json
 import hashlib
+import io
 import subprocess
 import sys
 import tempfile
@@ -7,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import openspec_governance_diagnostic as diagnostic_module
 from openspec_governance_diagnostic import (
     classify_change,
     classify_sql_path,
@@ -17,7 +19,9 @@ from openspec_governance_diagnostic import (
     parse_git_status_records,
     path_matches,
     resolve_openspec_command,
+    resolve_target_ref,
     source_status_report,
+    valid_pattern,
     build_environment_evidence,
     classify_environment_checksum,
     load_qa_runtime_config,
@@ -58,9 +62,20 @@ class GovernanceDiagnosticTests(unittest.TestCase):
             "Repository": {"status": "VERIFIED", "occupied_numeric_identities": list(repository)},
             "Target": {"status": "VERIFIED", "occupied_numeric_identities": list(target)},
             "QA": {"status": "VERIFIED", "evidence_type": "LIVE", "same_operation": True,
+                   "freshness_status": "FRESH",
                    "occupied_numeric_identities": list(qa)},
             "PRD": {"status": "VERIFIED", "evidence_type": "LIVE", "same_operation": True,
+                    "freshness_status": "FRESH",
                     "occupied_numeric_identities": list(prd)},
+        }
+
+    @staticmethod
+    def _dev_qa_sources(*, qa=(), repository=(), schema="VERIFIED", drift=()):
+        return {
+            "Repository": {"status": "VERIFIED", "occupied_numeric_identities": list(repository)},
+            "QA": {"status": "VERIFIED", "evidence_type": "LIVE", "same_operation": True,
+                   "freshness_status": "FRESH", "schema_evidence_status": schema,
+                   "occupied_numeric_identities": list(qa), "known_drift": list(drift)},
         }
 
     def test_next_version_empty_verified_union_returns_synthetic_v096(self):
@@ -165,6 +180,110 @@ class GovernanceDiagnosticTests(unittest.TestCase):
             required_sources=second,
         )
         self.assertEqual(first_result, second_result)
+
+    def test_dev_to_qa_uses_fresh_repository_and_qa_without_prd(self):
+        result = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True,
+            required_sources=self._dev_qa_sources(
+                repository=(f"V{i:03d}" for i in range(97, 103)),
+                qa=("V094", "V095", "V096"),
+                drift=("QA historical V094/V095 identities differ from current repository files",),
+            ),
+            evaluation_scope="DEV_TO_QA",
+        )
+        self.assertEqual(result["status"], "VERIFIED")
+        self.assertEqual(result["evaluation_scope"], "DEV_TO_QA")
+        self.assertEqual(result["dev_qa_safe_version"], "V103")
+        self.assertEqual(result["dev_qa_version_status"], "VERIFIED")
+        self.assertEqual(result["global_safe_version"], "UNVERIFIED")
+        self.assertEqual(result["prd_promotion_status"], "NOT_EVALUATED")
+        self.assertEqual(result["next_safe_version"], "UNVERIFIED")
+        self.assertFalse(result["version_reserved"])
+        self.assertFalse(result["historical_sql_replay_allowed"])
+        self.assertFalse(result["history_backfill_allowed"])
+        self.assertFalse(result["historical_certification_claimed"])
+        self.assertEqual(len(result["known_drift"]), 1)
+
+    def test_dev_to_qa_requires_fresh_qa_history_and_schema_evidence(self):
+        stale_sources = self._dev_qa_sources(repository=("V102",), qa=("V096",))
+        stale_sources["QA"]["freshness_status"] = "STALE"
+        stale = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True,
+            required_sources=stale_sources, evaluation_scope="DEV_TO_QA",
+            same_operation_live_evidence_required=False,
+        )
+        self.assertEqual(stale["dev_qa_version_status"], "UNVERIFIED")
+        self.assertIn("QA_EVIDENCE_FRESHNESS_UNVERIFIED", stale["reasons"])
+        self.assertTrue(stale["same_operation_live_evidence_required"])
+
+        missing_schema = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True,
+            required_sources=self._dev_qa_sources(repository=("V102",), qa=("V096",), schema="UNVERIFIED"),
+            evaluation_scope="DEV_TO_QA",
+        )
+        self.assertEqual(missing_schema["dev_qa_version_status"], "UNVERIFIED")
+        self.assertIn("QA_SCHEMA_EVIDENCE_UNVERIFIED", missing_schema["reasons"])
+
+        missing_qa = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True,
+            required_sources={"Repository": {"status": "VERIFIED", "occupied_numeric_identities": ["V102"]}},
+            evaluation_scope="DEV_TO_QA",
+        )
+        self.assertEqual(missing_qa["status"], "UNVERIFIED")
+        self.assertIn("QA_SOURCE_UNVERIFIED", missing_qa["reasons"])
+
+    def test_global_evaluation_without_prd_remains_unverified(self):
+        sources = self._next_sources(qa=("V096",), repository=("V102",), target=("V102",))
+        sources.pop("PRD")
+        result = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True, required_sources=sources,
+        )
+        self.assertEqual(result["status"], "UNVERIFIED")
+        self.assertEqual(result["global_safe_version"], "UNVERIFIED")
+        self.assertIn("PRD_SOURCE_UNVERIFIED", result["reasons"])
+
+    def test_dev_qa_candidate_skips_qa_numeric_collision(self):
+        result = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True,
+            required_sources=self._dev_qa_sources(
+                repository=tuple(f"V{i:03d}" for i in range(97, 103)), qa=("V096", "V103")
+            ),
+            evaluation_scope="DEV_TO_QA",
+        )
+        self.assertEqual(result["dev_qa_safe_version"], "V104")
+        self.assertIn("V103", result["occupied_union"])
+
+    def test_prd_collision_changes_global_result_after_dev_qa_proposal(self):
+        repository = (f"V{i:03d}" for i in range(97, 103))
+        dev = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True,
+            required_sources=self._dev_qa_sources(repository=repository, qa=("V096",)),
+            evaluation_scope="DEV_TO_QA",
+        )
+        self.assertEqual(dev["dev_qa_safe_version"], "V103")
+
+        global_result = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True,
+            required_sources=self._next_sources(
+                repository=tuple(f"V{i:03d}" for i in range(97, 103)),
+                target=("V102",), qa=("V096",), prd=("V103",),
+            ),
+            evaluation_scope="QA_TO_PRD",
+        )
+        self.assertEqual(global_result["global_safe_version"], "V104")
+        self.assertFalse(global_result["promotion_authorized"])
+
+    def test_dev_qa_includes_db_only_versions_and_preserves_drift(self):
+        sources = self._dev_qa_sources(
+            repository=tuple(f"V{i:03d}" for i in range(97, 103)), qa=("V096",)
+        )
+        sources["QA"]["db_only_identities"] = ["V103"]
+        result = next_safe_version_evaluation(
+            cutover_boundary_version="V095", cutover_approved=True,
+            required_sources=sources, evaluation_scope="DEV_TO_QA",
+        )
+        self.assertEqual(result["dev_qa_safe_version"], "V104")
+        self.assertIn("V103", result["occupied_by_source"]["QA"])
     def test_warning_mode_reports_without_blocking_and_is_owner_visible(self):
         report = {"coverage": {"uncovered_files": ["scripts/example.py"]},
                   "promotion_policy": {"decision": "PROMOTION_UNVERIFIED", "reasons": ["QA_SOURCE_UNVERIFIED"]},
@@ -996,6 +1115,77 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertIn("qa", cutover["missing_prerequisites"])
         self.assertIn("prd_snapshot", cutover["missing_prerequisites"])
 
+    def _invoke_read_only_main(self, mode, extra_args=()):
+        root = Path(__file__).parents[2].resolve()
+        evidence = {"source": mode.upper(), "status": "VERIFIED"}
+        report = {"enforcement": {"exit_code": 0}}
+        args = ["openspec_governance_diagnostic.py", "--root", str(root),
+                f"--{mode}-read-only", *extra_args]
+        with patch.object(diagnostic_module, "qa_read_only_reconcile", return_value=evidence) as qa_mock, \
+                patch.object(diagnostic_module, "prd_read_only_reconcile", return_value=evidence) as prd_mock, \
+                patch.object(diagnostic_module, "diagnostic_report", return_value=report) as report_mock, \
+                patch.object(diagnostic_module, "render_warning_console", return_value="report"):
+            with patch.object(sys, "argv", args), patch.object(sys, "stdout", io.StringIO()), \
+                    patch.object(sys, "stderr", io.StringIO()):
+                exit_code = diagnostic_module.main()
+        self.assertEqual(exit_code, 0)
+        if mode == "qa":
+            qa_mock.assert_called_once_with(root)
+            prd_mock.assert_not_called()
+        else:
+            qa_mock.assert_not_called()
+            prd_mock.assert_called_once_with(
+                root, ssh_target=None, ssh_port=2798, ssh_user=None,
+                ssh_key_path=None, remote_env_path=None,
+            )
+        return root, evidence, report_mock
+
+    def test_qa_read_only_main_propagates_change_files_command_and_target_ref(self):
+        command = "npx.cmd --yes @fission-ai/openspec@1.4.0"
+        root, evidence, report_mock = self._invoke_read_only_main("qa", [
+            "--change", "weighted-sale-change",
+            "--changed-file", "api/src/first.ts",
+            "--changed-file", "api/src/second.ts",
+            "--openspec-command", command,
+            "--target-ref", "origin/develop",
+            "--enforcement-mode", "STRICT",
+        ])
+        report_mock.assert_called_once_with(
+            root, "weighted-sale-change", ["api/src/first.ts", "api/src/second.ts"], command,
+            target_ref="origin/develop", environment_evidence=evidence,
+            enforcement_mode="STRICT",
+        )
+
+    def test_prd_read_only_main_propagates_change_files_command_and_target_ref(self):
+        command = "npx.cmd --yes @fission-ai/openspec@1.4.0"
+        root, evidence, report_mock = self._invoke_read_only_main("prd", [
+            "--change", "weighted-sale-change",
+            "--changed-file", "api/src/first.ts",
+            "--changed-file", "api/src/second.ts",
+            "--openspec-command", command,
+            "--target-ref", "origin/develop",
+            "--enforcement-mode", "STRICT",
+        ])
+        report_mock.assert_called_once_with(
+            root, "weighted-sale-change", ["api/src/first.ts", "api/src/second.ts"], command,
+            target_ref="origin/develop", environment_evidence=evidence,
+            enforcement_mode="STRICT",
+        )
+
+    def test_qa_read_only_main_preserves_default_selection_arguments(self):
+        root, evidence, report_mock = self._invoke_read_only_main("qa")
+        report_mock.assert_called_once_with(
+            root, diagnostic_module.CHANGE_ID, None, None, target_ref=None,
+            environment_evidence=evidence, enforcement_mode=None,
+        )
+
+    def test_prd_read_only_main_preserves_default_selection_arguments(self):
+        root, evidence, report_mock = self._invoke_read_only_main("prd")
+        report_mock.assert_called_once_with(
+            root, diagnostic_module.CHANGE_ID, None, None, target_ref=None,
+            environment_evidence=evidence, enforcement_mode=None,
+        )
+
     def test_diagnostic_report_exposes_baseline_and_cutover_states(self):
         report = diagnostic_report(Path(__file__).parents[2], validate_changes=False)
         self.assertEqual(report["historical_baseline_status"], "EXECUTED_LEGACY_REPORTED")
@@ -1008,7 +1198,11 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertFalse(report["promotion_policy"]["migration_execution_allowed"])
 
     def test_source_status_reuses_evidence_without_false_live_pass(self):
-        report = source_status_report(Path(__file__).parents[2], "refs/remotes/origin/develop")
+        with patch("openspec_governance_diagnostic.resolve_target_ref", return_value={
+            "target_ref": "authorized/develop", "target_sha": "a" * 40,
+            "target_status": "VERIFIED",
+        }):
+            report = source_status_report(Path(__file__).parents[2], "authorized/develop")
         self.assertEqual(report["repository"]["status"], "VERIFIED")
         self.assertEqual(report["target"]["target_status"], "VERIFIED")
         self.assertEqual(report["authorized_environments"]["LOCAL"]["status"], "NOT_REQUIRED")
@@ -1016,6 +1210,47 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertEqual(report["authorized_environments"]["PRD_SNAPSHOT"]["status"], "DOCUMENTARY_ONLY")
         self.assertFalse(report["authorized_environments"]["PRD_SNAPSHOT"]["live_verification"])
         self.assertTrue(report["false_pass_protection"])
+
+    def test_target_ref_defaults_to_origin_develop_before_local_develop(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self._git_target(Path(temporary), {"V001__baseline.sql": "select 1;\n"})
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                                    check=True, text=True, capture_output=True).stdout.strip()
+            subprocess.run(["git", "update-ref", "refs/remotes/origin/develop", commit],
+                           cwd=root, check=True, capture_output=True)
+            result = resolve_target_ref(root)
+            self.assertEqual(result["target_ref"], "origin/develop")
+            self.assertEqual(result["target_sha"], commit)
+            self.assertEqual(result["target_status"], "VERIFIED")
+
+    def test_explicit_authorized_remote_tracking_ref_is_verified(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self._git_target(Path(temporary), {"V001__baseline.sql": "select 1;\n"})
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                                    check=True, text=True, capture_output=True).stdout.strip()
+            subprocess.run(["git", "update-ref", "refs/remotes/github-authorized/develop", commit],
+                           cwd=root, check=True, capture_output=True)
+            result = resolve_target_ref(root, "github-authorized/develop")
+            self.assertEqual(result["target_ref"], "github-authorized/develop")
+            self.assertEqual(result["target_sha"], commit)
+            self.assertEqual(result["target_status"], "VERIFIED")
+
+    def test_missing_explicit_target_ref_remains_unverified(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self._git_target(Path(temporary), {"V001__baseline.sql": "select 1;\n"})
+            result = resolve_target_ref(root, "github-authorized/develop")
+            self.assertEqual(result["target_ref"], "github-authorized/develop")
+            self.assertEqual(result["target_status"], "UNVERIFIED")
+
+    def test_bare_commit_sha_is_not_an_authorized_target_ref(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self._git_target(Path(temporary), {"V001__baseline.sql": "select 1;\n"})
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                                    check=True, text=True, capture_output=True).stdout.strip()
+            result = resolve_target_ref(root, commit)
+            self.assertEqual(result["target_ref"], commit)
+            self.assertEqual(result["target_sha"], "")
+            self.assertEqual(result["target_status"], "UNVERIFIED")
 
     def test_unavailable_target_is_unverified(self):
         report = source_status_report(Path(__file__).parents[2], "missing-target")
@@ -1042,6 +1277,56 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         self.assertTrue(path_matches("scripts/governance/**", "scripts\\governance\\tool.py"))
         self.assertTrue(path_matches("AGENTS.md", "AGENTS.md"))
         self.assertFalse(path_matches("scripts/governance/**", "scripts/database/migrate.sh"))
+
+    def test_literal_bracket_paths_are_exact_and_globs_remain_rejected(self):
+        route_paths = (
+            "web/app/[tenant]/layout.tsx",
+            "web/app/[...slug]/page.tsx",
+            "web/app/[[...slug]]/page.tsx",
+        )
+        for route_path in route_paths:
+            with self.subTest(route_path=route_path):
+                self.assertTrue(valid_pattern(route_path))
+                self.assertTrue(path_matches(route_path, route_path))
+
+        self.assertFalse(path_matches("web/app/[tenant]/layout.tsx", "web/app/[other]/layout.tsx"))
+        self.assertTrue(valid_pattern("web/app/[tenant]/**"))
+        self.assertTrue(path_matches("web/app/[tenant]/**", "web/app/[tenant]/layout.tsx"))
+        self.assertFalse(path_matches("web/app/[tenant]/**", "web/app/[other]/layout.tsx"))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            change_root = root / "openspec" / "changes" / "route-paths"
+            change_root.mkdir(parents=True)
+            (change_root / ".openspec.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
+            manifest = {
+                "version": 1,
+                "changes": [{"change_id": "route-paths", "paths": [route_paths[0]], "exemptions": []}],
+            }
+            coverage = evaluate_coverage(
+                root,
+                [route_paths[0], "web/app/[other]/layout.tsx"],
+                manifest,
+                [],
+                {"change_id": "route-paths", "change_strict_pass": True},
+                True,
+            )
+            self.assertEqual(coverage["files"][0]["coverage_status"], "SINGLE_MATCH")
+            self.assertEqual(coverage["files"][0]["matched_change_ids"], ["route-paths"])
+            self.assertEqual(coverage["files"][1]["coverage_status"], "ZERO_MATCH")
+
+        for unsupported_pattern in (
+            "*",
+            "**",
+            "**/*",
+            "web/*/layout.tsx",
+            "web/?/layout.tsx",
+            "web/app/*/layout.tsx",
+            "web/app/?/layout.tsx",
+            "web/app/**/layout.tsx",
+        ):
+            with self.subTest(unsupported_pattern=unsupported_pattern):
+                self.assertFalse(valid_pattern(unsupported_pattern))
 
     def test_git_added_modified_deleted_and_renamed_records(self):
         raw = b"?? added.py\0 M modified.py\0 D deleted.py\0R  old.py\0renamed.py\0"

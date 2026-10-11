@@ -31,10 +31,60 @@ func TestInstallerElevationPolicyRelaunchesInteractiveInstallOnly(t *testing.T) 
 	if !requiresElevation(nil) || !requiresElevation([]string{"install"}) || !requiresElevation([]string{"repair"}) {
 		t.Fatal("install and default UI must require elevation")
 	}
-	for _, args := range [][]string{{"service"}, {"status"}, {"inspect"}, {"--help"}} {
+	for _, args := range [][]string{{"service"}, {"status"}, {"inspect"}, {"configure"}, {"/configure"}, {"--help"}} {
 		if requiresElevation(args) {
 			t.Fatalf("%v must not relaunch for elevation", args)
 		}
+	}
+}
+
+func TestConfigureModeUsesDeviceUIWithoutInstallerCore(t *testing.T) {
+	html := appendConfigureModeHarness("<body></body>" + appendProductiveDevicesHarness())
+	for _, marker := range []string{"data-manus-configure-mode=\"true\"", "__manusConfigureMode=true", "__manusCoreComplete=true", "go('devices')", "data-manus-productive-devices=\"true\""} {
+		if !contains(html, marker) {
+			t.Fatalf("configure UI missing %q", marker)
+		}
+	}
+}
+
+func TestConfigureModeDoesNotInvokeInstallerCore(t *testing.T) {
+	// The configure mode source contains an explicit branch around the only
+	// lifecycle-mutating call. Keep this assertion close to the route contract
+	// so a future refactor cannot silently re-couple configure to install.
+	if productiveUIConfigure == productiveUIInstall {
+		t.Fatal("configure mode must be distinct from install mode")
+	}
+	if shouldEmitInstallerInitialState(productiveUIConfigure) {
+		t.Fatal("configure must not emit installer PENDING state")
+	}
+	if !shouldEmitInstallerInitialState(productiveUIInstall) {
+		t.Fatal("install must retain initial installer state")
+	}
+}
+
+func TestConfigureModeFailsClosedWithoutInstalledVersion(t *testing.T) {
+	if _, err := resolveConfigureManifest(installerManifest{VersionFileName: "configure-test-version-that-cannot-exist.json"}); err == nil {
+		t.Fatal("configure must fail closed when no installed Agent version is present")
+	}
+}
+
+func TestProductivePrinterReadinessUsesCanonicalAgentState(t *testing.T) {
+	html := appendProductiveDevicesHarness()
+	for _, marker := range []string{
+		"function canonicalPrinterReady(device)",
+		"metadata.queueInstalled===true",
+		"canonicalPrinterReady(device)",
+		"canonicalPrinterReady(parent)",
+	} {
+		if !contains(html, marker) {
+			t.Fatalf("productive UI readiness missing %q", marker)
+		}
+	}
+	if contains(html, "var queueReady=!!(device.usb&&device.usb.windowsQueueName&&queueAvailable(device.usb.windowsQueueName))") {
+		t.Fatal("printer transport readiness must not require queue inventory after reconciliation")
+	}
+	if contains(html, "var queueReady=!!(parent&&parent.usb&&parent.usb.windowsQueueName&&queueAvailable(parent.usb.windowsQueueName))") {
+		t.Fatal("drawer readiness must not require queue inventory after reconciliation")
 	}
 }
 
