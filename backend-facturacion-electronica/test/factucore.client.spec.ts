@@ -204,6 +204,44 @@ test("FactuCore client preserves DIAN failedChecks and provider code", async () 
   );
 });
 
+test("FactuCore client logs only safe request and response metadata", async () => {
+  const logs: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (...args: unknown[]) => logs.push(JSON.stringify(args));
+  console.error = (...args: unknown[]) => logs.push(JSON.stringify(args));
+
+  try {
+    const client = new FactuCoreClient(async () => buildJsonResponse(200, {
+      id: "document-1",
+      legalName: "Empresa Fiscal Real",
+      identificationNumber: "900123456",
+      clientSecret: "secret-from-provider",
+    }));
+
+    await client.createInvoice(context, {
+      externalReference: "SALE-LOG-001",
+      issueDate: "2026-08-27T10:00:00.000Z",
+      customer: {
+        legalName: "Empresa Fiscal Real",
+        identificationNumber: "900123456",
+      },
+      lines: [],
+    } as never);
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  const joined = logs.join(" ");
+  assert.match(joined, /bodyPresent/);
+  assert.match(joined, /responseBodyPresent/);
+  assert.doesNotMatch(joined, /Empresa Fiscal Real/);
+  assert.doesNotMatch(joined, /900123456/);
+  assert.doesNotMatch(joined, /secret-from-provider/);
+  assert.doesNotMatch(joined, /x-client-secret/);
+});
+
 test("429 maps to rate limit error", async () => {
   const client = new FactuCoreClient(async () =>
     buildJsonResponse(429, { message: "rate limited" }, {

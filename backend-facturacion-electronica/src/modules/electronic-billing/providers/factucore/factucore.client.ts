@@ -91,6 +91,8 @@ const parseJson = <T>(value: string, fallback: T): T => {
   }
 };
 
+const getRequestPath = (url: URL) => url.pathname;
+
 const isApiClientAuthorizationFailure = (payload: unknown) => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
@@ -280,17 +282,11 @@ export class FactuCoreClient {
   private async requestJson<T>(request: FactuCoreJsonRequest): Promise<T> {
     const response = await this.request(request);
     const responseText = await readResponseText(response);
-
-    const loggedResponse: unknown = parseJson(responseText, responseText);
-    const loggedRecord = loggedResponse && typeof loggedResponse === "object" && !Array.isArray(loggedResponse)
-      ? loggedResponse as Record<string, unknown>
-      : null;
     console.log(`[FactuCoreClient Response] status=${response.status} (op: ${request.operation})`, {
       status: response.status,
       operation: request.operation,
-      response: loggedRecord && "graphicRepresentation" in loggedRecord
-        ? { ...loggedRecord, graphicRepresentation: loggedRecord.graphicRepresentation ? "[omitted]" : null }
-        : loggedResponse,
+      responseBodyPresent: responseText.length > 0,
+      responseBodyLength: responseText.length,
     });
 
     if (!response.ok) {
@@ -312,7 +308,8 @@ export class FactuCoreClient {
       console.error(`[FactuCoreClient Binary Error] status=${response.status} (op: ${request.operation})`, {
         status: response.status,
         operation: request.operation,
-        response: responseText,
+        responseBodyPresent: responseText.length > 0,
+        responseBodyLength: responseText.length,
       });
       if (response.status === 404) {
         throw new FactuCoreAttachmentNotFoundError(request.operation, "FactuCore attachment not found");
@@ -339,11 +336,11 @@ export class FactuCoreClient {
     const url = buildUrl(request.context.baseUrl, request.path);
     const credentials = request.context.credentials;
 
-    console.log(`[FactuCoreClient Request] ${request.method} ${url.toString()} (op: ${request.operation})`, {
-      url: url.toString(),
+    console.log(`[FactuCoreClient Request] ${request.method} ${getRequestPath(url)} (op: ${request.operation})`, {
+      path: getRequestPath(url),
       method: request.method,
       operation: request.operation,
-      body: "body" in request ? (request as FactuCoreJsonRequest).body ?? null : null,
+      bodyPresent: "body" in request && (request as FactuCoreJsonRequest).body !== undefined,
     });
 
     try {
