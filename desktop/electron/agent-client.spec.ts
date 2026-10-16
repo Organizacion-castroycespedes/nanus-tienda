@@ -158,6 +158,21 @@ describe("discoverAgentDevices", () => {
       );
     });
   });
+
+  it("rejects null and incomplete discovery responses", async () => {
+    for (const responseBody of ["null", JSON.stringify({}), JSON.stringify({ devices: "not-an-array" })]) {
+      await withServer((_request, response) => {
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "application/json");
+        response.end(responseBody);
+      }, async (port) => {
+        await assert.rejects(
+          discoverAgentDevices(configForPort(port), "terminal-qa"),
+          (error: unknown) => error instanceof Error && error.message === "AGENT_RESPONSE_INVALID",
+        );
+      });
+    }
+  });
 });
 
 describe("physical Agent action timeouts", () => {

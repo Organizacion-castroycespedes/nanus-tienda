@@ -155,9 +155,14 @@ export const listAgentDevices = async (shellConfig: AgentRoutingConfig): Promise
 
 export const discoverAgentDevices = async (shellConfig: AgentRoutingConfig, terminalId: string): Promise<{ devices: unknown[] }> => {
   const value = await requestJson(shellConfig, "/devices/discover", "POST", { terminalId: terminalId.slice(0, 128) }, { timeoutMs: DISCOVERY_REQUEST_TIMEOUT_MS });
-  if (!value || typeof value !== "object") return { devices: [] };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("AGENT_RESPONSE_INVALID");
+  }
   const source = value as { devices?: unknown };
-  return { devices: Array.isArray(source.devices) ? source.devices : [] };
+  if (!Array.isArray(source.devices)) {
+    throw new Error("AGENT_RESPONSE_INVALID");
+  }
+  return { devices: source.devices };
 };
 
 const requestAgentOperation = (config: AgentRoutingConfig, path: string, method: string, body: unknown, options: RequestOptions = {}) => requestJson(config, path, method, body, options);
