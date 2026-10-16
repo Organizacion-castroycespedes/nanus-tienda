@@ -5,7 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
+
 	"runtime"
 	"sync"
 	"time"
@@ -182,7 +182,7 @@ func runProductiveUI(manifest installerManifest, mode productiveUIMode) error {
 		if manifest.PosRoot == "" || !exists(layout.POSExecutable) {
 			return false
 		}
-		return exec.Command("explorer.exe", layout.POSExecutable).Start() == nil
+		return launchManagedPOS(layout) == nil
 	}); err != nil {
 		showWebViewFallback(err)
 		return nil

@@ -23,7 +23,6 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
@@ -77,26 +76,27 @@ type posPayloadManifest struct {
 }
 
 type runtimeLayout struct {
-	InstallRoot        string
-	ProgramDataRoot    string
-	VersionsRoot       string
-	CurrentRoot        string
-	ConfigRoot         string
-	LogsRoot           string
-	StateRoot          string
-	VersionRoot        string
-	ServiceExe         string
-	InstallLog         string
-	ServiceLog         string
-	ServiceStdout      string
-	ServiceStderr      string
-	RegistryKey        string
-	POSInstallRoot     string
-	POSVersionsRoot    string
-	POSCurrentRoot     string
-	POSVersionRoot     string
-	POSExecutable      string
-	POSPreviousPresent bool
+	InstallRoot         string
+	ProgramDataRoot     string
+	VersionsRoot        string
+	CurrentRoot         string
+	ConfigRoot          string
+	LogsRoot            string
+	StateRoot           string
+	UninstallResultPath string
+	VersionRoot         string
+	ServiceExe          string
+	InstallLog          string
+	ServiceLog          string
+	ServiceStdout       string
+	ServiceStderr       string
+	RegistryKey         string
+	POSInstallRoot      string
+	POSVersionsRoot     string
+	POSCurrentRoot      string
+	POSVersionRoot      string
+	POSExecutable       string
+	POSPreviousPresent  bool
 }
 
 type aclBackup struct {
@@ -105,17 +105,21 @@ type aclBackup struct {
 }
 
 type statusReport struct {
-	Installed      bool   `json:"installed"`
-	Version        string `json:"version,omitempty"`
-	ServicePresent bool   `json:"servicePresent"`
-	ServiceRunning bool   `json:"serviceRunning"`
-	InstallRoot    string `json:"installRoot"`
-	CurrentRoot    string `json:"currentRoot"`
-	ConfigPath     string `json:"configPath"`
-	LogsPath       string `json:"logsPath"`
-	HealthURL      string `json:"healthUrl"`
-	InstallLog     string `json:"installLog"`
-	ServiceBinary  string `json:"serviceBinary"`
+	Installed            bool   `json:"installed"`
+	Version              string `json:"version,omitempty"`
+	ServicePresent       bool   `json:"servicePresent"`
+	ServiceRunning       bool   `json:"serviceRunning"`
+	InstallRoot          string `json:"installRoot"`
+	CurrentRoot          string `json:"currentRoot"`
+	ConfigPath           string `json:"configPath"`
+	LogsPath             string `json:"logsPath"`
+	HealthURL            string `json:"healthUrl"`
+	InstallLog           string `json:"installLog"`
+	ServiceBinary        string `json:"serviceBinary"`
+	UninstallResultPath  string `json:"uninstallResultPath,omitempty"`
+	UninstallOutcome     string `json:"uninstallOutcome,omitempty"`
+	UninstallPhase       string `json:"uninstallPhase,omitempty"`
+	UninstallOperationID string `json:"uninstallOperationId,omitempty"`
 }
 
 func main() {
@@ -124,7 +128,11 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
-		fatal(runUninstallCleanup(manifest, os.Args[2:]))
+		fatal(runUninstallCleanupWithResult(manifest, os.Args[2:]))
+		return
+	}
+	if len(os.Args) > 1 && strings.EqualFold(os.Args[1], "pos-supervisor") {
+		fatal(runPOSSupervisor(os.Args[2:]))
 		return
 	}
 	if len(os.Args) > 1 {
@@ -154,8 +162,10 @@ func main() {
 			fatal(install(manifest))
 		case "configure", "/configure":
 			fatal(runProductiveConfigureUI(manifest))
+		case "launch-pos", "/launch-pos":
+			fatal(launchManagedPOS(buildLayout(manifest)))
 		case "uninstall", "/uninstall":
-			fatal(uninstall(manifest, containsArg(os.Args[2:], "--remove-data", "/remove-data")))
+			fatal(uninstallWithResult(manifest, containsArg(os.Args[2:], "--remove-data", "/remove-data")))
 		case "status", "/status":
 			fatal(printStatus(manifest))
 		case "inspect", "/inspect":
@@ -201,7 +211,11 @@ func fatal(err error) {
 		return
 	}
 	fmt.Fprintln(os.Stderr, err.Error())
-	os.Exit(1)
+	var pending *uninstallPendingError
+	if errors.As(err, &pending) {
+		os.Exit(uninstallExitPending)
+	}
+	os.Exit(uninstallExitFailure)
 }
 
 func printUsage(manifest installerManifest) {
@@ -210,7 +224,9 @@ func printUsage(manifest installerManifest) {
 	fmt.Println("  ManusTerminalSetup.exe install")
 	fmt.Println("  ManusTerminalSetup.exe repair")
 	fmt.Println("  ManusTerminalSetup.exe configure")
+	fmt.Println("  ManusTerminalSetup.exe launch-pos")
 	fmt.Println("  ManusTerminalSetup.exe uninstall [--remove-data]")
+	fmt.Println("  uninstall exit codes: 0=completed, 1=immediate failure, 2=cleanup pending; query status for final result")
 	fmt.Println("  ManusTerminalSetup.exe status")
 	fmt.Println("  ManusTerminalSetup.exe inspect")
 	fmt.Println("  ManusTerminalSetup.exe service")
@@ -274,19 +290,26 @@ func printPreflight(manifest installerManifest) error {
 func printStatus(manifest installerManifest) error {
 	layout := buildLayout(manifest)
 	report := statusReport{
-		Installed:      exists(layout.CurrentRoot),
-		ServicePresent: false,
-		InstallRoot:    layout.InstallRoot,
-		CurrentRoot:    layout.CurrentRoot,
-		ConfigPath:     filepath.Join(layout.ConfigRoot, "agent.config.local.json"),
-		LogsPath:       layout.LogsRoot,
-		HealthURL:      manifest.HealthURL,
-		InstallLog:     layout.InstallLog,
-		ServiceBinary:  layout.ServiceExe,
+		Installed:           exists(layout.CurrentRoot),
+		ServicePresent:      false,
+		InstallRoot:         layout.InstallRoot,
+		CurrentRoot:         layout.CurrentRoot,
+		ConfigPath:          filepath.Join(layout.ConfigRoot, "agent.config.local.json"),
+		LogsPath:            layout.LogsRoot,
+		HealthURL:           manifest.HealthURL,
+		InstallLog:          layout.InstallLog,
+		ServiceBinary:       layout.ServiceExe,
+		UninstallResultPath: uninstallResultPath(layout),
 	}
 
 	if version, ok := readInstalledVersion(filepath.Join(layout.CurrentRoot, "VERSION.json")); ok {
 		report.Version = version
+	}
+
+	if result, err := loadUninstallResult(report.UninstallResultPath); err == nil {
+		report.UninstallOutcome = string(result.Outcome)
+		report.UninstallPhase = result.Phase
+		report.UninstallOperationID = result.OperationID
 	}
 
 	if m, err := mgr.Connect(); err == nil {
@@ -520,11 +543,14 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 }
 
 func createPOSShortcuts(layout runtimeLayout) error {
-	stableExecutable := filepath.Join(layout.POSCurrentRoot, "Manus POS.exe")
-	if !exists(stableExecutable) {
+	if !exists(layout.POSExecutable) {
 		return fmt.Errorf("POS executable missing")
 	}
-	startMenu := filepath.Join(defaultOrEnv("ProgramData", `C:\ProgramData`), "Microsoft", "Windows", "Start Menu", "Programs", "Manus")
+	launcher := layout.ServiceExe
+	if !exists(launcher) {
+		return fmt.Errorf("POS launcher missing")
+	}
+	startMenu := filepath.Join(defaultOrEnv("ProgramData", "C:\\ProgramData"), "Microsoft", "Windows", "Start Menu", "Programs", "Manus")
 	if err := os.MkdirAll(startMenu, 0o755); err != nil {
 		return err
 	}
@@ -533,17 +559,16 @@ func createPOSShortcuts(layout runtimeLayout) error {
 		return fmt.Errorf("user home unavailable: %w", err)
 	}
 	desktop := filepath.Join(home, "Desktop")
-	script := "$ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut($env:MANUS_SHORTCUT_PATH); $s.TargetPath=$env:MANUS_POS_TARGET; $s.WorkingDirectory=$env:MANUS_POS_WORKDIR; $s.Save()"
+	script := "$ws=New-Object -ComObject WScript.Shell; $s=$ws.CreateShortcut($env:MANUS_SHORTCUT_PATH); $s.TargetPath=$env:MANUS_POS_TARGET; $s.Arguments=$env:MANUS_POS_ARGS; $s.WorkingDirectory=$env:MANUS_POS_WORKDIR; $s.Save()"
 	for _, shortcut := range []string{filepath.Join(desktop, "Manus POS.lnk"), filepath.Join(startMenu, "Manus POS.lnk")} {
 		cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
-		cmd.Env = append(os.Environ(), "MANUS_SHORTCUT_PATH="+shortcut, "MANUS_POS_TARGET="+stableExecutable, "MANUS_POS_WORKDIR="+filepath.Dir(stableExecutable))
+		cmd.Env = append(os.Environ(), "MANUS_SHORTCUT_PATH="+shortcut, "MANUS_POS_TARGET="+launcher, "MANUS_POS_ARGS=launch-pos", "MANUS_POS_WORKDIR="+filepath.Dir(layout.POSExecutable))
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("create shortcut %s: %w: %s", shortcut, err, strings.TrimSpace(string(output)))
 		}
 	}
 	return nil
 }
-
 func posPayloadValid(layout runtimeLayout, manifest installerManifest) bool {
 	valid, _ := installedPOSMatchesEmbeddedManifest(layout, manifest)
 	return valid
@@ -641,44 +666,7 @@ func installedPOSMatchesEmbeddedManifest(layout runtimeLayout, manifest installe
 }
 
 func uninstall(manifest installerManifest, removeData bool) error {
-	if err := ensureSupportedHost(); err != nil {
-		return err
-	}
-	if err := ensureElevated(); err != nil {
-		return err
-	}
-
-	layout := buildLayout(manifest)
-	logger, err := newInstallLogger(layout.InstallLog)
-	if err == nil {
-		defer logger.Close()
-		logger.Printf("uninstall start removeData=%t", removeData)
-	}
-
-	if err := uninstallStopResult(stopServiceIfRunning(manifest)); err != nil {
-		return err
-	}
-	if err := waitForServiceStopped(manifest); err != nil {
-		return fmt.Errorf("uninstall service stop confirmation: %w", err)
-	}
-	if err := deleteService(manifest); err != nil && !isMissingServiceError(err) {
-		return err
-	}
-	helperPath, err := prepareUninstallCleanupHelper(layout, removeData)
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(helperPath, uninstallCleanupArgs(os.Getpid(), layout, removeData)...)
-	cmd.Dir = filepath.Dir(helperPath)
-	if err := cmd.Start(); err != nil {
-		_ = os.Remove(helperPath)
-		return fmt.Errorf("launch uninstall cleanup helper: %w", err)
-	}
-	if logger != nil {
-		logger.Printf("uninstall cleanup helper launched pid=%d path=%s", cmd.Process.Pid, helperPath)
-	}
-	fmt.Println("UNINSTALL CLEANUP SCHEDULED")
-	return nil
+	return uninstallWithResult(manifest, removeData)
 }
 
 func prepareUninstallCleanupHelper(layout runtimeLayout, removeData bool) (string, error) {
@@ -711,121 +699,6 @@ func uninstallCleanupArgs(parentPID int, layout runtimeLayout, removeData bool) 
 		args = append(args, "--remove-data")
 	}
 	return args
-}
-
-func runUninstallCleanup(manifest installerManifest, args []string) error {
-	parentPID, installRoot, programDataRoot, posRoot, removeData, err := parseUninstallCleanupArgs(args)
-	if err != nil {
-		return err
-	}
-	if err := waitForParentExit(parentPID); err != nil {
-		return err
-	}
-	logger, _ := newInstallLogger(filepath.Join(programDataRoot, "logs", "installer.log"))
-	cleanupLogPath := filepath.Join(programDataRoot, "logs", "installer.log")
-	if logger != nil {
-		logger.Printf("cleanup helper start parent pid=%d", parentPID)
-		logger.Printf("cleanup parent exit confirmed")
-	}
-	if posRoot != "" {
-		if err := closeScopedPOSProcesses(posRoot, logger); err != nil {
-			if logger != nil {
-				logger.Printf("POS process cleanup failure error=%v", err)
-			}
-			return fmt.Errorf("uninstall cleanup POS processes: %w", err)
-		}
-		if logger != nil {
-			logger.Printf("POS delete start root=%s", posRoot)
-		}
-		_ = removePOSShortcuts()
-		if err := os.RemoveAll(posRoot); err != nil {
-			if logger != nil {
-				logger.Printf("POS delete failure error=%v", err)
-			}
-			return fmt.Errorf("uninstall cleanup POS: %w", err)
-		}
-		if exists(posRoot) {
-			return fmt.Errorf("uninstall cleanup POS still exists: %s", posRoot)
-		}
-		_, _ = removeEmptyManusParent(filepath.Dir(posRoot))
-		if logger != nil {
-			logger.Printf("POS delete success")
-		}
-	}
-	if logger != nil {
-		logger.Printf("PeripheralAgent delete start root=%s", installRoot)
-	}
-	if err := os.RemoveAll(installRoot); err != nil {
-		if logger != nil {
-			logger.Printf("PeripheralAgent delete failure error=%v", err)
-		}
-		return fmt.Errorf("uninstall cleanup Program Files: %w", err)
-	}
-	if exists(installRoot) {
-		return fmt.Errorf("uninstall cleanup Program Files still exists: %s", installRoot)
-	}
-	if logger != nil {
-		logger.Printf("PeripheralAgent delete success")
-	}
-	if removed, removeErr := removeEmptyManusParent(filepath.Dir(installRoot)); removeErr != nil {
-		if logger != nil {
-			logger.Printf("empty Manus parent cleanup failure error=%v", removeErr)
-		}
-	} else if removed && logger != nil {
-		logger.Printf("empty Manus parent cleanup success")
-	}
-	if removeData {
-		if logger != nil {
-			logger.Printf("managed Agent data policy=remove")
-			_ = logger.Close()
-			logger = nil
-		}
-		cleanupLogPath = filepath.Join(os.TempDir(), "ManusTerminalSetup-cleanup-"+fmt.Sprintf("%d", parentPID)+".log")
-		logger, _ = newInstallLogger(cleanupLogPath)
-		if logger != nil {
-			defer logger.Close()
-			logger.Printf("managed data delete start ProgramData target=%s", programDataRoot)
-		}
-		if err := removeRequestedAgentData(programDataRoot); err != nil {
-			if logger != nil {
-				logger.Printf("managed data delete failure error=%v", err)
-			}
-			return fmt.Errorf("uninstall cleanup managed data: %w", err)
-		}
-		if logger != nil {
-			logger.Printf("managed data delete success ProgramData and LocalService Agent roots")
-		}
-		if removed, removeErr := removeEmptyManusParent(filepath.Dir(programDataRoot)); logger != nil {
-			if removeErr != nil {
-				logger.Printf("ProgramData Manus parent cleanup failure error=%v", removeErr)
-			} else if removed {
-				logger.Printf("ProgramData Manus parent cleanup success")
-			}
-		}
-	} else if logger != nil {
-		logger.Printf("ProgramData policy=preserve")
-	}
-	if err := deleteUninstallMetadata(manifest); err != nil && !isMissingServiceError(err) {
-		return fmt.Errorf("uninstall cleanup registry: %w", err)
-	}
-	if logger != nil {
-		logger.Printf("registry removal success")
-	}
-	tempRoot := filepath.Dir(os.Args[0])
-	cleanupCommand := buildTempCleanupCommand(tempRoot)
-	if logger != nil {
-		logger.Printf("TEMP cleanup command=%s target=%s strategy=external-cmd-after-helper", cleanupCommand, tempRoot)
-	}
-	cleanupPID, cleanupErr := scheduleTempCleanup(tempRoot, cleanupLogPath, removeData)
-	if logger != nil {
-		if cleanupErr != nil {
-			logger.Printf("TEMP cleanup launch failure error=%v", cleanupErr)
-		} else {
-			logger.Printf("TEMP cleanup launched pid=%d workingDir=%s", cleanupPID, filepath.Dir(tempRoot))
-		}
-		_ = logger.Close()
-	}
-	return nil
 }
 
 func removePOSShortcuts() error {
@@ -1483,7 +1356,7 @@ func requiresElevation(args []string) bool {
 		return true
 	}
 	switch strings.ToLower(args[0]) {
-	case "service", "status", "inspect", "help", "configure", "/configure", "-h", "/?", "--help":
+	case "service", "status", "inspect", "help", "configure", "/configure", "launch-pos", "/launch-pos", "-h", "/?", "--help":
 		return false
 	default:
 		return true
@@ -1532,25 +1405,26 @@ func buildLayout(manifest installerManifest) runtimeLayout {
 	posVersions := filepath.Join(posRoot, "versions")
 	posVersionRoot := filepath.Join(posVersions, manifest.PosVersion)
 	return runtimeLayout{
-		InstallRoot:     installRoot,
-		ProgramDataRoot: programDataRoot,
-		VersionsRoot:    versionsRoot,
-		CurrentRoot:     currentRoot,
-		ConfigRoot:      configRoot,
-		LogsRoot:        logsRoot,
-		StateRoot:       stateRoot,
-		VersionRoot:     versionRoot,
-		ServiceExe:      serviceExe,
-		InstallLog:      filepath.Join(logsRoot, "installer.log"),
-		ServiceLog:      filepath.Join(logsRoot, "service.log"),
-		ServiceStdout:   filepath.Join(logsRoot, "service.stdout.log"),
-		ServiceStderr:   filepath.Join(logsRoot, "service.stderr.log"),
-		RegistryKey:     `Software\Microsoft\Windows\CurrentVersion\Uninstall\ManusPeripheralAgent`,
-		POSInstallRoot:  posRoot,
-		POSVersionsRoot: posVersions,
-		POSCurrentRoot:  filepath.Join(posRoot, "current"),
-		POSVersionRoot:  posVersionRoot,
-		POSExecutable:   filepath.Join(posVersionRoot, "Manus POS.exe"),
+		InstallRoot:         installRoot,
+		ProgramDataRoot:     programDataRoot,
+		VersionsRoot:        versionsRoot,
+		CurrentRoot:         currentRoot,
+		ConfigRoot:          configRoot,
+		LogsRoot:            logsRoot,
+		StateRoot:           stateRoot,
+		UninstallResultPath: filepath.Join(stateRoot, "uninstall-result.json"),
+		VersionRoot:         versionRoot,
+		ServiceExe:          serviceExe,
+		InstallLog:          filepath.Join(logsRoot, "installer.log"),
+		ServiceLog:          filepath.Join(logsRoot, "service.log"),
+		ServiceStdout:       filepath.Join(logsRoot, "service.stdout.log"),
+		ServiceStderr:       filepath.Join(logsRoot, "service.stderr.log"),
+		RegistryKey:         uninstallRegistryPath,
+		POSInstallRoot:      posRoot,
+		POSVersionsRoot:     posVersions,
+		POSCurrentRoot:      filepath.Join(posRoot, "current"),
+		POSVersionRoot:      posVersionRoot,
+		POSExecutable:       filepath.Join(posVersionRoot, "Manus POS.exe"),
 	}
 }
 
@@ -2421,7 +2295,7 @@ func rollbackToPreviousVersion(
 }
 
 func writeUninstallMetadata(layout runtimeLayout, manifest installerManifest) error {
-	key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, layout.RegistryKey, registry.ALL_ACCESS)
+	key, err := uninstallRegistryOps.Create(layout.RegistryKey, uninstallRegistryWriteAccess())
 	if err != nil {
 		return err
 	}
@@ -2457,13 +2331,25 @@ func writeUninstallMetadata(layout runtimeLayout, manifest installerManifest) er
 }
 
 func deleteUninstallMetadata(manifest installerManifest) error {
-	if err := registry.DeleteKey(registry.LOCAL_MACHINE, `Software\Microsoft\Windows\CurrentVersion\Uninstall\ManusPeripheralAgent`); err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "the system cannot find the file specified") {
+	if err := uninstallRegistryOps.Delete(uninstallRegistryPath, uninstallRegistryView); err != nil {
+		if isMissingUninstallRegistryKeyError(err) {
 			return nil
 		}
 		return err
 	}
 	return nil
+}
+
+func uninstallMetadataPresent(_ installerManifest) (bool, error) {
+	key, err := uninstallRegistryOps.Open(uninstallRegistryPath, uninstallRegistryQueryAccess())
+	if err != nil {
+		if isMissingUninstallRegistryKeyError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer key.Close()
+	return true, nil
 }
 
 func loadManifest() (installerManifest, error) {
