@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { resolveAgentVersion } from "./agent-version.mjs";
+import { assertStableElectronMetadata, createPackagingProvenance, writePackagingProvenance } from "./packaging-provenance.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
@@ -18,12 +19,16 @@ const installerUiRoot = join(projectRoot, "installer-ui");
 const embeddedUiRoot = join(assetsRoot, "ui");
 const electronPayloadRoot = resolve(projectRoot, "..", "desktop", "electron", "release", "win-unpacked");
 const embeddedPosRoot = join(assetsRoot, "pos");
-const posPackage = JSON.parse(readFileSync(join(projectRoot, "..", "desktop", "electron", "package.json"), "utf8"));
+const posPackagePath = join(projectRoot, "..", "desktop", "electron", "package.json");
+const posPackageLockPath = join(projectRoot, "..", "desktop", "electron", "package-lock.json");
+const posShellConfigPath = join(projectRoot, "..", "desktop", "electron", "resources", "manus-shell.config.json");
+const posPackage = JSON.parse(readFileSync(posPackagePath, "utf8"));
 const posManifestPath = join(assetsRoot, "pos-manifest.json");
 const installerManifestPath = join(assetsRoot, "manifest.json");
 const outputRoot = join(projectRoot, "dist-installer", "windows-x64");
 const outputName = process.env.MANUS_INSTALLER_OUTPUT_NAME || `ManusTerminalSetup-${agentVersion}-win-x64.exe`;
 const outputPath = join(outputRoot, outputName);
+const provenancePath = `${outputPath}.provenance.json`;
 
 const assertBundleReady = () => {
   if (!existsSync(bundleRoot)) {
@@ -94,6 +99,7 @@ const js = readFileSync(join(installerUiRoot, "app.js"), "utf8");
 };
 
 const assertPosReady = () => {
+  assertStableElectronMetadata({ packageJsonPath: posPackagePath, packageJson: posPackage, packageLockPath: posPackageLockPath, shellConfigPath: posShellConfigPath });
   if (!existsSync(join(electronPayloadRoot, "Manus POS.exe"))) {
     throw new Error(`Missing Electron win-unpacked payload: ${electronPayloadRoot}`);
   }
@@ -118,12 +124,14 @@ try {
   clearReadonlyWindows(embeddedBundleRoot);
   clearReadonlyWindows(installerManifestPath);
   clearReadonlyWindows(outputPath);
+  clearReadonlyWindows(provenancePath);
   removePath(embeddedBundleRoot);
   removePath(embeddedPosRoot);
   removePath(posManifestPath);
   removePath(embeddedUiRoot);
   removePath(installerManifestPath);
   removePath(outputPath);
+  removePath(provenancePath);
   mkdirSync(dirname(embeddedBundleRoot), { recursive: true });
   mkdirSync(outputRoot, { recursive: true });
 
@@ -190,6 +198,28 @@ try {
       stdio: "inherit",
       windowsHide: true,
     }
+  );
+
+  writePackagingProvenance(
+    provenancePath,
+    createPackagingProvenance({
+      packageJsonPath: posPackagePath,
+      packageJson: posPackage,
+      packageLockPath: posPackageLockPath,
+      shellConfigPath: posShellConfigPath,
+      payloadRoot: electronPayloadRoot,
+      embeddedPayloadRoot: embeddedPosRoot,
+      manifestPath: posManifestPath,
+      installerPath: outputPath,
+      logicalPaths: {
+        packageJson: "desktop/electron/package.json",
+        packageLock: "desktop/electron/package-lock.json",
+        shellConfig: "desktop/electron/resources/manus-shell.config.json",
+        selectedReleasePayload: "desktop/electron/release/win-unpacked",
+        embeddedPayload: "backend-perifericos/windows-installer/assets/pos",
+        generatedManifest: "backend-perifericos/windows-installer/assets/pos-manifest.json",
+      },
+    }),
   );
 
   console.log(`Installer created: ${outputPath}`);

@@ -14,6 +14,7 @@
     "qa:rochi:disconnect": "node scripts/qa-rochi-disconnect.mjs",
     "test:rochi:disconnect": "node --test test/rochi-a01e.disconnect-runner.spec.mjs",
     "test:rochi:disconnect-flow": "node --test test/rochi-a01e.disconnect-flow.spec.mjs",
+    "test:packaging-provenance": "node --test test/packaging-provenance.spec.mjs",
     "build:prod": "npm run build",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
@@ -29,7 +30,7 @@
     "validate:installer:windows-x64": "node scripts/validate-windows-installer.mjs",
     "installer:windows-x64:qa": "node scripts/build-windows-installer.mjs qa",
     "installer:windows-x64:production": "node scripts/build-windows-installer.mjs production",
-    "test": "tsx --test \"test/**/*.spec.ts\" && node --test test/pos-manifest-integrity.spec.mjs"
+    "test": "tsx --test \"test/**/*.spec.ts\" && node --test test/pos-manifest-integrity.spec.mjs && node --test test/packaging-provenance.spec.mjs"
   },
   "pkg": {
     "assets": [
