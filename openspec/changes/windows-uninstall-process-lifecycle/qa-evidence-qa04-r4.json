@@ -1,0 +1,61 @@
+{
+    "schemaVersion":  1,
+    "evidenceId":  "QA-04-R4",
+    "generatedAt":  "2026-10-15T00:31:31Z",
+    "scope":  "QA-04-R4 repository hardening and disposable validation only",
+    "git":  {
+                "branch":  "fix/develop/windows-uninstall-process-lifecycle",
+                "baseHead":  "1c024c90a6583a0cde91d7ef126c15f8906da4f7"
+            },
+    "protectedPOS":  {
+                         "backend-perifericos/windows-installer/assets/pos-manifest.json":  "F1BB5CBB620DE5B65B48A6148BFB9B345F196E6881EAE89525BDEB5331FCD4FA",
+                         "backend-perifericos/windows-installer/assets/pos/resources/app.asar":  "17B6EC6A77DDBA93236AC9F3497FF4E338C75F199AE85899A77CA0E0536724A4",
+                         "backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json":  "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D",
+                         "desktop/electron/resources/manus-shell.config.json":  "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D"
+                     },
+    "implementation":  {
+                           "durableResultCorrelation":  "PASS",
+                           "terminalPersistence":  "PASS",
+                           "finalObservationKnownState":  "PASS",
+                           "legacyUninstallDelegation":  "PASS",
+                           "provenanceLogicalPaths":  "PASS"
+                       },
+    "tests":  {
+                  "goWindowsNative":  {
+                                          "result":  "PASS",
+                                          "topLevelPassEvents":  118,
+                                          "passEventsIncludingSubtests":  135
+                                      },
+                  "goBuild":  "PASS",
+                  "disposableWindowsProcessIntegration":  {
+                                                              "result":  "PASS",
+                                                              "tests":  1,
+                                                              "rootPolicy":  "unique testing.TempDir only",
+                                                              "unrelatedProcessPreserved":  true
+                                                          },
+                  "backendUnitTests":  {
+                                           "result":  "PASS",
+                                           "tests":  177
+                                       },
+                  "posManifestTests":  {
+                                           "result":  "PASS",
+                                           "tests":  6
+                                       },
+                  "packagingProvenanceTests":  {
+                                                   "result":  "PASS",
+                                                   "tests":  3
+                                               }
+              },
+    "validation":  {
+                       "openspecChangeStrict":  "PASS",
+                       "gitDiffCheck":  "PASS",
+                       "protectedHashesUnchanged":  true,
+                       "installerInstallUninstallRepairExecuted":  false,
+                       "serviceRegistryACLAndLiveProcessMutationExecuted":  false,
+                       "packageRebuildExecuted":  false
+                   },
+    "distributionReady":  false,
+    "remainingRisk":  [
+                          "Fresh isolated BUILD-02 and fresh live installer QA remain required before distribution."
+                      ]
+}

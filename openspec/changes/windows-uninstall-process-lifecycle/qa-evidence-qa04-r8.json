@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "QA-04-R8",
+  "scope": "R7 registry-error and native process-discovery hardening; repository and disposable validation only",
+  "priorFindings": {
+    "qa04R7": "FAIL",
+    "registry": "uninstall_flow_windows.go used isMissingServiceError for registry deletion",
+    "discovery": "native discovery suppressed inaccessible processes using basename/root inventory"
+  },
+  "git": {
+    "branch": "fix/develop/windows-uninstall-process-lifecycle",
+    "baseHead": "1c024c90a6583a0cde91d7ef126c15f8906da4f7"
+  },
+  "registry": {
+    "canonicalPath": "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ManusPeripheralAgent",
+    "view": "registry.WOW64_64KEY",
+    "missingKeyOnlyBenign": true,
+    "flowErrorPropagation": "PASS",
+    "orchestrationCoverage": [
+      "service-domain registry error remains non-success and retains registration",
+      "generic registry error remains non-success and retains registration"
+    ]
+  },
+  "nativeDiscovery": {
+    "productionDiscoverPath": "PASS",
+    "injectedBoundaries": [
+      "CreateToolhelp32Snapshot",
+      "Process32First",
+      "Process32Next",
+      "OpenProcess",
+      "QueryFullProcessImageName",
+      "GetProcessTimes",
+      "TerminateProcess",
+      "WaitForSingleObject",
+      "CloseHandle"
+    ],
+    "failClosedCases": [
+      "OpenProcess access denied",
+      "image path query denial",
+      "start identity query denial",
+      "renamed or mismatched executable",
+      "missing or empty root with uninspectable candidate",
+      "incomplete enumeration",
+      "final rescan failure"
+    ],
+    "benignCases": [
+      "definitively disappeared PID",
+      "successfully observed executable outside managed root"
+    ],
+    "terminationRequiresCurrentPathAndIdentity": true,
+    "basenameOnlySuppressionRemoved": true
+  },
+  "completionInvariant": {
+    "result": "PASS",
+    "completedRequires": [
+      "payload deletion verified",
+      "known-zero scoped process observation",
+      "known-absent canonical uninstall registry",
+      "all required cleanup phases",
+      "successful terminal durable persistence"
+    ],
+    "unknownOrFailedGatePreventsCompleted": true,
+    "exitCodes": {
+      "0": "verified completed",
+      "1": "immediate failure",
+      "2": "accepted pending"
+    }
+  },
+  "tests": {
+    "goWindowsNative": {
+      "result": "PASS",
+      "topLevelPassEvents": 131,
+      "subtestPassEvents": 23,
+      "passEventsIncludingSubtests": 154
+    },
+    "goBuild": "PASS",
+    "r8NativeDiscoveryTopLevel": 8,
+    "r8NativeDiscoverySubtests": 4,
+    "r8RegistryOrchestration": "PASS",
+    "disposableWindowsProcessIntegration": {
+      "result": "PASS",
+      "tests": 1,
+      "rootPolicy": "unique testing.TempDir with copied child executables",
+      "unrelatedProcessPreserved": true
+    },
+    "backendUnitTests": {
+      "result": "PASS",
+      "tests": 177
+    },
+    "posManifestTests": {
+      "result": "PASS",
+      "tests": 6
+    },
+    "packagingProvenanceTests": {
+      "result": "PASS",
+      "tests": 3
+    }
+  },
+  "protectedPOS": {
+    "backend-perifericos/windows-installer/assets/pos-manifest.json": "F1BB5CBB620DE5B65B48A6148BFB9B345F196E6881EAE89525BDEB5331FCD4FA",
+    "backend-perifericos/windows-installer/assets/pos/resources/app.asar": "17B6EC6A77DDBA93236AC9F3497FF4E338C75F199AE85899A77CA0E0536724A4",
+    "backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D",
+    "desktop/electron/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D"
+  },
+  "validation": {
+    "openspecChangeStrict": "PASS",
+    "gitDiffCheck": "PASS",
+    "protectedHashesUnchanged": true,
+    "installerInstallUninstallRepairExecuted": false,
+    "serviceControlExecuted": false,
+    "liveRegistryMutationExecuted": false,
+    "liveProcessTerminationExecuted": false,
+    "aclMutationExecuted": false,
+    "packageRebuildExecuted": false
+  },
+  "globalOpenSpec": {
+    "status": "not rerun",
+    "preexistingUnrelatedFailures": 11
+  },
+  "historicalFindingsPreserved": true,
+  "distributionReady": false,
+  "build02Ready": true,
+  "selectiveCommitReady": true
+}

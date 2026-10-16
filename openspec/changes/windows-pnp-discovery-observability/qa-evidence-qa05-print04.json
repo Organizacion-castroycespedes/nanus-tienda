@@ -1,0 +1,58 @@
+{
+  "run": "QA_05_PRINT_04",
+  "result": "PARTIAL",
+  "observabilityImplemented": true,
+  "nullReferenceRootCause": "UNCONFIRMED",
+  "historicalLiveRetryExecuted": false,
+  "liveWindowsMutationExecuted": false,
+  "liveOperations": {
+    "deviceDiscoveryPost": false,
+    "testPrint": false,
+    "serviceControl": false,
+    "registryMutation": false,
+    "queueOrDriverMutation": false,
+    "installerOperation": false,
+    "postgresqlMutation": false,
+    "awsMutation": false
+  },
+  "tests": {
+    "backendTargetedTopLevel": { "passed": 16, "failed": 0 },
+    "backendFullTopLevel": { "passed": 180, "failed": 0 },
+    "posManifest": { "passed": 6, "failed": 0 },
+    "packagingProvenance": { "passed": 3, "failed": 0 },
+    "electronBuildAndTests": { "passed": 52, "failed": 0 },
+    "backendBuild": "PASS",
+    "openspecStrict": "PASS",
+    "gitDiffCheck": "PASS"
+  },
+  "diagnosticCategories": [
+    "EXECUTION_FAILED",
+    "ACCESS_DENIED",
+    "TIMEOUT",
+    "EMPTY_OUTPUT",
+    "PARSE_FAILED",
+    "INCOMPLETE_RECORD",
+    "FILTERED_OUT",
+    "OK"
+  ],
+  "privacy": {
+    "rawPnpOutputLogged": false,
+    "instanceIdentifiersLogged": false,
+    "serialNumbersLogged": false,
+    "completeCompatibleIdsLogged": false,
+    "personalPathsLogged": false,
+    "secretsLogged": false
+  },
+  "protectedHashes": {
+    "backend-perifericos/windows-installer/assets/pos-manifest.json": "F1BB5CBB620DE5B65B48A6148BFB9B345F196E6881EAE89525BDEB5331FCD4FA",
+    "backend-perifericos/windows-installer/assets/pos/resources/app.asar": "17B6EC6A77DDBA93236AC9F3497FF4E338C75F199AE85899A77CA0E0536724A4",
+    "backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D",
+    "desktop/electron/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D"
+  },
+  "artifact": {
+    "name": "BUILD-04",
+    "status": "unchanged",
+    "sha256": "15BFF3563C29518E3EED415A9DE36BC5694260DB29B19AD45494054459EA77A5"
+  },
+  "remainingEvidenceGap": "The LocalService PnP command exit/stderr/raw count/filter count from the historical live run is not available. No new live discovery was executed."
+}

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "QA-TERMINAL-10-FIX",
+  "scope": "read-only diagnosis and isolated Windows process-discovery correction; no QA workstation lifecycle operation",
+  "git": {
+    "branch": "fix/develop/windows-uninstall-process-lifecycle",
+    "baseHead": "1c024c90a6583a0cde91d7ef126c15f8906da4f7",
+    "stagedFiles": 0
+  },
+  "observedFailure": {
+    "qaOperationId": "1792096844203262200-13688",
+    "outcome": "partial",
+    "phase": "pos_processes",
+    "remainingPosProcessesKnown": false,
+    "registryPresenceKnown": false,
+    "nativeCall": "QueryFullProcessImageNameW via windows.QueryFullProcessImageName",
+    "windowsError": "ERROR_GEN_FAILURE (31)",
+    "windowsMessage": "A device attached to the system is not functioning.",
+    "affectedPids": [4, 124, 2376]
+  },
+  "rootCause": {
+    "productionPath": "nativePOSProcessOperations.Discover -> nativeProcessAPIs.queryImagePath -> processImagePath",
+    "previousBehavior": "Any non-gone primary image-path error aborted complete process observation, including an inaccessible process that might be unrelated.",
+    "safetyAssessment": "The previous behavior was fail-closed but could not distinguish a provably out-of-scope image when the primary query failed. No PID or basename classification was used by the correction."
+  },
+  "correction": {
+    "fallback": "GetProcessImageFileNameW from psapi.dll",
+    "normalization": "SystemRoot or verified QueryDosDevice drive mapping",
+    "scopeDecision": "Exact normalized image path is checked with pathWithinRoot; fallback query, malformed path, or unmapped device remains an observation error.",
+    "cleanupInvariant": "Ambiguous observation still blocks payload deletion, registry deletion, durable completed, and exit code 0."
+  },
+  "tests": {
+    "targetedR10": {
+      "result": "PASS",
+      "topLevelTests": 7,
+      "cases": [
+        "ERROR_GEN_FAILURE with verified out-of-scope system path",
+        "ERROR_GEN_FAILURE with verified scoped POS path",
+        "fallback query failure remains unknown",
+        "unmapped native device path remains unknown",
+        "ambiguous DOS drive mapping remains unknown",
+        "malformed fallback path remains unknown",
+        "SystemRoot fallback remains out of scope"
+      ]
+    },
+    "windowsInstallerGoSuite": {
+      "result": "PASS",
+      "topLevelPassEvents": 141,
+      "subtestPassEvents": 23,
+      "totalTestPassEvents": 164
+    },
+    "goBuild": "PASS",
+    "openspecChangeStrict": "PASS",
+    "gitDiffCheck": "PASS with existing LF/CRLF warnings only"
+  },
+  "safety": {
+    "liveQaInstallUninstallRepair": false,
+    "liveServiceControl": false,
+    "liveRegistryMutation": false,
+    "liveProcessTermination": false,
+    "livePrinterOrDiscoveryAction": false,
+    "qaPostgresOrAwsMutation": false,
+    "installerBuild": false,
+    "qaMachineModified": false
+  },
+  "protectedHashes": {
+    "backend-perifericos/windows-installer/assets/pos-manifest.json": "F1BB5CBB620DE5B65B48A6148BFB9B345F196E6881EAE89525BDEB5331FCD4FA",
+    "backend-perifericos/windows-installer/assets/pos/resources/app.asar": "17B6EC6A77DDBA93236AC9F3497FF4E338C75F199AE85899A77CA0E0536724A4",
+    "backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D",
+    "desktop/electron/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D",
+    "openspec/config.yaml": "85B53DD24FBE7D19C8B0F0DDCCF5E82600C5C372C76B57A2A89DC34DFB0FC5B9"
+  },
+  "build": {
+    "build06Required": true,
+    "reason": "The correction changes the Windows installer executable source and the current QA machine remains paused after a partial uninstall.",
+    "plan": "Build only from a disposable full-repository copy containing current tracked and untracked sources; validate provenance and use a new artifact identity before controlled recertification."
+  },
+  "readiness": {
+    "distribution": false,
+    "qaRecertification": "pending BUILD-06 isolated artifact and separate owner authorization"
+  }
+}
