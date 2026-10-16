@@ -7,6 +7,8 @@ import type {
 import type { DiscoveredSerialDevice } from "../discovery/device-discovery-provider";
 import { DeviceProfileId, getDeviceProfile } from "../profiles/device-profiles";
 
+import type { UsbDiscoveryDiagnostic } from '../discovery/device-discovery-provider';
+
 export type UsbPrinterDescriptor = UsbPrinterConnectionOptions & {
   id: string;
   name: string;
@@ -15,6 +17,7 @@ export type UsbPrinterDescriptor = UsbPrinterConnectionOptions & {
 
 export type UsbPrinterDiscovery = {
   list(): UsbPrinterDescriptor[] | Promise<UsbPrinterDescriptor[]>;
+  getLastUsbDiscoveryDiagnostics?(): UsbDiscoveryDiagnostic[];
   listSerialDevices?(): SerialDeviceDescriptor[] | Promise<SerialDeviceDescriptor[]>;
 };
 

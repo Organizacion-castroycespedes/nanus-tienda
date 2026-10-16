@@ -237,6 +237,14 @@ export class DevicesService {
     try {
       usbDescriptors = await this.usbDiscovery.list();
       printerCommandDurationMs = Date.now() - usbStartedAt;
+      for (const diagnostic of this.usbDiscovery.getLastUsbDiscoveryDiagnostics?.() ?? []) {
+        this.logsService.append({
+          source: 'devices',
+          event: 'devices.discover.pnp',
+          message: 'Windows PnP discovery stage observed',
+          metadata: diagnostic,
+        });
+      }
       if (config.mode === "REAL") {
        const physical = usbDescriptors.filter((d) => d.descriptor.fingerprint.source === "WINDOWS_PNP").map((d) => ({ name: d.name, deviceId: d.deviceId, nativeIdentifier: d.descriptor.nativeIdentifier, fingerprint: d.descriptor.fingerprint.values }));
        const queues = usbDescriptors.filter((d) => d.descriptor.fingerprint.source === "WINDOWS_PRINT_QUEUE").map((d) => ({
@@ -263,6 +271,7 @@ export class DevicesService {
           physicalDetected: String(item.physicalDetected),
           queueInstalled: String(item.queueInstalled),
           reconciliationStatus: item.status,
+          ...(item.portName ? { portName: item.portName } : {}),
         };
         if (original) {
           return {

@@ -22,6 +22,35 @@ const serial: DiscoveredSerialDevice = {
   architecture: "amd64",
 };
 
+test("PnP diagnostics are recorded without changing queue fallback", async () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  const logs = new LogsService();
+  const discovery: UsbPrinterDiscovery = {
+    list: async () => [],
+    getLastUsbDiscoveryDiagnostics: () => [{
+      stage: "WINDOWS_PNP",
+      outcome: "UNKNOWN",
+      reasonCode: "ACCESS_DENIED",
+      elapsedMs: 12,
+      timeoutMs: 7000,
+    }],
+  };
+  const service = new DevicesService(logs, new EventsService(), discovery, {
+    read: () => ({ schemaVersion: 1, devices: [] }),
+    write: () => undefined,
+  }, { configDir: ".test-config", stateDir: ".test-state", logDir: ".test-log" });
+  try {
+    await service.discover();
+    const diagnostic = logs.list().find((entry) => entry.event === "devices.discover.pnp");
+    assert.equal(diagnostic?.metadata.reasonCode, "ACCESS_DENIED");
+    assert.equal(diagnostic?.metadata.stage, "WINDOWS_PNP");
+  } finally {
+    if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
+    else process.env.PERIPHERALS_MODE = previousMode;
+  }
+});
+
 test("Windows discovery uses asynchronous child-process execution with a per-command timeout", () => {
   const source = readFileSync(join(process.cwd(), "src/platform/windows/windows-printer-discovery.provider.ts"), "utf8");
   assert.match(source, /import \{ execFile \}/);
