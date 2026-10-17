@@ -217,7 +217,10 @@ const buildHarness = (state = buildState(), advisoryLockAvailable = true) => {
     recoverPreProviderCreateFailure: async (_tenantId: string, _id: string, externalReference: string) => {
       if (
         state.document.external_reference !== externalReference ||
-        state.document.status !== "TECHNICAL_ERROR" ||
+        !(
+          state.document.status === "TECHNICAL_ERROR"
+          || (state.document.status === "REJECTED" && state.document.last_error_code === "FACTUCORE_VALIDATION")
+        ) ||
         state.document.processing_stage !== "PROVIDER_CREATE_INTENT" ||
         state.document.provider_document_id
       ) {
@@ -721,6 +724,25 @@ test("approved pre-provider recovery can restart, but ordinary rejection cannot"
   await assert.rejects(() => rejected.service.retryDocument(ids.tenant, ids.document));
   assert.equal(rejected.provider.received.issueInvoice.length, 0);
   await assert.rejects(() => rejected.service.recoverPreProviderDocument(ids.tenant, ids.document));
+});
+
+test("provider-create-intent validation rejection recovers only after confirmed provider absence", async () => {
+  const harness = buildHarness(buildState({
+    status: "REJECTED",
+    last_error_code: "FACTUCORE_VALIDATION",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+    provider_document_id: null,
+  }));
+  harness.provider.getDocumentStatus = async () => {
+    throw buildNotFoundError();
+  };
+
+  const result = await harness.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document);
+
+  assert.equal(result.document.status, "PENDING");
+  assert.equal(result.document.processing_stage, "PRE_PROVIDER_CREATE");
+  assert.equal(result.events.at(-1)?.metadata.previousStatus, "REJECTED");
+  assert.equal(harness.provider.received.issueInvoice.length, 0);
 });
 
 test("retryDocument delegates correctable pre-provider rejection to issue flow", async () => {

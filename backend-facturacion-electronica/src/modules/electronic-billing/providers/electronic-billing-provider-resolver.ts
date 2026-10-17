@@ -38,7 +38,27 @@ export class ElectronicBillingProviderResolver {
       ? await this.tenantConfigRepository.findById(command.providerConfigId, command.tenantId, client)
       : await this.tenantConfigRepository.findDefaultForTenant(command.tenantId, client);
 
-    if (!config || !config.enabled) {
+    return this.resolveConfig(config, client, false);
+  }
+
+  async resolveForAdministrativeContext(
+    tenantId: string,
+    client?: PoolClient,
+    providerConfigId?: string,
+  ): Promise<ResolvedElectronicBillingProvider> {
+    const config = providerConfigId
+      ? await this.tenantConfigRepository.findById(providerConfigId, tenantId, client)
+      : await this.tenantConfigRepository.findFactuCoreForAdministrativeContext(tenantId, client);
+    return this.resolveConfig(config, client, true);
+  }
+
+  private async resolveConfig(
+    config: Awaited<ReturnType<TenantElectronicBillingConfigRepository["findById"]>>,
+    client: PoolClient | undefined,
+    allowDisabled: boolean,
+  ): Promise<ResolvedElectronicBillingProvider> {
+
+    if (!config || (!allowDisabled && !config.enabled)) {
       throw new ElectronicBillingProviderDisabledError();
     }
 
@@ -59,6 +79,7 @@ export class ElectronicBillingProviderResolver {
         environment: config.environment,
         baseUrl: config.base_url,
         credentialReference: config.credential_reference,
+        encryptedCredentials: config.encrypted_credentials,
         settings: config.settings,
       },
       config: {
@@ -71,6 +92,7 @@ export class ElectronicBillingProviderResolver {
         enabled: config.enabled,
         baseUrl: config.base_url,
         credentialReference: config.credential_reference,
+        encryptedCredentials: config.encrypted_credentials,
         settings: config.settings,
         isDefault: config.is_default,
       },

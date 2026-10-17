@@ -134,7 +134,12 @@ test("401 maps to authentication error", async () => {
 
   await assert.rejects(
     () => client.getStatus(context, "factucore-doc-1"),
-    FactuCoreAuthenticationError,
+    (error: unknown) => {
+      assert.ok(error instanceof FactuCoreAuthenticationError);
+      assert.equal(error.httpStatus, 401);
+      assert.equal(error.responseBodyPresent, true);
+      return true;
+    },
   );
 });
 
@@ -202,6 +207,101 @@ test("FactuCore client preserves DIAN failedChecks and provider code", async () 
       return true;
     },
   );
+});
+
+test("getClientContext uses the authenticated read-only tenant context endpoint", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const client = new FactuCoreClient(async (url, init) => {
+    calls.push({ url: String(url), init });
+    return buildJsonResponse(200, {
+      apiClientId: "api-client-1",
+      tenantId: "factucore-tenant-1",
+      environment: "QA",
+      issuer: {
+        identificationTypeCode: "31",
+        identificationNumber: "900123456",
+        verificationDigit: "7",
+        legalName: "Empresa Uno",
+        tradeName: null,
+        complete: true,
+      },
+      resolution: {
+        configured: true,
+        status: "ACTIVE",
+        isDefault: true,
+        validTo: null,
+        remaining: 100,
+      },
+      dianReadiness: {
+        status: "READY",
+        configurationComplete: true,
+        issuerComplete: true,
+        resolutionConfigured: true,
+        configurationEnvironment: "QA",
+        failedChecks: [],
+        basis: "CONFIGURATION_ONLY",
+      },
+    });
+  });
+
+  const result = await client.getClientContext(context);
+  assert.equal(calls[0].url, "https://factucore.test/api/v1/external/client-context");
+  assert.equal((calls[0].init?.headers as Record<string, string>)["x-client-key"], context.credentials.clientKey);
+  assert.equal(result.tenantId, "factucore-tenant-1");
+  assert.equal(result.dianReadiness.status, "READY");
+});
+
+test("getClientContext rejects an incompatible response without exposing payload", async () => {
+  const client = new FactuCoreClient(async () => buildJsonResponse(200, {
+    clientSecret: "must-not-escape",
+  }));
+
+  await assert.rejects(
+    () => client.getClientContext(context),
+    (error: unknown) => {
+      assert.match((error as Error).message, /incompatible client context/);
+      assert.doesNotMatch((error as Error).message, /must-not-escape/);
+      return true;
+    },
+  );
+});
+
+test("FactuCore client logs only safe request and response metadata", async () => {
+  const logs: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (...args: unknown[]) => logs.push(JSON.stringify(args));
+  console.error = (...args: unknown[]) => logs.push(JSON.stringify(args));
+
+  try {
+    const client = new FactuCoreClient(async () => buildJsonResponse(200, {
+      id: "document-1",
+      legalName: "Empresa Fiscal Real",
+      identificationNumber: "900123456",
+      clientSecret: "secret-from-provider",
+    }));
+
+    await client.createInvoice(context, {
+      externalReference: "SALE-LOG-001",
+      issueDate: "2026-08-27T10:00:00.000Z",
+      customer: {
+        legalName: "Empresa Fiscal Real",
+        identificationNumber: "900123456",
+      },
+      lines: [],
+    } as never);
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  const joined = logs.join(" ");
+  assert.match(joined, /bodyPresent/);
+  assert.match(joined, /responseBodyPresent/);
+  assert.doesNotMatch(joined, /Empresa Fiscal Real/);
+  assert.doesNotMatch(joined, /900123456/);
+  assert.doesNotMatch(joined, /secret-from-provider/);
+  assert.doesNotMatch(joined, /x-client-secret/);
 });
 
 test("429 maps to rate limit error", async () => {

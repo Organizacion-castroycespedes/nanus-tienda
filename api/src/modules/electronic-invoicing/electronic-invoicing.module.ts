@@ -16,14 +16,18 @@ import { ThirdPartyLookupService } from "./third-party-lookup/third-party-lookup
 import { LocationsModule } from "../locations/locations.module";
 import { FiscalProfileReviewController } from "./fiscal-profile-review/fiscal-profile-review.controller";
 import { FiscalProfileReviewService } from "./fiscal-profile-review/fiscal-profile-review.service";
+import { ElectronicBillingAdminController } from "./admin/electronic-billing-admin.controller";
+import { ElectronicBillingAdminService } from "./admin/electronic-billing-admin.service";
+import { IntegrationOutboxModule } from "../integration-outbox/integration-outbox.module";
 
 @Module({
-  imports: [DatabaseModule, AccessControlModule, LocationsModule],
+  imports: [DatabaseModule, AccessControlModule, LocationsModule, IntegrationOutboxModule],
   controllers: [
     ElectronicInvoicingCustomersController,
     ElectronicInvoicingSuppliersController,
     DianDocumentTypesController,
     FiscalProfileReviewController,
+    ElectronicBillingAdminController,
   ],
   providers: [
     ElectronicInvoicingCustomersRepository,
@@ -36,6 +40,7 @@ import { FiscalProfileReviewService } from "./fiscal-profile-review/fiscal-profi
     DianDocumentTypesRepository,
     DianDocumentTypesService,
     FiscalProfileReviewService,
+    ElectronicBillingAdminService,
   ],
   exports: [
     ElectronicInvoicingCustomersRepository,
