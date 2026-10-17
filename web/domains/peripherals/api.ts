@@ -1,4 +1,5 @@
 import { CAPABILITY_METHODS, getTerminalRuntime, hasRuntimeCapability, type RuntimeCapability, type RuntimeInfo } from "./runtime-contract";
+import { safePrintErrorCode, safePrintIpcErrorCode, type PrintErrorCode } from "./print-errors";
 import type {
   CashDrawerResponse,
   CashDrawerOpenInput,
@@ -19,6 +20,7 @@ import type {
 export type PeripheralAgentConfigStatus = "configured" | "missing" | "invalid";
 
 export type PeripheralAgentRequestErrorCode =
+  | PrintErrorCode
   | "OPERATION_DISABLED"
   | "MISSING_CONFIG"
   | "INVALID_CONFIG"
@@ -376,9 +378,17 @@ export const requestPeripheral = async <T>(
     }
     if (path === "/devices" && init?.method === "POST") return invoke("devices.create", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path.startsWith("/devices/") && init?.method === "PATCH") return invoke("devices.update", path.slice("/devices/".length), JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path === "/printer/test-print" && init?.method === "POST") return invoke("printer.testPrint", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path === "/printer/print-ticket" && init?.method === "POST") return invoke("printer.printTicket", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
-    if (path === "/cash-drawer/open" && init?.method === "POST") return invoke("drawer.open", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
+    const printCapability = path === "/printer/test-print" ? "printer.testPrint"
+      : path === "/printer/print-ticket" ? "printer.printTicket"
+      : path === "/cash-drawer/open" ? "drawer.open" : null;
+    if (printCapability && init?.method === "POST") {
+      try {
+        return await invoke(printCapability, JSON.parse(String(init.body ?? "{}"))) as T;
+      } catch (error) {
+        const code = safePrintIpcErrorCode(error);
+        throw new PeripheralAgentRequestError(code, code);
+      }
+    }
     if (path === "/scanner/simulate" && init?.method === "POST") return invoke("scanner.simulate", JSON.parse(String(init.body ?? "{}"))) as Promise<T>;
     if (path.startsWith("/scale/current-weight") && (!init || init.method === undefined || init.method === "GET")) return invoke("scale.currentWeight", Object.fromEntries(new URLSearchParams(path.split("?")[1] ?? ""))) as Promise<T>;
     if (path === "/agent-security/status" && (!init || init.method === undefined || init.method === "GET")) return invoke("agent.security.status") as Promise<T>;
@@ -433,6 +443,14 @@ export const requestPeripheral = async <T>(
   }
 
   if (!response.ok) {
+    if (path.startsWith("/printer/") || path.startsWith("/cash-drawer/")) {
+      let code: PrintErrorCode = "PRINT_FAILED";
+      try {
+        const payload = await response.json() as { code?: unknown };
+        code = safePrintErrorCode(payload.code);
+      } catch { /* Unknown responses remain generic and safe. */ }
+      throw new PeripheralAgentRequestError(code, code, { status: response.status });
+    }
     const message = await parseErrorMessage(response);
     throw new PeripheralAgentRequestError(
       classifyAgentHttpError(response.status, message),

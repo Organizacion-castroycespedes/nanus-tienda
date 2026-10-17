@@ -8,6 +8,7 @@ import {
   type PeripheralDevice,
 } from "../../shared/types/peripheral.types";
 import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
+import { PrintDiagnosticError, safePrintDiagnosticMetadata } from "../../shared/printing/print-diagnostic";
 import { PeripheralAdapterResolver } from "../../shared/adapters/peripheral-adapter.resolver";
 import { createId } from "../../shared/utils/id.util";
 import {
@@ -62,7 +63,18 @@ export class CashDrawerService {
       printer.connectionType === ConnectionType.USB &&
       !this.isUsbDrawerPulseCertified(printer)
     ) {
-      throw new BadRequestException("printer drawer pulse is not certified for this device");
+      const error = new PrintDiagnosticError("DRAWER_NOT_CERTIFIED");
+      this.logsService.append({
+        level: LogLevel.ERROR,
+        source: "cash-drawer",
+        event: "cashdrawer.open.failed",
+        message: "Cash drawer certification rejected",
+        metadata: {
+          deviceId: printer.id,
+          ...safePrintDiagnosticMetadata(printer, "drawer.open", config.usbPrintTransport, error),
+        },
+      });
+      throw error;
     }
 
     const adapter = this.adapterResolver.resolvePrinter(printer, config.mode);
@@ -269,8 +281,6 @@ export class CashDrawerService {
     profileId: string,
     error: unknown
   ): void {
-    const errorMessage =
-      error instanceof Error ? error.message : "Cash drawer pulse failed";
 
     if (printer.connectionType === ConnectionType.NETWORK) {
       this.devicesService.setRuntimeStatus(printer.id, DeviceStatus.NOT_REACHABLE);
@@ -291,13 +301,12 @@ export class CashDrawerService {
         terminalId,
         printerDeviceId: printer.id,
         deviceId: printer.id,
-        connectionType: printer.connectionType,
         networkHost: printer.network?.host,
         networkPort: printer.network?.port,
         commandId,
         reason,
         profileId,
-        errorMessage,
+        ...safePrintDiagnosticMetadata(printer, "drawer.open", getPeripheralsConfig().usbPrintTransport, error),
       },
     });
   }

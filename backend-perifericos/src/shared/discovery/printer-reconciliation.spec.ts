@@ -5,11 +5,11 @@ import { reconcilePrinters } from "./printer-reconciliation";
 test("reconciles PnP-only and queue-only without false connected", () => {
   const result = reconcilePrinters([{ name: "USB Printer", nativeIdentifier: "USB\\A" }], [{ name: "XP-80", portName: "USB001" }]);
   assert.equal(result[0].physicalDetected, true); assert.equal(result[0].queueInstalled, false);
-  assert.equal(result[1].physicalDetected, false); assert.equal(result[1].status, "OFFLINE"); assert.equal(result[1].windowsQueueName, "XP-80");
+  assert.equal(result[1].physicalDetected, false); assert.equal(result[1].status, "OFFLINE"); assert.equal(result[1].windowsQueueName, "XP-80"); assert.equal(result[1].portName, "USB001");
 });
 test("merges only exact native identity", () => {
   const result = reconcilePrinters([{ name: "USB Printer", nativeIdentifier: "USB\\A" }], [{ name: "XP-80", portName: "USB001", nativeIdentifier: "USB\\A" }]);
-  assert.equal(result.length, 1); assert.equal(result[0].status, "CONNECTED");
+  assert.equal(result.length, 1); assert.equal(result[0].status, "CONNECTED"); assert.equal(result[0].portName, "USB001");
 });
 test("keeps ambiguous same model devices separate", () => {
   const result = reconcilePrinters([{ name: "USB Printer", nativeIdentifier: "USB\\A" }, { name: "USB Printer", nativeIdentifier: "USB\\B" }], [{ name: "USB Printer", portName: "USB001" }]);
@@ -25,8 +25,31 @@ test("honors an explicit physical-device to differently named Windows queue bind
   assert.equal(result.length, 1);
   assert.equal(result[0].nativeIdentifier, "USB\\VID_1FC9&PID_2016\\5D2F0E663532");
   assert.equal(result[0].windowsQueueName, "XP-80");
+  assert.equal(result[0].portName, "USB001");
   assert.equal(result[0].queueInstalled, true);
   assert.equal(result[0].status, "CONNECTED");
+  assert.equal(result[0].portName, "USB001");
+});
+
+test("does not invent a port or cross-associate unmatched physical devices", () => {
+  const result = reconcilePrinters(
+    [{ name: "Physical A", nativeIdentifier: "USB\\\\A" }, { name: "Physical B", nativeIdentifier: "USB\\\\B" }],
+    [{ name: "Queue A", portName: "USB001", nativeIdentifier: "QUEUE\\\\A" }],
+  );
+
+  assert.equal(result.find((item) => item.nativeIdentifier === "USB\\\\A")?.portName, undefined);
+  assert.equal(result.find((item) => item.nativeIdentifier === "USB\\\\B")?.portName, undefined);
+  assert.equal(result.find((item) => item.nativeIdentifier === "QUEUE\\\\A")?.portName, "USB001");
+});
+
+test("keeps missing queue port metadata optional", () => {
+  const result = reconcilePrinters(
+    [{ name: "Physical A", nativeIdentifier: "USB\\\\A" }],
+    [{ name: "Queue A", portName: "", nativeIdentifier: "USB\\\\A" }],
+  );
+
+  assert.equal(result[0].status, "CONNECTED");
+  assert.equal(result[0].portName, "");
 });
 
 test("does not auto-bind without an explicit association", () => {
@@ -59,4 +82,24 @@ test("keeps exact native-identifier reconciliation behavior", () => {
   assert.equal(result.length, 1);
   assert.equal(result[0].queueInstalled, true);
   assert.equal(result[0].status, "CONNECTED");
+});
+test(`does not invent a port or cross-associate unmatched physical devices`, () => {
+  const result = reconcilePrinters(
+    [{ name: `Physical A`, nativeIdentifier: `P-A` }, { name: `Physical B`, nativeIdentifier: `P-B` }],
+    [{ name: `Queue A`, portName: `USB001`, nativeIdentifier: `Q-A` }],
+  );
+
+  assert.equal(result.find((item) => item.nativeIdentifier === `P-A`)?.portName, undefined);
+  assert.equal(result.find((item) => item.nativeIdentifier === `P-B`)?.portName, undefined);
+  assert.equal(result.find((item) => item.nativeIdentifier === `Q-A`)?.portName, `USB001`);
+});
+
+test(`keeps missing queue port metadata optional`, () => {
+  const result = reconcilePrinters(
+    [{ name: `Physical A`, nativeIdentifier: `P-A` }],
+    [{ name: `Queue A`, portName: ``, nativeIdentifier: `P-A` }],
+  );
+
+  assert.equal(result[0].status, `CONNECTED`);
+  assert.equal(result[0].portName, ``);
 });

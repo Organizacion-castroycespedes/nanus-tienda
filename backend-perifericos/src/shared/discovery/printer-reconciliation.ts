@@ -1,7 +1,7 @@
 export type PhysicalUsbPrinter = { nativeIdentifier: string; name: string; deviceId?: string; fingerprint?: Record<string, string> };
 export type WindowsPrintQueue = { name: string; portName: string; nativeIdentifier?: string; ready?: boolean };
 export type ExplicitPrinterBinding = { physicalDeviceId?: string; physicalNativeIdentifier?: string; queueName: string };
-export type NormalizedPrinter = PhysicalUsbPrinter & { queueInstalled: boolean; physicalDetected: boolean; status: "DISCOVERED" | "OFFLINE" | "CONNECTED"; windowsQueueName?: string };
+export type NormalizedPrinter = PhysicalUsbPrinter & { queueInstalled: boolean; physicalDetected: boolean; status: "DISCOVERED" | "OFFLINE" | "CONNECTED"; windowsQueueName?: string; portName?: string };
 
 export const reconcilePrinters = (
   physical: PhysicalUsbPrinter[],
@@ -13,7 +13,7 @@ export const reconcilePrinters = (
   const consumedQueues = new Set<number>();
   for (const queue of queues) {
     const index = result.findIndex((item, i) => !matched.has(i) && Boolean(queue.nativeIdentifier) && queue.nativeIdentifier === item.nativeIdentifier);
-    if (index >= 0) { matched.add(index); consumedQueues.add(queues.indexOf(queue)); result[index] = { ...result[index], queueInstalled: true, status: "CONNECTED", windowsQueueName: queue.name }; continue; }
+    if (index >= 0) { matched.add(index); consumedQueues.add(queues.indexOf(queue)); result[index] = { ...result[index], queueInstalled: true, status: "CONNECTED", windowsQueueName: queue.name, portName: queue.portName }; continue; }
   }
   for (const binding of explicitBindings) {
     const physicalIndex = result.findIndex((item, index) => !matched.has(index) &&
@@ -26,12 +26,12 @@ export const reconcilePrinters = (
     const [{ queue, index: queueIndex }] = candidates;
     matched.add(physicalIndex);
     consumedQueues.add(queueIndex);
-    result[physicalIndex] = { ...result[physicalIndex], queueInstalled: true, status: "CONNECTED", windowsQueueName: queue.name };
+    result[physicalIndex] = { ...result[physicalIndex], queueInstalled: true, status: "CONNECTED", windowsQueueName: queue.name, portName: queue.portName };
   }
   for (let queueIndex = 0; queueIndex < queues.length; queueIndex += 1) {
     if (consumedQueues.has(queueIndex)) continue;
     const queue = queues[queueIndex];
-    result.push({ name: queue.name, nativeIdentifier: queue.nativeIdentifier ?? `queue:${queue.name}`, queueInstalled: true, physicalDetected: false, status: "OFFLINE", windowsQueueName: queue.name });
+    result.push({ name: queue.name, nativeIdentifier: queue.nativeIdentifier ?? `queue:${queue.name}`, queueInstalled: true, physicalDetected: false, status: "OFFLINE", windowsQueueName: queue.name, portName: queue.portName });
   }
   return result;
 };

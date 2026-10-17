@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync } from "node:fs";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { PrintDiagnosticError } from "../src/shared/printing/print-diagnostic";
 import { DevicesController } from "../src/modules/devices/devices.controller";
 import { DevicesService } from "../src/modules/devices/devices.service";
 import { EventsService } from "../src/modules/events/events.service";
@@ -28,10 +29,13 @@ import {
   type UsbPrinterDiscovery,
 } from "../src/shared/usb/usb-printer-discovery";
 import { WindowsRawSpoolerTransport } from "../src/platform/windows/windows-raw-spooler.transport";
+import { forbidHardwareIO } from "./support/no-hardware";
 import {
   type DeviceRegistryState,
   type DeviceRegistryStateStore,
 } from "../src/platform/device-registry-state.store";
+
+forbidHardwareIO();
 
 const testPlatformPaths = {
   configDir: "C:\\Temp\\PeripheralAgent\\config",
@@ -54,7 +58,7 @@ class FakeUsbDiscovery implements UsbPrinterDiscovery {
 }
 
 class FailingUsbDiscovery implements UsbPrinterDiscovery {
-  list() {
+  list(): never {
     throw new Error("Get-Printer unavailable");
   }
 }
@@ -70,7 +74,7 @@ const createMemoryDeviceRegistryStore = (): DeviceRegistryStateStore => {
   };
 };
 
-const buildDevices = (usbDiscovery = new FakeUsbDiscovery()) => {
+const buildDevices = (usbDiscovery: UsbPrinterDiscovery = new FakeUsbDiscovery()) => {
   const logsService = new LogsService();
   const eventsService = new EventsService();
   const service = new DevicesService(
@@ -202,6 +206,8 @@ test("real adapters disabled blocks USB printer", () => {
 
 test("resolver selects USB RAW adapter when real adapters are enabled", () => {
   const resolver = new PeripheralAdapterResolver(true);
+  (resolver as unknown as { usbSystemPrinterAdapter: UsbSystemPrinterAdapter }).usbSystemPrinterAdapter =
+    new UsbSystemPrinterAdapter("win32", () => { throw new Error("unexpected print"); }, "RAW");
   const adapter = resolver.resolvePrinter(buildUsbPrinter(), "MOCK");
 
   assert.equal(adapter.adapterName, "UsbRawPrinterAdapter");
@@ -359,14 +365,14 @@ test("exact PnP plus queue uses the resolved Windows queue name", () => {
 });
 
 test("Win32 error 1801 is normalized without encoded PowerShell details", () => {
-  const rawTransport = new WindowsRawSpoolerTransport(() => { throw new Error("OpenPrinter failed: 1801"); });
+  const rawTransport = new WindowsRawSpoolerTransport(() => { throw Object.assign(new Error("private stderr"), { status: 41 }); });
   const adapter = new UsbSystemPrinterAdapter("win32", () => {}, "RAW", rawTransport);
   assert.throws(() => adapter.printTest({
     agentName: "manus-pos-peripheral-agent", mode: "REAL", terminalId: "local-terminal",
     device: buildUsbPrinter(), profile: DEVICE_PROFILES.THERMAL_58MM, jobId: "invalid-queue", timestamp: "2026-08-21T00:00:00.000Z",
   }), (error) => {
     assert.match((error as Error).message, /WINDOWS_INVALID_PRINTER_QUEUE/);
-    assert.match((error as Error).message, /1801/);
+    assert.equal((error as Error).message, "WINDOWS_INVALID_PRINTER_QUEUE");
     assert.doesNotMatch((error as Error).message, /EncodedCommand|FromBase64String/);
     return true;
   });
@@ -407,7 +413,7 @@ test("USB RAW failure remains controlled and does not fall back to GDI", () => {
         jobId: "usb-raw-fail",
         timestamp: "2026-08-21T00:00:00.000Z",
       }),
-    /USB RAW printer print failed: spooler rejected RAW job/
+    /PRINT_FAILED/
   );
 });
 
@@ -454,8 +460,8 @@ test("USB adapter returns a controlled print error", () => {
         timestamp: "2026-08-19T00:00:00.000Z",
       }),
     (error) => {
-      assert.ok(error instanceof BadRequestException);
-      assert.match((error as Error).message, /USB GDI printer print failed: queue rejected job/);
+      assert.ok(error instanceof PrintDiagnosticError);
+      assert.equal((error as Error).message, "PRINT_FAILED");
       return true;
     }
   );
@@ -467,21 +473,26 @@ test("USB unavailable queue emits a controlled printer failure event", async () 
   await controller.discover();
   controller.create({ ...buildUsbPrinter(), usb: { deviceId: discoveredUsbPrinter.deviceId } });
   discovery.setDevices([]);
-  const previous = process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS;
-  process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS = "true";
   const printerService = new PrinterService(service, logsService, eventsService);
+  let fakeCommands = 0;
+  const resolver = new PeripheralAdapterResolver(true);
+  (resolver as unknown as { usbSystemPrinterAdapter: UsbSystemPrinterAdapter }).usbSystemPrinterAdapter =
+    new UsbSystemPrinterAdapter("win32", () => {
+      fakeCommands += 1;
+      throw Object.assign(new Error("private fixture stderr"), { status: 41 });
+    }, "RAW");
+  (printerService as unknown as { adapterResolver: PeripheralAdapterResolver }).adapterResolver = resolver;
 
-  try {
-    await assert.rejects(
-      () => printerService.testPrint({ terminalId: "local-terminal", deviceId: "printer-xp80t-usb-001" }),
-      BadRequestException
-    );
-    assert.equal(eventsService.getRecentEvents()[0]?.event, "printer.job.failed");
-  } finally {
-    if (previous === undefined) {
-      delete process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS;
-    } else {
-      process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS = previous;
-    }
-  }
+  await assert.rejects(
+    () => printerService.testPrint({ terminalId: "local-terminal", deviceId: "printer-xp80t-usb-001" }),
+    (error: unknown) => error instanceof PrintDiagnosticError
+      && error.getStatus() === 400 && error.code === "WINDOWS_INVALID_PRINTER_QUEUE"
+      && error.message === "WINDOWS_INVALID_PRINTER_QUEUE",
+  );
+  assert.equal(fakeCommands, 1);
+  assert.equal(eventsService.getRecentEvents()[0]?.event, "printer.job.failed");
+  const failure = logsService.list().find((entry) => entry.event === "printer.test_print.failed");
+  assert.equal(failure?.metadata.errorCode, "WINDOWS_INVALID_PRINTER_QUEUE");
+  assert.equal(failure?.metadata.transport, "RAW");
+  assert.ok(!JSON.stringify(failure).includes("private fixture stderr"));
 });
