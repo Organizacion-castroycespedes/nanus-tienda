@@ -40,6 +40,7 @@ export type TenantElectronicBillingConfigRecord = QueryResultRow & {
   enabled: boolean;
   base_url: string | null;
   credential_reference: string | null;
+  encrypted_credentials: string | null;
   settings: Record<string, unknown>;
   is_default: boolean;
   created_at: string | Date;
@@ -203,6 +204,7 @@ export type NewTenantElectronicBillingConfigInput = {
   enabled?: boolean;
   baseUrl?: string | null;
   credentialReference?: string | null;
+  encryptedCredentials?: string | null;
   settings?: Record<string, unknown>;
   isDefault?: boolean;
   createdAt: Date | string;

@@ -26,6 +26,10 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: MENU_KEYS.CONFIG_MENU, action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/configuracion\/facturacion-electronica\/proveedores\/?$/i,
+    requirement: { module: MENU_KEYS.ELECTRONIC_BILLING_PROVIDERS, action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/admin\/peripherals\/?$/i,
     requirement: { module: "peripherals", action: "manage" },
   },

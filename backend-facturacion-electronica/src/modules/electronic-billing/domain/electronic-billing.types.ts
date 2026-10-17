@@ -54,6 +54,8 @@ export type ElectronicBillingProviderContext = {
   environment: ElectronicBillingEnvironment;
   baseUrl: string | null;
   credentialReference: string | null;
+  encryptedCredentials?: string | null;
+  correlationId?: string;
   settings: Record<string, unknown>;
 };
 
@@ -72,6 +74,7 @@ export type ResolvedElectronicBillingProviderConfig = {
   enabled: boolean;
   baseUrl: string | null;
   credentialReference: string | null;
+  encryptedCredentials?: string | null;
   settings: Record<string, unknown>;
   isDefault: boolean;
 };

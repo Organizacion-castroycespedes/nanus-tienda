@@ -1,4 +1,9 @@
 import { Injectable } from "@nestjs/common";
+import { decryptElectronicBillingCredentials } from "./electronic-billing-credential-crypto";
+import {
+  ElectronicBillingCredentialTransitionPolicy,
+  classifyElectronicBillingCredentialEnvelope,
+} from "./electronic-billing-credential-transition-policy";
 
 export const ELECTRONIC_BILLING_CREDENTIAL_RESOLVER = Symbol(
   "ELECTRONIC_BILLING_CREDENTIAL_RESOLVER",
@@ -10,6 +15,8 @@ export type ElectronicBillingCredentialContext = {
   providerCode: string;
   providerConfigId: string;
   credentialReference: string | null;
+  encryptedCredentials?: string | null;
+  environment?: string | null;
   settings?: Record<string, unknown> | null;
 };
 
@@ -61,6 +68,16 @@ export class ElectronicBillingCredentialInvalidError extends ElectronicBillingCr
       "ELECTRONIC_BILLING_CREDENTIAL_INVALID",
     );
     this.name = "ElectronicBillingCredentialInvalidError";
+  }
+}
+
+export class ElectronicBillingEncryptedCredentialInvalidError extends ElectronicBillingCredentialResolutionError {
+  constructor(providerCode: string, providerConfigId: string, tenantId: string) {
+    super(
+      `Encrypted electronic billing credentials are invalid for provider ${providerCode} in config ${providerConfigId} for tenant ${tenantId}`,
+      "ELECTRONIC_BILLING_ENCRYPTED_CREDENTIAL_INVALID",
+    );
+    this.name = "ElectronicBillingEncryptedCredentialInvalidError";
   }
 }
 
@@ -139,5 +156,61 @@ export class EnvironmentElectronicBillingCredentialResolver
       reference,
       values: parseCredentialValues(reference, raw, context.providerCode),
     };
+  }
+}
+
+@Injectable()
+export class TenantElectronicBillingCredentialResolver
+  implements ElectronicBillingCredentialResolver
+{
+  private readonly environmentResolver = new EnvironmentElectronicBillingCredentialResolver();
+  private readonly transitionPolicy = new ElectronicBillingCredentialTransitionPolicy();
+
+  async resolve(
+    context: ElectronicBillingCredentialContext,
+  ): Promise<ElectronicBillingResolvedCredential | null> {
+    const encryptedCredentials = context.encryptedCredentials?.trim();
+    if (encryptedCredentials) {
+      const envelopeVersion = classifyElectronicBillingCredentialEnvelope(encryptedCredentials);
+      if (envelopeVersion === "UNKNOWN") {
+        throw new ElectronicBillingEncryptedCredentialInvalidError(
+          context.providerCode,
+          context.providerConfigId,
+          context.tenantId,
+        );
+      }
+
+      if (envelopeVersion === "V1") {
+        const decision = this.transitionPolicy.evaluateLegacyOverride(context);
+        if (!decision.allowed) {
+          throw new ElectronicBillingEncryptedCredentialInvalidError(
+            context.providerCode,
+            context.providerConfigId,
+            context.tenantId,
+          );
+        }
+        return this.environmentResolver.resolve(context);
+      }
+
+      try {
+        return {
+          reference: "encrypted_credentials",
+          values: decryptElectronicBillingCredentials(encryptedCredentials, {
+            tenantId: context.tenantId,
+            providerId: context.providerId,
+            providerConfigId: context.providerConfigId,
+          }),
+        };
+      } catch {
+        // Ciphertext presence is authoritative. Never fall back to env on corruption.
+        throw new ElectronicBillingEncryptedCredentialInvalidError(
+          context.providerCode,
+          context.providerConfigId,
+          context.tenantId,
+        );
+      }
+    }
+
+    return this.environmentResolver.resolve(context);
   }
 }

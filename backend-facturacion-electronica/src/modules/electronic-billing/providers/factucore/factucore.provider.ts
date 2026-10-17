@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { ElectronicBillingProviderError } from "../../contracts/electronic-billing-errors";
 import type {
   DownloadElectronicDocumentAttachmentCommand,
@@ -18,6 +18,8 @@ import {
   ElectronicBillingCredentialResolutionError,
   ELECTRONIC_BILLING_CREDENTIAL_RESOLVER,
 } from "../../credentials";
+import { inspectElectronicBillingCredentialRuntimeReadiness } from "../../credentials/electronic-billing-credential-crypto";
+import { classifyElectronicBillingCredentialEnvelope } from "../../credentials/electronic-billing-credential-transition-policy";
 import type {
   ElectronicBillingCredentialResolver,
   ElectronicBillingResolvedCredential,
@@ -35,6 +37,7 @@ import {
   FACTUCORE_DEFAULT_TIMEOUT_MS,
   FACTUCORE_TENANT_ID_SETTING,
   type FactuCoreCredentials,
+  type FactuCoreClientContextResponse,
   type FactuCoreDocumentResponse,
   type FactuCoreRuntimeContext,
   type FactuCoreStatusResponse,
@@ -100,6 +103,12 @@ const mergeDocumentResponses = (
 export class FactuCoreProvider implements ElectronicBillingProvider {
   readonly code = "FACTUCORE";
   readonly capabilities = DEFAULT_CAPABILITIES;
+  private readonly logger = new Logger(FactuCoreProvider.name);
+
+  async getClientContext(context: ElectronicBillingProviderContext): Promise<FactuCoreClientContextResponse> {
+    const runtime = await this.resolveRuntimeContext("get_client_context", context);
+    return this.client.getClientContext(runtime);
+  }
 
   constructor(
     @Inject(FactuCoreClient)
@@ -361,6 +370,21 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
       throw new FactuCoreConfigurationError(operation, "FactuCore baseUrl is required");
     }
 
+    if (context.encryptedCredentials?.trim()
+      && classifyElectronicBillingCredentialEnvelope(context.encryptedCredentials) === "V2") {
+      const readiness = inspectElectronicBillingCredentialRuntimeReadiness();
+      if (!readiness.configured) {
+        this.logger.warn(JSON.stringify({
+          event: "electronic_billing.credential_runtime.failure",
+          operation,
+          layer: "billing-credential",
+          correlationId: context.correlationId ?? null,
+          category: `CREDENTIAL_${readiness.reason}`,
+        }));
+        throw new FactuCoreConfigurationError(operation, "FactuCore credential runtime is unavailable");
+      }
+    }
+
     const credentials = await this.resolveCredentials(operation, context);
     const timeoutMs = this.mapper.resolveTimeoutMs(context.settings) ?? FACTUCORE_DEFAULT_TIMEOUT_MS;
     const factuCoreTenantId = this.resolveFactuCoreTenantId(operation, context.settings);
@@ -372,6 +396,7 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
       syncTimeoutMs: resolveSyncTimeoutMs(timeoutMs),
       transmissionMode: resolveTransmissionMode(),
       factuCoreTenantId,
+      correlationId: context.correlationId,
     };
   }
 
@@ -397,10 +422,19 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
         providerCode: this.code,
         providerConfigId: context.providerConfigId,
         credentialReference: context.credentialReference ?? null,
+        encryptedCredentials: context.encryptedCredentials ?? null,
+        environment: context.environment,
         settings: context.settings ?? null,
       });
     } catch (error) {
       if (error instanceof ElectronicBillingCredentialResolutionError) {
+        this.logger.warn(JSON.stringify({
+          event: "electronic_billing.credential_resolution.failure",
+          operation,
+          layer: "billing-credential",
+          correlationId: context.correlationId ?? null,
+          category: "CREDENTIAL_RESOLUTION_FAILED",
+        }));
         throw new FactuCoreConfigurationError(operation, error.message);
       }
 
@@ -408,6 +442,13 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
     }
 
     if (!credentials) {
+      this.logger.warn(JSON.stringify({
+        event: "electronic_billing.credential_resolution.failure",
+        operation,
+        layer: "billing-credential",
+        correlationId: context.correlationId ?? null,
+        category: "CREDENTIALS_MISSING",
+      }));
       throw new FactuCoreMissingCredentialsError(operation);
     }
 
@@ -415,6 +456,13 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
     const clientSecret = typeof credentials.values.clientSecret === "string" ? credentials.values.clientSecret.trim() : "";
 
     if (!clientKey || !clientSecret) {
+      this.logger.warn(JSON.stringify({
+        event: "electronic_billing.credential_resolution.failure",
+        operation,
+        layer: "billing-credential",
+        correlationId: context.correlationId ?? null,
+        category: "CREDENTIAL_PAYLOAD_INVALID",
+      }));
       throw new FactuCoreConfigurationError(
         operation,
         "FactuCore credential payload must include clientKey and clientSecret",

@@ -73,6 +73,28 @@ test("provider repository finds provider by code", async () => {
   assert.deepEqual(calls[0].params, ["FACTUCORE"]);
 });
 
+test("provider status dependency check can lock the provider row", async () => {
+  const { calls, client } = buildClient([{ id: ids.provider, code: "FACTUCORE" }]);
+  const repository = new ElectronicBillingProviderRepository({ query: async () => ({ rows: [] }) } as never);
+
+  await repository.findByIdForUpdate(ids.provider, client);
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].text, /FOR UPDATE/);
+  assert.deepEqual(calls[0].params, [ids.provider]);
+});
+
+test("provider dependency count query returns only aggregate counts", async () => {
+  const { calls, db } = buildDb([{ enabled_tenant_configurations: "2", historical_documents: "7" }]);
+  const repository = new ElectronicBillingProviderRepository(db as never);
+
+  const result = await repository.countDependencies(ids.provider);
+
+  assert.deepEqual(result, { enabledTenantConfigurations: 2, historicalDocuments: 7 });
+  assert.match(calls[0].text, /COUNT\(\*\)/);
+  assert.doesNotMatch(calls[0].text, /tenant_id|credential_reference|encrypted_credentials/);
+});
+
 test("tenant config repository can resolve default enabled config", async () => {
   const { calls, db } = buildDb([{ id: ids.config, tenant_id: ids.tenant }]);
   const repository = new TenantElectronicBillingConfigRepository(db as never);
@@ -83,6 +105,25 @@ test("tenant config repository can resolve default enabled config", async () => 
   assert.match(calls[0].text, /is_default = TRUE/);
   assert.match(calls[0].text, /enabled = TRUE/);
   assert.deepEqual(calls[0].params, [ids.tenant]);
+});
+
+test("tenant config repository includes encrypted credentials in the write statement", async () => {
+  const { calls, db } = buildDb([{ id: ids.config }]);
+  const repository = new TenantElectronicBillingConfigRepository(db as never);
+
+  await repository.create({
+    id: ids.config,
+    tenantId: ids.tenant,
+    providerId: ids.provider,
+    environment: "TEST",
+    encryptedCredentials: "v2.test.redacted.redacted.redacted",
+    settings: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  assert.match(calls[0].text, /encrypted_credentials/);
+  assert.equal(calls[0].params[7], "v2.test.redacted.redacted.redacted");
 });
 
 test("document repository creates pending documents with nullable provider fields", async () => {

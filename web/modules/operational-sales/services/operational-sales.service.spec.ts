@@ -125,7 +125,9 @@ test("provider-create recovery messages and UI wiring stay dedicated", () => {
   const serviceSource = readFileSync(join(process.cwd(), "modules", "operational-sales", "services", "operational-sales.service.ts"), "utf8");
   const hookSource = readFileSync(join(process.cwd(), "modules", "operational-sales", "hooks", "use-operational-sale-detail.ts"), "utf8");
   const componentSource = readFileSync(join(process.cwd(), "modules", "operational-sales", "components", "OperationalSaleDetailPage.tsx"), "utf8");
+  const wizardSource = readFileSync(join(process.cwd(), "modules", "operational-sales", "components", "wizard", "PreInvoiceWizardModal.tsx"), "utf8");
   assert.match(serviceSource, /electronic-billing\/recover-provider-create-intent/);
+  assert.match(serviceSource, /\/sales\/\$\{encodeURIComponent\(saleId\)\}\/electronic-billing/);
   assert.match(hookSource, /recoveryPostGuard\.run/);
   assert.match(componentSource, /ConfirmDialog/);
   assert.match(componentSource, /setRecoveryConfirmOpen\(true\)/);
@@ -133,4 +135,9 @@ test("provider-create recovery messages and UI wiring stay dedicated", () => {
   assert.match(componentSource, /confirmText="Recuperar procesamiento"/);
   assert.match(componentSource, /cancelText="Cancelar"/);
   assert.match(componentSource, /Recuperar procesamiento/);
+  assert.match(componentSource, /Venta: \$\{sale\.id\}/);
+  assert.match(componentSource, /Tenant: \$\{tenantContext\}/);
+  assert.match(wizardSource, /requestOperationalSaleElectronicBilling\(sale\.id\)/);
+  assert.match(wizardSource, /requestCreated|DOCUMENT_EXISTS/);
+  assert.match(wizardSource, /no confirma creación del proveedor/);
 });

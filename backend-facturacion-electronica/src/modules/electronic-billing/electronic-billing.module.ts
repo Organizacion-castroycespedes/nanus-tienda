@@ -1,11 +1,13 @@
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
-import { ELECTRONIC_BILLING_CREDENTIAL_RESOLVER, EnvironmentElectronicBillingCredentialResolver } from "./credentials";
+import { ELECTRONIC_BILLING_CREDENTIAL_RESOLVER, TenantElectronicBillingCredentialResolver } from "./credentials";
 import {
   ElectronicBillingSaleEventController,
   SaleCompletedForElectronicBillingConsumerService,
 } from "./consumers";
 import { ElectronicBillingProviderRegistry } from "./providers/electronic-billing-provider-registry";
+import { ElectronicBillingAdminController } from "./admin/electronic-billing-admin.controller";
+import { ElectronicBillingAdminService } from "./admin/electronic-billing-admin.service";
 import { ElectronicBillingProviderResolver } from "./providers/electronic-billing-provider-resolver";
 import {
   ElectronicBillingClient,
@@ -33,10 +35,14 @@ import {
   ElectronicBillingService,
 } from "./services";
 import { ElectronicBillingBackgroundService, ElectronicBillingGraphicBackfillWorker } from "./workers";
+import {
+  ELECTRONIC_BILLING_OPERATIONAL_APPROVAL,
+} from "./admin/electronic-billing-write-readiness";
+import { DatabaseElectronicBillingOperationalApproval } from "./admin/electronic-billing-operational-approval.repository";
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [ElectronicBillingSaleEventController],
+  controllers: [ElectronicBillingSaleEventController, ElectronicBillingAdminController],
   providers: [
     ElectronicBillingProviderRegistry,
     ElectronicBillingProviderResolver,
@@ -44,9 +50,15 @@ import { ElectronicBillingBackgroundService, ElectronicBillingGraphicBackfillWor
     ElectronicBillingMapper,
     ElectronicBillingProviderAdapter,
     ElectronicBillingProviderBootstrap,
+    ElectronicBillingAdminService,
+    DatabaseElectronicBillingOperationalApproval,
+    {
+      provide: ELECTRONIC_BILLING_OPERATIONAL_APPROVAL,
+      useExisting: DatabaseElectronicBillingOperationalApproval,
+    },
     {
       provide: ELECTRONIC_BILLING_CREDENTIAL_RESOLVER,
-      useClass: EnvironmentElectronicBillingCredentialResolver,
+      useClass: TenantElectronicBillingCredentialResolver,
     },
     SaleCompletedForElectronicBillingConsumerService,
     ElectronicBillingService,

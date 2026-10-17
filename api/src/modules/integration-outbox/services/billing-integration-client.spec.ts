@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { BillingIntegrationClient } from "./billing-integration-client";
+import { BillingAdminRequestError, BillingIntegrationClient } from "./billing-integration-client";
 
 const buildEvent = () => ({
   eventId: randomUUID(),
@@ -200,6 +200,78 @@ test("client parses the electronic document outcome from sale completed", async 
     assert.equal(result.outcome, "PUBLISHED");
     assert.equal(result.electronicDocument?.status, "REJECTED");
     assert.equal(result.electronicDocument?.failures[0]?.solution, "Corregir correo");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("provider administration writes use internal token and safe JSON contract", async () => {
+  const originalFetch = globalThis.fetch;
+  let request: RequestInit | undefined;
+  let url = "";
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    url = String(input);
+    request = init;
+    return jsonResponse({
+      id: "provider-1",
+      code: "FACTUCORE",
+      name: "FactuCore",
+      providerType: "ELECTRONIC_BILLING",
+      active: true,
+      capabilities: {},
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+  }) as typeof fetch;
+  try {
+    const client = buildClient();
+    await client.createElectronicBillingProvider({
+      code: "FACTUCORE",
+      name: "FactuCore",
+      providerType: "ELECTRONIC_BILLING",
+      capabilities: {
+        invoice: true, creditNote: true, debitNote: true, retry: true,
+        pdf: true, xml: true, signedXml: true, asyncStatus: true, attachmentDownload: true,
+      },
+    });
+    assert.match(url, /\/internal\/electronic-billing\/admin\/providers$/);
+    assert.equal(request?.method, "POST");
+    assert.match(String((request?.headers as Record<string, string>).Authorization), /^Bearer /);
+    assert.doesNotMatch(JSON.stringify(request), /clientSecret|encrypted_credentials|credential_reference/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("provider administration maps upstream conflict without exposing body", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => jsonResponse({ message: "secret internal detail" }, 409)) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => buildClient().updateElectronicBillingProviderStatus("provider-1", { active: false }),
+      /conflict|rejected/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("client correlates FactuCore context reads and preserves upstream 401 classification", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured: Request | null = null;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    captured = new Request(input, init);
+    return jsonResponse({ message: "unauthorized" }, 401);
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => buildClient().getTenantFactuCoreContext("tenant-a", "corr-identity-1"),
+      (error: unknown) => error instanceof BillingAdminRequestError && error.statusCode === 401,
+    );
+    assert.equal(captured?.method, "GET");
+    assert.equal(captured?.headers.get("x-correlation-id"), "corr-identity-1");
+    assert.doesNotMatch(JSON.stringify(captured), /secret-token/);
   } finally {
     globalThis.fetch = originalFetch;
   }

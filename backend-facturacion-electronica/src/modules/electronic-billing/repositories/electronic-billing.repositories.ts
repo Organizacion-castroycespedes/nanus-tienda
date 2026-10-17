@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../database/database.service";
+import type { ElectronicBillingProviderCapabilities } from "../domain/electronic-billing.types";
 import {
   ElectronicDocumentConflictError,
   type ElectronicBillingEnvironment,
@@ -146,6 +147,35 @@ export class ElectronicBillingProviderRepository extends ElectronicBillingReposi
     return result.rows;
   }
 
+  async findByIdForUpdate(id: string, client: PoolClient) {
+    return this.queryOne<ElectronicBillingProviderRecord>(
+      `SELECT
+        id,
+        code,
+        name,
+        provider_type,
+        active,
+        capabilities,
+        created_at,
+        updated_at
+      FROM electronic_billing_providers
+      WHERE id = $1
+      FOR UPDATE`,
+      [id],
+      client,
+    );
+  }
+
+  async listAll(client?: PoolClient) {
+    const result = await this.query<ElectronicBillingProviderRecord>(
+      `SELECT id, code, name, provider_type, active, capabilities, created_at, updated_at
+       FROM electronic_billing_providers
+       ORDER BY code ASC`,
+      [],
+      client,
+    );
+    return result.rows;
+  }
   async create(input: NewElectronicBillingProviderInput, client?: PoolClient) {
     return this.queryOne<ElectronicBillingProviderRecord>(
       `INSERT INTO electronic_billing_providers (
@@ -180,6 +210,66 @@ export class ElectronicBillingProviderRepository extends ElectronicBillingReposi
       client
     );
   }
+
+  async updateMetadata(
+    id: string,
+    input: {
+      name: string;
+      capabilities: ElectronicBillingProviderCapabilities;
+      updatedAt: Date | string;
+    },
+    client?: PoolClient,
+  ) {
+    return this.queryOne<ElectronicBillingProviderRecord>(
+      `UPDATE electronic_billing_providers
+       SET name = $2,
+           capabilities = $3,
+           updated_at = $4
+       WHERE id = $1
+       RETURNING id, code, name, provider_type, active, capabilities, created_at, updated_at`,
+      [id, input.name, input.capabilities, input.updatedAt],
+      client,
+    );
+  }
+
+  async updateStatus(
+    id: string,
+    active: boolean,
+    updatedAt: Date | string,
+    client?: PoolClient,
+  ) {
+    return this.queryOne<ElectronicBillingProviderRecord>(
+      `UPDATE electronic_billing_providers
+       SET active = $2,
+           updated_at = $3
+       WHERE id = $1
+       RETURNING id, code, name, provider_type, active, capabilities, created_at, updated_at`,
+      [id, active, updatedAt],
+      client,
+    );
+  }
+
+  async countDependencies(providerId: string, client?: PoolClient) {
+    const result = await this.queryOne<{
+      enabled_tenant_configurations: string;
+      historical_documents: string;
+    }>(
+      `SELECT
+        (SELECT COUNT(*)::text
+         FROM tenant_electronic_billing_configs
+         WHERE provider_id = $1 AND enabled = TRUE) AS enabled_tenant_configurations,
+        (SELECT COUNT(*)::text
+         FROM electronic_documents
+         WHERE provider_id = $1) AS historical_documents`,
+      [providerId],
+      client,
+    );
+
+    return {
+      enabledTenantConfigurations: Number(result?.enabled_tenant_configurations ?? 0),
+      historicalDocuments: Number(result?.historical_documents ?? 0),
+    };
+  }
 }
 
 @Injectable()
@@ -188,6 +278,49 @@ export class TenantElectronicBillingConfigRepository extends ElectronicBillingRe
     super(db);
   }
 
+  async listSafeForTenant(tenantId: string, client?: PoolClient) {
+    const result = await this.query<{
+      id: string;
+      tenant_id: string;
+      provider_id: string;
+      provider_code: string;
+      provider_name: string;
+      provider_active: boolean;
+      environment: string;
+      enabled: boolean;
+      is_default: boolean;
+      base_url_configured: boolean;
+      encrypted_credentials_present: boolean;
+      legacy_credential_reference_present: boolean;
+      factucore_tenant_id: string | null;
+    }>(
+      `SELECT
+        config.id,
+        config.tenant_id,
+        config.provider_id,
+        provider.code AS provider_code,
+        provider.name AS provider_name,
+        provider.active AS provider_active,
+        config.environment,
+        config.enabled,
+        config.is_default,
+        NULLIF(BTRIM(config.base_url), '') IS NOT NULL AS base_url_configured,
+        NULLIF(BTRIM(config.encrypted_credentials), '') IS NOT NULL AS encrypted_credentials_present,
+        NULLIF(BTRIM(config.credential_reference), '') IS NOT NULL AS legacy_credential_reference_present,
+        CASE
+          WHEN jsonb_typeof(config.settings -> 'factuCoreTenantId') = 'string'
+            THEN config.settings ->> 'factuCoreTenantId'
+          ELSE NULL
+        END AS factucore_tenant_id
+      FROM tenant_electronic_billing_configs AS config
+      INNER JOIN electronic_billing_providers AS provider ON provider.id = config.provider_id
+      WHERE config.tenant_id = $1
+      ORDER BY config.is_default DESC, config.environment ASC, config.updated_at DESC`,
+      [tenantId],
+      client,
+    );
+    return result.rows;
+  }
   async findById(id: string, tenantId?: string, client?: PoolClient) {
     const params: unknown[] = [id];
     let where = "id = $1";
@@ -204,9 +337,10 @@ export class TenantElectronicBillingConfigRepository extends ElectronicBillingRe
         provider_id,
         environment,
         enabled,
-        base_url,
-        credential_reference,
-        settings,
+      base_url,
+      credential_reference,
+      encrypted_credentials,
+      settings,
         is_default,
         created_at,
         updated_at
@@ -218,6 +352,19 @@ export class TenantElectronicBillingConfigRepository extends ElectronicBillingRe
     );
   }
 
+  async findByIdForUpdate(id: string, tenantId: string, client: PoolClient) {
+    return this.queryOne<TenantElectronicBillingConfigRecord>(
+      `SELECT id, tenant_id, provider_id, environment, enabled, base_url,
+        credential_reference, encrypted_credentials, settings, is_default,
+        created_at, updated_at
+       FROM tenant_electronic_billing_configs
+       WHERE id = $1 AND tenant_id = $2
+       FOR UPDATE`,
+      [id, tenantId],
+      client,
+    );
+  }
+
   async findEnabledForTenant(tenantId: string, client?: PoolClient) {
     const result = await this.query<TenantElectronicBillingConfigRecord>(
       `SELECT
@@ -226,9 +373,10 @@ export class TenantElectronicBillingConfigRepository extends ElectronicBillingRe
         provider_id,
         environment,
         enabled,
-        base_url,
-        credential_reference,
-        settings,
+      base_url,
+      credential_reference,
+      encrypted_credentials,
+      settings,
         is_default,
         created_at,
         updated_at
@@ -264,9 +412,10 @@ export class TenantElectronicBillingConfigRepository extends ElectronicBillingRe
         provider_id,
         environment,
         enabled,
-        base_url,
-        credential_reference,
-        settings,
+      base_url,
+      credential_reference,
+      encrypted_credentials,
+      settings,
         is_default,
         created_at,
         updated_at
@@ -287,9 +436,10 @@ export class TenantElectronicBillingConfigRepository extends ElectronicBillingRe
         provider_id,
         environment,
         enabled,
-        base_url,
-        credential_reference,
-        settings,
+      base_url,
+      credential_reference,
+      encrypted_credentials,
+      settings,
         is_default,
         created_at,
         updated_at
@@ -315,22 +465,24 @@ export class TenantElectronicBillingConfigRepository extends ElectronicBillingRe
         provider_id,
         environment,
         enabled,
-        base_url,
-        credential_reference,
-        settings,
+      base_url,
+      credential_reference,
+      encrypted_credentials,
+      settings,
         is_default,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING
         id,
         tenant_id,
         provider_id,
         environment,
         enabled,
-        base_url,
-        credential_reference,
-        settings,
+      base_url,
+      credential_reference,
+      encrypted_credentials,
+      settings,
         is_default,
         created_at,
         updated_at`,
@@ -342,12 +494,120 @@ export class TenantElectronicBillingConfigRepository extends ElectronicBillingRe
         input.enabled ?? false,
         input.baseUrl ?? null,
         input.credentialReference ?? null,
+        input.encryptedCredentials ?? null,
         input.settings ?? {},
         input.isDefault ?? false,
         input.createdAt,
         input.updatedAt,
       ],
       client
+    );
+  }
+
+  async findFactuCoreForAdministrativeContext(tenantId: string, client?: PoolClient) {
+    return this.queryOne<TenantElectronicBillingConfigRecord>(
+      `SELECT
+        config.id,
+        config.tenant_id,
+        config.provider_id,
+        config.environment,
+        config.enabled,
+        config.base_url,
+        config.credential_reference,
+        config.encrypted_credentials,
+        config.settings,
+        config.is_default,
+        config.created_at,
+        config.updated_at
+      FROM tenant_electronic_billing_configs config
+      JOIN electronic_billing_providers provider
+        ON provider.id = config.provider_id
+      WHERE config.tenant_id = $1
+        AND provider.code = 'FACTUCORE'
+      ORDER BY config.is_default DESC, config.updated_at DESC
+      LIMIT 1`,
+      [tenantId],
+      client,
+    );
+  }
+
+  async updateAdministrative(
+    id: string,
+    tenantId: string,
+    input: {
+      baseUrl?: string | null;
+      settings?: Record<string, unknown>;
+      encryptedCredentials?: string | null;
+      updatedAt: Date | string;
+    },
+    client: PoolClient,
+  ) {
+    return this.queryOne<TenantElectronicBillingConfigRecord>(
+      `UPDATE tenant_electronic_billing_configs
+       SET base_url = COALESCE($3, base_url),
+           settings = COALESCE($4::jsonb, settings),
+           encrypted_credentials = COALESCE($5, encrypted_credentials),
+           updated_at = $6
+       WHERE id = $1 AND tenant_id = $2
+       RETURNING id, tenant_id, provider_id, environment, enabled, base_url,
+         credential_reference, encrypted_credentials, settings, is_default,
+         created_at, updated_at`,
+      [id, tenantId, input.baseUrl ?? null, input.settings ? JSON.stringify(input.settings) : null,
+        input.encryptedCredentials ?? null, input.updatedAt],
+      client,
+    );
+  }
+
+  async activateAdministrative(
+    id: string,
+    tenantId: string,
+    clearLegacyReference: boolean,
+    updatedAt: Date | string,
+    client: PoolClient,
+  ) {
+    await this.query(
+      `UPDATE tenant_electronic_billing_configs
+       SET is_default = FALSE,
+           updated_at = $2
+       WHERE tenant_id = $1
+         AND id <> $3
+         AND enabled = TRUE
+         AND is_default = TRUE`,
+      [tenantId, updatedAt, id],
+      client,
+    );
+    return this.queryOne<TenantElectronicBillingConfigRecord>(
+      `UPDATE tenant_electronic_billing_configs
+       SET enabled = TRUE,
+           is_default = TRUE,
+           credential_reference = CASE WHEN $3 THEN NULL ELSE credential_reference END,
+           updated_at = $4
+       WHERE id = $1 AND tenant_id = $2
+       RETURNING id, tenant_id, provider_id, environment, enabled, base_url,
+         credential_reference, encrypted_credentials, settings, is_default,
+         created_at, updated_at`,
+      [id, tenantId, clearLegacyReference, updatedAt],
+      client,
+    );
+  }
+
+  async insertAdministrativeAudit(
+    input: {
+      id: string;
+      tenantId: string;
+      configId: string;
+      action: "CONFIG_CREATED" | "CONFIG_METADATA_UPDATED" | "CONFIG_CREDENTIAL_REPLACED";
+      metadata: Record<string, unknown>;
+      createdAt: Date | string;
+    },
+    client: PoolClient,
+  ) {
+    await this.query(
+      `INSERT INTO electronic_billing_configuration_audit
+        (id, tenant_id, config_id, action, actor_source, metadata, created_at)
+       VALUES ($1, $2, $3, $4, 'MANUS_SUPER_ADMIN_PROXY', $5::jsonb, $6)`,
+      [input.id, input.tenantId, input.configId, input.action, JSON.stringify(input.metadata), input.createdAt],
+      client,
     );
   }
 }
@@ -1140,7 +1400,10 @@ export class ElectronicDocumentRepository extends ElectronicBillingRepositoryBas
       WHERE tenant_id = $1
         AND id = $2
         AND external_reference = $3
-        AND status = 'TECHNICAL_ERROR'
+        AND (
+          status = 'TECHNICAL_ERROR'
+          OR (status = 'REJECTED' AND last_error_code = 'FACTUCORE_VALIDATION')
+        )
         AND processing_stage = 'PROVIDER_CREATE_INTENT'
         AND provider_document_id IS NULL
       RETURNING id`,

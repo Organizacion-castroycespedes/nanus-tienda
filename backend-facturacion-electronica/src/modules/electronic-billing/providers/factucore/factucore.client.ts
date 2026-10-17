@@ -1,4 +1,6 @@
 import {
+  FactuCoreError,
+  FactuCoreConfigurationError,
   FactuCoreAuthenticationError,
   FactuCoreAttachmentNotFoundError,
   FactuCoreConflictError,
@@ -12,8 +14,10 @@ import {
 import {
   FACTUCORE_DEFAULT_TIMEOUT_MS,
   FACTUCORE_DOCUMENT_ENDPOINT,
+  FACTUCORE_CLIENT_CONTEXT_ENDPOINT,
   type FactuCoreBinaryResponse,
   type FactuCoreCreditNoteRequest,
+  type FactuCoreClientContextResponse,
   type FactuCoreDocumentOperationsResponse,
   type FactuCoreDocumentResponse,
   type FactuCoreDownloadType,
@@ -91,6 +95,20 @@ const parseJson = <T>(value: string, fallback: T): T => {
   }
 };
 
+const classifyFactuCoreHttpFailure = (status: number, responseText: string) => {
+  const payload = parseJson<unknown>(responseText, null);
+  if (status === 401) return "AUTHENTICATION_401";
+  if (status === 403 && isApiClientAuthorizationFailure(payload)) return "AUTHORIZATION_403";
+  if (status === 403) return "UPSTREAM_VALIDATION_403";
+  if (status === 404) return "NOT_FOUND_404";
+  if (status === 408) return "TIMEOUT_408";
+  if (status === 429) return "RATE_LIMIT_429";
+  if (status >= 500) return "UPSTREAM_5XX";
+  return "UPSTREAM_REJECTED";
+};
+
+const getRequestPath = (url: URL) => url.pathname;
+
 const isApiClientAuthorizationFailure = (payload: unknown) => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return false;
@@ -133,6 +151,19 @@ export class FactuCoreClient {
       context,
       body: request,
     });
+  }
+
+  async getClientContext(context: FactuCoreRuntimeContext) {
+    const response = await this.requestJson<FactuCoreClientContextResponse>({
+      method: "GET",
+      path: FACTUCORE_CLIENT_CONTEXT_ENDPOINT,
+      operation: "get_client_context",
+      context,
+    });
+    if (!this.isClientContextResponse(response)) {
+      throw new FactuCoreConfigurationError("get_client_context", "FactuCore returned an incompatible client context");
+    }
+    return response;
   }
 
   async issueInvoice(context: FactuCoreRuntimeContext, request: FactuCoreInvoiceRequest) {
@@ -280,20 +311,22 @@ export class FactuCoreClient {
   private async requestJson<T>(request: FactuCoreJsonRequest): Promise<T> {
     const response = await this.request(request);
     const responseText = await readResponseText(response);
-
-    const loggedResponse: unknown = parseJson(responseText, responseText);
-    const loggedRecord = loggedResponse && typeof loggedResponse === "object" && !Array.isArray(loggedResponse)
-      ? loggedResponse as Record<string, unknown>
-      : null;
     console.log(`[FactuCoreClient Response] status=${response.status} (op: ${request.operation})`, {
       status: response.status,
       operation: request.operation,
-      response: loggedRecord && "graphicRepresentation" in loggedRecord
-        ? { ...loggedRecord, graphicRepresentation: loggedRecord.graphicRepresentation ? "[omitted]" : null }
-        : loggedResponse,
+      correlationId: request.context.correlationId ?? null,
+      responseBodyPresent: responseText.length > 0,
+      responseBodyLength: responseText.length,
     });
 
     if (!response.ok) {
+      console.warn("[FactuCoreClient Diagnostic]", {
+        operation: request.operation,
+        correlationId: request.context.correlationId ?? null,
+        layer: "factucore-http",
+        category: classifyFactuCoreHttpFailure(response.status, responseText),
+        upstreamStatus: response.status,
+      });
       throw this.mapHttpError(request.operation, response, responseText);
     }
 
@@ -304,6 +337,20 @@ export class FactuCoreClient {
     return parseJson<T>(responseText, {} as T);
   }
 
+  private isClientContextResponse(value: unknown): value is FactuCoreClientContextResponse {
+    if (!value || typeof value !== "object") return false;
+    const record = value as Record<string, unknown>;
+    const issuer = record.issuer;
+    const readiness = record.dianReadiness;
+    return typeof record.apiClientId === "string"
+      && typeof record.tenantId === "string"
+      && typeof record.environment === "string"
+      && !!issuer && typeof issuer === "object"
+      && !!readiness && typeof readiness === "object"
+      && ["READY", "NOT_READY", "UNKNOWN"].includes((readiness as Record<string, unknown>).status as string)
+      && Array.isArray((readiness as Record<string, unknown>).failedChecks);
+  }
+
   private async requestBinary(request: FactuCoreBinaryRequest): Promise<FactuCoreBinaryResponse> {
     const response = await this.request(request);
 
@@ -312,7 +359,8 @@ export class FactuCoreClient {
       console.error(`[FactuCoreClient Binary Error] status=${response.status} (op: ${request.operation})`, {
         status: response.status,
         operation: request.operation,
-        response: responseText,
+        responseBodyPresent: responseText.length > 0,
+        responseBodyLength: responseText.length,
       });
       if (response.status === 404) {
         throw new FactuCoreAttachmentNotFoundError(request.operation, "FactuCore attachment not found");
@@ -339,11 +387,12 @@ export class FactuCoreClient {
     const url = buildUrl(request.context.baseUrl, request.path);
     const credentials = request.context.credentials;
 
-    console.log(`[FactuCoreClient Request] ${request.method} ${url.toString()} (op: ${request.operation})`, {
-      url: url.toString(),
+    console.log(`[FactuCoreClient Request] ${request.method} ${getRequestPath(url)} (op: ${request.operation})`, {
+      path: getRequestPath(url),
       method: request.method,
       operation: request.operation,
-      body: "body" in request ? (request as FactuCoreJsonRequest).body ?? null : null,
+      correlationId: request.context.correlationId ?? null,
+      bodyPresent: "body" in request && (request as FactuCoreJsonRequest).body !== undefined,
     });
 
     try {
@@ -362,9 +411,23 @@ export class FactuCoreClient {
       });
     } catch (error) {
       if (isAbortError(error)) {
+        console.warn("[FactuCoreClient Diagnostic]", {
+          operation: request.operation,
+          correlationId: request.context.correlationId ?? null,
+          layer: "factucore-http",
+          category: "TIMEOUT",
+          upstreamStatus: null,
+        });
         throw new FactuCoreTimeoutError(request.operation);
       }
 
+      console.warn("[FactuCoreClient Diagnostic]", {
+        operation: request.operation,
+        correlationId: request.context.correlationId ?? null,
+        layer: "factucore-http",
+        category: "NETWORK",
+        upstreamStatus: null,
+      });
       throw new FactuCoreNetworkError(request.operation);
     } finally {
       clearTimeout(timeout);
@@ -379,31 +442,35 @@ export class FactuCoreClient {
     const validationMessage = validationDetails.length > 0
       ? validationDetails.map((detail) => detail.path ? `${detail.path}: ${detail.message}` : detail.message).join("; ").slice(0, 2000)
       : "FactuCore rejected the request payload";
+    const finalizeError = <T extends FactuCoreError>(error: T) => {
+      error.responseBodyPresent = responseText.length > 0;
+      return error;
+    };
 
     if (status === 401 || (status === 403 && isApiClientAuthorizationFailure(payload))) {
-      return new FactuCoreAuthenticationError(operation, status);
+      return finalizeError(new FactuCoreAuthenticationError(operation, status));
     }
 
     if (status === 403) {
-      return new FactuCoreValidationError(
+      return finalizeError(new FactuCoreValidationError(
         operation,
         status,
         validationMessage,
         validationDetails,
         providerCode,
-      );
+      ));
     }
 
     if (status === 409) {
-      return new FactuCoreConflictError(operation, status, "FactuCore conflict for existing external reference");
+      return finalizeError(new FactuCoreConflictError(operation, status, "FactuCore conflict for existing external reference"));
     }
 
     if (status === 422) {
-      return new FactuCoreValidationError(operation, status, validationMessage, validationDetails, providerCode);
+      return finalizeError(new FactuCoreValidationError(operation, status, validationMessage, validationDetails, providerCode));
     }
 
     if (status === 429) {
-      return new FactuCoreRateLimitError(
+      return finalizeError(new FactuCoreRateLimitError(
         operation,
         status,
         parseRetryAfterSeconds(readHeader(response.headers, "retry-after")),
@@ -411,19 +478,19 @@ export class FactuCoreClient {
         readHeader(response.headers, "x-ratelimit-remaining"),
         readHeader(response.headers, "x-ratelimit-reset"),
         "FactuCore rate limit exceeded",
-      );
+      ));
     }
 
     if (status >= 500) {
-      return new FactuCoreUnavailableError(operation, status, "FactuCore service unavailable");
+      return finalizeError(new FactuCoreUnavailableError(operation, status, "FactuCore service unavailable"));
     }
 
     if (status === 404) {
-      return new FactuCoreValidationError(operation, status, "FactuCore resource not found");
+      return finalizeError(new FactuCoreValidationError(operation, status, "FactuCore resource not found"));
     }
 
     const bodyPreview = responseText.trim().slice(0, 200);
-    return new FactuCoreValidationError(
+    return finalizeError(new FactuCoreValidationError(
       operation,
       status,
       validationDetails.length > 0
@@ -433,7 +500,7 @@ export class FactuCoreClient {
           : `FactuCore request failed with status ${status}`,
       validationDetails,
       providerCode,
-    );
+    ));
   }
 
   private readProviderCode(payload: unknown) {
