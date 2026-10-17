@@ -36,6 +36,7 @@ export interface WizardModalProps {
   onDismissError?: () => void;
   size?: "md" | "lg" | "xl" | "full";
   fullScreen?: boolean;
+  actionsPlacement?: "footer" | "header";
   children: ReactNode;
   customFooter?: ReactNode;
 }
@@ -63,6 +64,7 @@ export const WizardModal: React.FC<WizardModalProps> = ({
   onDismissError,
   size = "xl",
   fullScreen = false,
+  actionsPlacement = "footer",
   children,
   customFooter,
 }) => {
@@ -70,6 +72,19 @@ export const WizardModal: React.FC<WizardModalProps> = ({
 
   const isLastStep = currentStepIndex >= steps.length - 1;
   const isFirstStep = currentStepIndex === 0;
+
+  const actionControls = (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>{cancelText}</Button>
+      {!isFirstStep && onBack ? <Button variant="ghost" onClick={onBack} disabled={isSubmitting}>{backText}</Button> : null}
+      {!isLastStep && onNext ? <Button onClick={onNext} disabled={!canProceed || isSubmitting}>{nextText}</Button> : null}
+      {isLastStep && onSubmit ? (
+        <Button onClick={onSubmit} disabled={!canSubmit || isSubmitting}>
+          {isSubmitting ? <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />Procesando...</span> : submitText}
+        </Button>
+      ) : null}
+    </div>
+  );
 
   return (
     <Modal
@@ -144,7 +159,10 @@ export const WizardModal: React.FC<WizardModalProps> = ({
             })}
           </div>
 
-          {headerBadge ? <div className="shrink-0">{headerBadge}</div> : null}
+          <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
+            {headerBadge ? <div className="shrink-0">{headerBadge}</div> : null}
+            {actionsPlacement === "header" ? actionControls : null}
+          </div>
         </div>
 
         {/* Embedded In-Modal Error Banner */}
@@ -176,40 +194,12 @@ export const WizardModal: React.FC<WizardModalProps> = ({
         {/* Wizard Footer Controls */}
         {customFooter ? (
           <div className="pt-3 border-t border-slate-200 dark:border-slate-700/80">{customFooter}</div>
-        ) : (
+        ) : actionsPlacement === "footer" ? (
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-700/80">
-            <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>
-              {cancelText}
-            </Button>
-
-            <div className="flex items-center gap-2">
-              {!isFirstStep && onBack ? (
-                <Button variant="ghost" onClick={onBack} disabled={isSubmitting}>
-                  {backText}
-                </Button>
-              ) : null}
-
-              {!isLastStep && onNext ? (
-                <Button onClick={onNext} disabled={!canProceed || isSubmitting}>
-                  {nextText}
-                </Button>
-              ) : null}
-
-              {isLastStep && onSubmit ? (
-                <Button onClick={onSubmit} disabled={!canSubmit || isSubmitting}>
-                  {isSubmitting ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      Procesando...
-                    </span>
-                  ) : (
-                    submitText
-                  )}
-                </Button>
-              ) : null}
-            </div>
+            <span aria-hidden="true" />
+            {actionControls}
           </div>
-        )}
+        ) : null}
       </div>
     </Modal>
   );
