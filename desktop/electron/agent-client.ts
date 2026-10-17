@@ -21,6 +21,14 @@ const SAFE_AGENT_ERROR_CODES = new Set([
   "SCALE_WEIGHT_ZERO",
   "PRINT_TRANSPORT_NOT_READY",
   "WINDOWS_PRINT_QUEUE_REQUIRED",
+  "WINDOWS_INVALID_PRINTER_QUEUE",
+  "PRINT_COMMAND_LAUNCH_FAILED",
+  "PRINT_PROCESS_FAILED",
+  "PRINT_TIMEOUT",
+  "PRINT_SPOOLER_SUBMISSION_FAILED",
+  "PRINT_FAILED",
+  "DRAWER_NOT_CERTIFIED",
+  "DRAWER_RAW_TRANSPORT_FAILED",
 ]);
 
 export class AgentHttpError extends Error {
@@ -155,9 +163,14 @@ export const listAgentDevices = async (shellConfig: AgentRoutingConfig): Promise
 
 export const discoverAgentDevices = async (shellConfig: AgentRoutingConfig, terminalId: string): Promise<{ devices: unknown[] }> => {
   const value = await requestJson(shellConfig, "/devices/discover", "POST", { terminalId: terminalId.slice(0, 128) }, { timeoutMs: DISCOVERY_REQUEST_TIMEOUT_MS });
-  if (!value || typeof value !== "object") return { devices: [] };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("AGENT_RESPONSE_INVALID");
+  }
   const source = value as { devices?: unknown };
-  return { devices: Array.isArray(source.devices) ? source.devices : [] };
+  if (!Array.isArray(source.devices)) {
+    throw new Error("AGENT_RESPONSE_INVALID");
+  }
+  return { devices: source.devices };
 };
 
 const requestAgentOperation = (config: AgentRoutingConfig, path: string, method: string, body: unknown, options: RequestOptions = {}) => requestJson(config, path, method, body, options);

@@ -6,6 +6,8 @@ import type {
   DiscoveredUsbPrinter,
 } from "../../shared/discovery/device-discovery-provider";
 
+import type { UsbDiscoveryDiagnostic } from '../../shared/discovery/device-discovery-provider';
+
 export type WindowsDiscoveryCommandRunner = (command: string, args: string[]) => string | Promise<string>;
 export const WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS = 7_000;
 export type WindowsPrinterDiagnostic = {
@@ -16,7 +18,14 @@ export type WindowsPrinterDiagnostic = {
   Shared: boolean;
   WorkOffline?: boolean;
 };
-type WindowsPnpDiagnostic = { InstanceId: string; Class: string; FriendlyName: string; Status: string; Present: boolean; HardwareIds?: string[]; CompatibleIds?: string[]; LocationInfo?: string; LocationPaths?: string[] };
+export type WindowsPnpDiagnostic = { InstanceId: string; Class: string; FriendlyName: string; Status: string; Present: boolean; HardwareIds?: string[]; CompatibleIds?: string[]; LocationInfo?: string; LocationPaths?: string[]; Parent?: string; Children?: string[]; ContainerId?: string };
+type WindowsPnpParseSummary = {
+  records: WindowsPnpDiagnostic[];
+  rawRecordCount: number;
+  parsedRecordCount: number;
+  incompleteRecordCount: number;
+  missingCompatibleIdCount: number;
+};
 export type WindowsSerialDiagnostic = { DeviceID: string; Name: string; PNPDeviceID: string; Status: string; Present: boolean };
 
 export class WindowsPrinterDiscoveryParseError extends Error {
@@ -39,12 +48,36 @@ const systemCommandRunner: WindowsDiscoveryCommandRunner = (command, args) =>
     });
   });
 
+const windowsPnpInventoryScript = String.raw`
+$d=@(Get-PnpDevice -PresentOnly | Where-Object {
+  ($_.InstanceId -like 'USB\*' -and ($_.CompatibleID -match 'Class_07')) -or $_.InstanceId -like 'USBPRINT\*'
+} | ForEach-Object {
+  $properties=@()
+  foreach ($key in @('DEVPKEY_Device_Parent','DEVPKEY_Device_Children','DEVPKEY_Device_ContainerId')) {
+    try { $properties+=@(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName $key -ErrorAction Stop) } catch { }
+  }
+  [PSCustomObject]@{
+    InstanceId=[string]$_.InstanceId; Class=[string]$_.Class; FriendlyName=[string]$_.FriendlyName; Status=[string]$_.Status; Present=$true
+    HardwareIds=@($_.HardwareID); CompatibleIds=@($_.CompatibleID); LocationInfo=[string]$_.LocationInfo; LocationPaths=@($_.LocationPaths)
+    Parent=[string]($properties | Where-Object KeyName -eq 'DEVPKEY_Device_Parent').Data
+    Children=@(($properties | Where-Object KeyName -eq 'DEVPKEY_Device_Children').Data)
+    ContainerId=[string]($properties | Where-Object KeyName -eq 'DEVPKEY_Device_ContainerId').Data
+  }
+}); ConvertTo-Json -InputObject $d -Compress
+`;
+
 export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider {
+  private lastUsbDiscoveryDiagnostics: UsbDiscoveryDiagnostic[] = [];
+
   constructor(
     private readonly commandRunner: WindowsDiscoveryCommandRunner = systemCommandRunner,
     private readonly diagnosticLogger: (printers: WindowsPrinterDiagnostic[]) => void =
       (printers) => console.info("Windows printer inventory", printers)
   ) {}
+
+  getLastUsbDiscoveryDiagnostics(): UsbDiscoveryDiagnostic[] {
+    return this.lastUsbDiscoveryDiagnostics.map((diagnostic) => ({ ...diagnostic }));
+  }
 
   async listUsbPrinters(): Promise<DiscoveredUsbPrinter[]> {
     const startedAt = Date.now();
@@ -57,16 +90,59 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
           "$printers = @(Get-Printer | Where-Object { $_.Type -eq 'Local' -and $_.PortName -match '^(USB|DOT4USB)' } | ForEach-Object { [PSCustomObject]@{ Name = [string]$_.Name; Type = $_.Type.ToString(); PortName = [string]$_.PortName; DriverName = [string]$_.DriverName; Shared = [bool]$_.Shared; WorkOffline = [bool]$_.WorkOffline } }); ConvertTo-Json -InputObject $printers -Compress",
         ])
       );
+      this.lastUsbDiscoveryDiagnostics = [{
+        stage: "WINDOWS_PNP",
+        phase: "STARTED",
+        outcome: "UNKNOWN",
+        reasonCode: "UNKNOWN",
+        elapsedMs: 0,
+        timeoutMs: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
+      }];
       let pnp: WindowsPnpDiagnostic[] = [];
+      const pnpStartedAt = Date.now();
       try {
-        pnp = parseWindowsPnpDiagnostics(await this.commandRunner("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "$d=@(Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like 'USB\\*' -and (($_.Class -eq 'USB') -or ($_.CompatibleID -match 'Class_07')) } | ForEach-Object { [PSCustomObject]@{ InstanceId=[string]$_.InstanceId; Class=[string]$_.Class; FriendlyName=[string]$_.FriendlyName; Status=[string]$_.Status; Present=$true; HardwareIds=@($_.HardwareID); CompatibleIds=@($_.CompatibleID); LocationInfo=[string]$_.LocationInfo; LocationPaths=@($_.LocationPaths) } }); ConvertTo-Json -InputObject $d -Compress"]));
-      } catch (error) {
-        pnp = [];
-        console.warn("Windows USB PnP printer inventory unavailable; retaining queue inventory", {
-          durationMs: Date.now() - startedAt,
+        const pnpSummary = parseWindowsPnpDiagnosticsDetailed(await this.commandRunner("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", windowsPnpInventoryScript]));
+        pnp = pnpSummary.records;
+        const acceptedRecordCount = pnp.filter((device) => device.Present && (device.CompatibleIds ?? []).some((id) => /class_07/i.test(id))).length;
+        const class07RecordCount = pnp.filter((device) => (device.CompatibleIds ?? []).some((id) => /class_07/i.test(id))).length;
+        const filteredRecordCount = pnp.length - acceptedRecordCount;
+        const reasonCode = pnpSummary.rawRecordCount === 0
+          ? "EMPTY_OUTPUT"
+          : pnpSummary.incompleteRecordCount > 0 || pnpSummary.missingCompatibleIdCount > 0
+            ? "INCOMPLETE_RECORD"
+            : acceptedRecordCount === 0
+              ? "FILTERED_OUT"
+              : "OK";
+        const diagnostic: UsbDiscoveryDiagnostic = {
+          stage: "WINDOWS_PNP",
+          phase: "COMPLETED",
+          outcome: reasonCode === "EMPTY_OUTPUT" ? "UNKNOWN" : "COMPLETED",
+          reasonCode,
+          elapsedMs: Date.now() - pnpStartedAt,
           timeoutMs: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
-          timeout: error instanceof Error && /timed?out|ETIMEDOUT/i.test(error.message),
-        });
+          exitCode: 0,
+          rawRecordCount: pnpSummary.rawRecordCount,
+          parsedRecordCount: pnpSummary.records.length,
+          incompleteRecordCount: pnpSummary.incompleteRecordCount,
+          missingCompatibleIdCount: pnpSummary.missingCompatibleIdCount,
+          class07RecordCount,
+          filteredRecordCount,
+          acceptedRecordCount,
+        };
+        this.lastUsbDiscoveryDiagnostics = [...this.lastUsbDiscoveryDiagnostics, diagnostic];
+      } catch (error) {
+        const failure = classifyWindowsPnpError(error);
+        const diagnostic: UsbDiscoveryDiagnostic = {
+          stage: "WINDOWS_PNP",
+          phase: "COMPLETED",
+          outcome: "UNKNOWN",
+          reasonCode: failure.reasonCode,
+          elapsedMs: Date.now() - pnpStartedAt,
+          timeoutMs: WINDOWS_PRINTER_DISCOVERY_TIMEOUT_MS,
+          ...(failure.exitCode === undefined ? {} : { exitCode: failure.exitCode }),
+        };
+        this.lastUsbDiscoveryDiagnostics = [...this.lastUsbDiscoveryDiagnostics, diagnostic];
+        pnp = [];
       }
       this.diagnosticLogger(printers);
       console.info("Windows printer discovery completed", {
@@ -75,6 +151,7 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
         foundCount: printers.length,
         timeout: false,
       });
+      const correlations = correlateWindowsPrinterQueues(printers, pnp);
       const queueDevices = printers
         .filter((printer) => printer.Type === "Local" && /^(USB|DOT4USB)/i.test(printer.PortName))
         .map((printer) => ({
@@ -82,7 +159,7 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
         nativeIdentifier: printer.Name,
         fingerprint: {
           source: "WINDOWS_PRINT_QUEUE",
-          values: { queueName: printer.Name, portName: printer.PortName, driverName: printer.DriverName, queueReady: String(printer.WorkOffline !== true) },
+          values: { queueName: printer.Name, portName: printer.PortName, driverName: printer.DriverName, queueReady: String(printer.WorkOffline !== true), ...(correlations.get(printer.Name) ?? {}) },
         },
         platform: "WINDOWS" as const,
         architecture: process.arch,
@@ -157,6 +234,57 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
   }
 }
 
+/** Only the observed USBPRINT terminal port form is supported. Missing proof
+ * never changes queue readiness and never falls back to friendly names. */
+export const correlateWindowsPrinterQueues = (
+  queues: WindowsPrinterDiagnostic[],
+  devices: WindowsPnpDiagnostic[],
+): Map<string, Record<string, string>> => {
+  const normalize = (value: string | undefined) => (value ?? "").trim().toUpperCase();
+  const portOf = (device: WindowsPnpDiagnostic) =>
+    normalize(device.InstanceId).match(/^USBPRINT\\[^\\]+\\[^\\]+&(USB\d+)$/)?.[1];
+  const healthy = (device: WindowsPnpDiagnostic) => device.Present && normalize(device.Status) === "OK";
+  const containerOf = (device: WindowsPnpDiagnostic) => {
+    const value = normalize(device.ContainerId).replace(/^\{(.*)\}$/, "$1");
+    return /^[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}$/.test(value)
+      && value !== "00000000-0000-0000-0000-000000000000" ? value : "";
+  };
+  const result = new Map<string, Record<string, string>>();
+  for (const queue of queues) {
+    const port = normalize(queue.PortName);
+    if (queue.Type !== "Local" || queue.WorkOffline === true || !/^USB\d+$/.test(port)) continue;
+    if (queues.filter((item) => normalize(item.PortName) === port).length !== 1
+      || queues.filter((item) => normalize(item.Name) === normalize(queue.Name)).length !== 1) continue;
+    const children = devices.filter((item) => portOf(item) === port);
+    if (children.length !== 1 || !healthy(children[0])) continue;
+    const child = children[0];
+    const parents = devices.filter((item) => normalize(item.InstanceId) === normalize(child.Parent));
+    if (parents.length !== 1 || !healthy(parents[0])) continue;
+    const parent = parents[0];
+    const parentId = normalize(parent.InstanceId);
+    const identity = parentId.match(/^USB\\VID_([0-9A-F]{4})&PID_([0-9A-F]{4})[^\\]*\\[^\\]+$/);
+    if (!identity || !(parent.CompatibleIds ?? []).some((id) => /class_07/i.test(id))) continue;
+    const hardwareIds = parent.HardwareIds ?? [];
+    if (!hardwareIds.length || !hardwareIds.every((id) => {
+      const hardware = extractUsbVidPid(id);
+      return hardware.vendorId === identity[1] && hardware.productId === identity[2];
+    })) continue;
+    const declaredChildren = parent.Children ?? [];
+    if (declaredChildren.filter((id) => normalize(id) === normalize(child.InstanceId)).length !== 1) continue;
+    if (devices.filter((item) => /^USBPRINT\\/i.test(item.InstanceId)
+      && normalize(item.Parent) === parentId).length !== 1) continue;
+    const container = containerOf(parent);
+    if (!container || container !== containerOf(child)) continue;
+    result.set(queue.Name, {
+      queueCorrelation: "USBPRINT_PARENT_CONTAINER_PORT",
+      physicalNativeIdentifier: parent.InstanceId,
+      usbPrintInstanceId: child.InstanceId,
+      containerId: container,
+    });
+  }
+  return result;
+};
+
 export const extractUsbVidPid = (
   pnpDeviceId: string
 ): { vendorId?: string; productId?: string } => {
@@ -195,18 +323,70 @@ export const parseWindowsSerialDiagnostics = (
   });
 };
 
-export const parseWindowsPnpDiagnostics = (output: string): WindowsPnpDiagnostic[] => {
-  const trimmed = output.trim(); if (!trimmed || trimmed === "null") return [];
-  let parsed: unknown; try { parsed = JSON.parse(trimmed); } catch { throw new WindowsPrinterDiscoveryParseError("invalid JSON from Get-PnpDevice"); }
-  const values = Array.isArray(parsed) ? parsed : [parsed];
-  return values.flatMap((value): WindowsPnpDiagnostic[] => {
-    if (!value || typeof value !== "object") return [];
-    const p = value as Record<string, unknown>; const instanceId = typeof p.InstanceId === "string" ? p.InstanceId.trim() : "";
-    if (!instanceId) return [];
-    const strings = (key: string) => Array.isArray(p[key]) ? p[key].filter((v): v is string => typeof v === "string") : [];
-    return [{ InstanceId: instanceId, Class: typeof p.Class === "string" ? p.Class : "", FriendlyName: typeof p.FriendlyName === "string" ? p.FriendlyName : "", Status: typeof p.Status === "string" ? p.Status : "", Present: p.Present !== false, HardwareIds: strings("HardwareIds"), CompatibleIds: strings("CompatibleIds"), LocationInfo: typeof p.LocationInfo === "string" ? p.LocationInfo : "", LocationPaths: strings("LocationPaths") }];
-  });
+const classifyWindowsPnpError = (error: unknown): { reasonCode: UsbDiscoveryDiagnostic["reasonCode"]; exitCode?: number } => {
+  const candidate = error && typeof error === "object" ? error as { code?: unknown; killed?: unknown; message?: unknown } : {};
+  const message = typeof candidate.message === "string" ? candidate.message : "";
+  const code = typeof candidate.code === "number" ? candidate.code : typeof candidate.code === "string" ? candidate.code : "";
+  if (/PARSE_FAILED/i.test(message)) {
+    return { reasonCode: "PARSE_FAILED" };
+  }
+  if (candidate.killed === true || /timed?out|ETIMEDOUT|WAIT_TIMEOUT/i.test(message)) {
+    return { reasonCode: "TIMEOUT", ...(typeof code === "number" ? { exitCode: code } : {}) };
+  }
+  if (code === "EACCES" || code === "EPERM" || code === "ERROR_ACCESS_DENIED" || /access is denied|permission denied/i.test(message)) {
+    return { reasonCode: "ACCESS_DENIED", ...(typeof code === "number" ? { exitCode: code } : {}) };
+  }
+  return { reasonCode: "EXECUTION_FAILED", ...(typeof code === "number" ? { exitCode: code } : {}) };
 };
+
+export const parseWindowsPnpDiagnosticsDetailed = (output: string): WindowsPnpParseSummary => {
+  const trimmed = output.trim();
+  if (!trimmed || trimmed === "null") {
+    return { records: [], rawRecordCount: 0, parsedRecordCount: 0, incompleteRecordCount: 0, missingCompatibleIdCount: 0 };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new WindowsPrinterDiscoveryParseError("invalid JSON from Get-PnpDevice");
+  }
+  const values = Array.isArray(parsed) ? parsed : [parsed];
+  let incompleteRecordCount = 0;
+  let missingCompatibleIdCount = 0;
+  const records = values.flatMap((value): WindowsPnpDiagnostic[] => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      incompleteRecordCount += 1;
+      return [];
+    }
+    const p = value as Record<string, unknown>;
+    const instanceId = typeof p.InstanceId === "string" ? p.InstanceId.trim() : "";
+    if (!instanceId) {
+      incompleteRecordCount += 1;
+      return [];
+    }
+    const strings = (key: string) => Array.isArray(p[key]) ? p[key].filter((v): v is string => typeof v === "string") : [];
+    const compatibleIds = strings("CompatibleIds");
+    if (compatibleIds.length === 0 && !/^USBPRINT\\/i.test(instanceId)) missingCompatibleIdCount += 1;
+    return [{
+      InstanceId: instanceId,
+      Class: typeof p.Class === "string" ? p.Class : "",
+      FriendlyName: typeof p.FriendlyName === "string" ? p.FriendlyName : "",
+      Status: typeof p.Status === "string" ? p.Status : "",
+      Present: p.Present !== false,
+      HardwareIds: strings("HardwareIds"),
+      CompatibleIds: compatibleIds,
+      LocationInfo: typeof p.LocationInfo === "string" ? p.LocationInfo : "",
+      LocationPaths: strings("LocationPaths"),
+      Parent: typeof p.Parent === "string" ? p.Parent.trim() : "",
+      Children: strings("Children"),
+      ContainerId: typeof p.ContainerId === "string" ? p.ContainerId.trim() : "",
+    }];
+  });
+  return { records, rawRecordCount: values.length, parsedRecordCount: records.length, incompleteRecordCount, missingCompatibleIdCount };
+};
+
+export const parseWindowsPnpDiagnostics = (output: string): WindowsPnpDiagnostic[] =>
+  parseWindowsPnpDiagnosticsDetailed(output).records;
 
 export const parseWindowsPrinterNames = (output: string): string[] => {
   const trimmed = output.trim();

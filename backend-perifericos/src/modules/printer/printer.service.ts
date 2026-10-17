@@ -7,6 +7,7 @@ import {
   PeripheralEventName,
 } from "../../shared/types/peripheral.types";
 import { getPeripheralsConfig } from "../../shared/config/peripherals.config";
+import { safePrintDiagnosticMetadata } from "../../shared/printing/print-diagnostic";
 import type {
   ThermalTicketContent,
   ThermalTicketItem,
@@ -391,8 +392,13 @@ export class PrinterService {
     event: string;
     error: unknown;
   }): void {
-    const errorMessage =
-      input.error instanceof Error ? input.error.message : "Printer job failed";
+    const printer = this.devicesService.findById(input.deviceId);
+    const diagnostic = printer ? safePrintDiagnosticMetadata(
+      printer,
+      input.ticketType === "TEST_PRINT" ? "testPrint" : "printTicket",
+      getPeripheralsConfig().usbPrintTransport,
+      input.error,
+    ) : { errorCode: "PRINT_FAILED", errorMessage: "PRINT_FAILED" };
     const timestamp = new Date().toISOString();
     const metadata = {
       terminalId: input.terminalId,
@@ -402,7 +408,7 @@ export class PrinterService {
       profileId: input.profileId,
       adapterName: input.adapterName,
       mode: input.mode,
-      errorMessage,
+      ...diagnostic,
     };
 
     this.eventsService.emit(PeripheralEventName.PrinterJobFailed, {

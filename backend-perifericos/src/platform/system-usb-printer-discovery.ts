@@ -9,6 +9,8 @@ import {
 import { getAgentInstallationId } from "./agent-installation-state.store";
 import { createPlatformDeviceDiscoveryProvider } from "./device-discovery-provider.factory";
 
+import type { UsbDiscoveryDiagnostic } from '../shared/discovery/device-discovery-provider';
+
 /** Platform composition. The shared descriptor builder remains OS-neutral. */
 export class SystemUsbPrinterDiscovery implements UsbPrinterDiscovery {
   constructor(
@@ -20,6 +22,10 @@ export class SystemUsbPrinterDiscovery implements UsbPrinterDiscovery {
     return (await this.provider
       .listUsbPrinters())
       .map((printer) => buildUsbPrinterDescriptor(printer.name, printer, this.agentInstallationId));
+  }
+
+  getLastUsbDiscoveryDiagnostics(): UsbDiscoveryDiagnostic[] {
+    return this.provider.getLastUsbDiscoveryDiagnostics?.() ?? [];
   }
 
   async listSerialDevices(): Promise<SerialDeviceDescriptor[]> {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { PrintDiagnosticError } from "../src/shared/printing/print-diagnostic";
 import test from "node:test";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { CashDrawerController } from "../src/modules/cash-drawer/cash-drawer.controller";
@@ -31,10 +32,13 @@ import {
   type UsbPrinterDiscovery,
 } from "../src/shared/usb/usb-printer-discovery";
 import { WindowsRawSpoolerTransport } from "../src/platform/windows/windows-raw-spooler.transport";
+import { forbidHardwareIO } from "./support/no-hardware";
 import type {
   DeviceRegistryState,
   DeviceRegistryStateStore,
 } from "../src/platform/device-registry-state.store";
+
+forbidHardwareIO();
 
 const testPlatformPaths = {
   configDir: "C:\\Temp\\PeripheralAgent\\config",
@@ -156,7 +160,7 @@ const buildHarness = (socketFactory: () => NetworkEscposSocket) => {
   const devicesService = new DevicesService(
     logsService,
     eventsService,
-    undefined,
+    new FakeUsbDiscovery([]),
     createMemoryDeviceRegistryStore(),
     testPlatformPaths
   );
@@ -317,6 +321,11 @@ test("cash drawer open does not retry after write failure", async () => {
     harness.devicesService.findById("network-xp80-qa-001")?.status,
     DeviceStatus.NOT_REACHABLE
   );
+  const failure = harness.logsService.list().find((entry) => entry.event === "cashdrawer.open.failed");
+  assert.equal(failure?.metadata.connectionType, ConnectionType.NETWORK);
+  assert.equal(failure?.metadata.transport, "NETWORK");
+  assert.equal(failure?.metadata.configuredTransport, undefined);
+  assert.equal(failure?.metadata.expectedQueue, undefined);
 });
 
 test("cash drawer open rejects missing printer", async () => {
@@ -432,10 +441,10 @@ test("USB uncertified drawer pulse is rejected before transport write", async ()
         reason: "MANUAL_TEST",
       }),
     (error) => {
-      assert.ok(error instanceof BadRequestException);
+      assert.ok(error instanceof PrintDiagnosticError);
       assert.match(
         (error as Error).message,
-        /printer drawer pulse is not certified for this device/
+        /DRAWER_NOT_CERTIFIED/
       );
       return true;
     }

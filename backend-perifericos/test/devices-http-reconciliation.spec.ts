@@ -82,3 +82,25 @@ test("productive queue association persists through refresh and discovery", asyn
   if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
   else process.env.PERIPHERALS_MODE = previousMode;
 });
+test(`productive reconciliation carries matched queue port metadata`, async () => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = `REAL`;
+  try {
+    const discovery: UsbPrinterDiscovery = {
+      list: () => [
+        descriptor(`Exact Printer`, `WINDOWS_PNP`, `C`),
+        descriptor(`Exact Printer`, `WINDOWS_PRINT_QUEUE`, `C`, { portName: `USB002` }),
+      ],
+    };
+    const service = new DevicesService(new LogsService(), new EventsService(), discovery, store, paths);
+    const controller = new DevicesController(service);
+    const result = await controller.discover();
+    const exact = result.devices.find((device) => device.name === `Exact Printer`);
+    assert.equal(exact?.status, DeviceStatus.CONNECTED);
+    assert.equal(exact?.metadata?.physicalDetected, true);
+    assert.equal(exact?.descriptor?.fingerprint.values?.portName, `USB002`);
+  } finally {
+    if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
+    else process.env.PERIPHERALS_MODE = previousMode;
+  }
+});
