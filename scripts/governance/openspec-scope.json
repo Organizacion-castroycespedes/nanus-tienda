@@ -60,6 +60,7 @@
         "api/src/modules/integration-outbox/services/billing-integration-client.ts",
         "api/src/modules/integration-outbox/services/billing-integration-client.spec.ts",
         "backend-facturacion-electronica/src/modules/electronic-billing/**",
+        "backend-facturacion-electronica/.env.example",
         "backend-facturacion-electronica/test/electronic-billing-admin.controller.spec.ts",
         "backend-facturacion-electronica/test/electronic-billing-admin.runtime.spec.ts",
         "backend-facturacion-electronica/test/electronic-billing-context-classifier.spec.ts",
