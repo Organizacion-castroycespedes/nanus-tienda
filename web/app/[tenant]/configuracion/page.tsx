@@ -10,6 +10,7 @@ import {
   Monitor,
   Paintbrush,
   Plus,
+  Receipt,
   Save,
   Settings2,
   Star,
@@ -71,6 +72,7 @@ import {
   normalizeHexColor,
 } from "../../../src/lib/theme/colors";
 import { BrandingThemePreview } from "./components/BrandingThemePreview";
+import { TenantElectronicBillingReadOnly } from "../../../domains/electronic-billing/TenantElectronicBillingReadOnly";
 import {
   listParameters,
   listTenantSettings,
@@ -2264,7 +2266,7 @@ const ConfiguracionPage = () => {
       );
       return;
     }
-    setTenantWizardStep((step) => Math.min(step + 1, 4));
+    setTenantWizardStep((step) => Math.min(step + 1, isSuperAdmin ? 5 : 4));
   };
 
   const handleSubmitTenantWizard = async () => {
@@ -2936,6 +2938,9 @@ const ConfiguracionPage = () => {
           { key: "empresa", label: "Empresa", icon: Building2 },
           { key: "branding", label: "Branding", icon: Paintbrush },
           { key: "sucursales", label: "Sucursales", icon: MapPin },
+          ...(isSuperAdmin
+            ? [{ key: "facturacion-electronica", label: "Facturación electrónica", icon: Receipt }]
+            : []),
           { key: "parametros", label: "Parámetros", icon: Settings2 },
           { key: "revision", label: "Revisión", icon: Save },
         ]}
@@ -2954,6 +2959,7 @@ const ConfiguracionPage = () => {
         canProceed
         canSubmit={isCompanyFormComplete && isBrandingFormComplete}
         isSubmitting={tenantWizardSubmitting}
+        actionsPlacement="header"
         submitText="Guardar cambios"
         error={tenantWizardError}
         onDismissError={() => setTenantWizardError(null)}
@@ -2971,6 +2977,12 @@ const ConfiguracionPage = () => {
           <SucursalesForm embedded />
         ) : tenantWizardStep === 3 ? (
           <ParametrosForm embedded />
+        ) : tenantWizardStep === 4 && isSuperAdmin ? (
+          <TenantElectronicBillingReadOnly
+            tenantId={tenantEditingId ?? selectedTenantId}
+            tenantName={tenants.find((item) => item.id === (tenantEditingId ?? selectedTenantId))?.nombre}
+            visible={isSuperAdmin}
+          />
         ) : (
           <div className="space-y-5">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900/40">

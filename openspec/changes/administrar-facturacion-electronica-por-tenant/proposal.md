@@ -7,14 +7,16 @@ The change establishes a safe, SUPER_ADMIN-only management flow. It must preserv
 ## What Changes
 
 - Add an administrative contract to list, inspect, create, update, disable, and test a tenant's electronic-billing configuration.
+- Implement the first read-only slice: provider catalog and tenant configuration inspection through `SUPER_ADMIN` Manus routes and authenticated billing-backend internal routes.
 - Reuse `electronic_billing_providers` and `tenant_electronic_billing_configs`; verify schema drift before proposing any migration.
-- Use the existing V089 `encrypted_credentials` column for new administrative writes only after the billing-backend AES-256-GCM v1 implementation and external key ownership are verified; retain `credential_reference` as a compatibility fallback and never persist or return raw credentials.
+- Use the existing V089 `encrypted_credentials` column for new administrative writes only after the billing-backend AES-256-GCM v2 implementation, external key ownership, and recovery contract are verified; retain `credential_reference` as a compatibility fallback and never persist or return raw credentials.
 - Add write-once credential input semantics and masked configuration status for the frontend wizard.
 - Add a FactuCore connection/identity verification operation through the billing backend, using only a proven authenticated read-only HTTP contract. The current repository has no such identity endpoint; the proposed contract remains unimplemented.
 - Add fiscal identity read-only lookup and compare it with the expected Manus tenant issuer before enabling billing.
 - Add audit events for configuration changes, credential replacement, identity checks, and blocked mismatches.
 - Add multi-tenant tests covering the principal tenant and KSOLECTRI without using real secrets or issuing documents. Shared KSOLECTRI credentials are an owner-accepted QA fixture only; production requires issuer and FactuCore identity validation.
 - Do not change POS issuance, historical documents, `main`, or `develop` in this planning phase.
+- Keep credential writes, key rotation, activation, and FactuCore identity readiness disabled until external key ownership and the authenticated FactuCore client-context contract are proven.
 
 ## Capabilities
 

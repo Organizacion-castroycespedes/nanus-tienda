@@ -35,3 +35,19 @@ Shared credentials MAY exist as an owner-accepted, controlled QA fixture, but SH
 - **THEN** the result is recorded as an accepted QA fixture
 - **AND** no incident cause is inferred from reuse alone
 - **AND** production activation still requires authenticated FactuCore API-client tenant identity and issuer matching
+
+### Requirement: Read-only authenticated context integration
+The system SHALL call the proven FactuCore client-context endpoint only through the billing backend and existing internal authentication.
+
+#### Scenario: SUPER_ADMIN validates a tenant
+- **WHEN** a `SUPER_ADMIN` requests the tenant-scoped validation route
+- **THEN** MANUS validates tenant existence and calls the billing backend with `API_INTERNAL_TOKEN`
+- **AND** the billing backend resolves the tenant-scoped provider credentials and calls `GET /api/v1/external/client-context`
+- **AND** no document endpoint is called
+
+#### Scenario: Context response is safe and comparable
+- **WHEN** FactuCore returns the verified context DTO
+- **THEN** MANUS compares the authenticated `tenantId` with `settings.factuCoreTenantId`
+- **AND** compares normalized issuer number, verification digit, and legal name with `tenants_detalles`
+- **AND** returns only `MATCH`, `MISMATCH`, `UNKNOWN`, or `UNAVAILABLE` plus safe readiness data
+- **AND** never returns credentials, ciphertext, key identifiers, authorization headers, or raw provider payloads

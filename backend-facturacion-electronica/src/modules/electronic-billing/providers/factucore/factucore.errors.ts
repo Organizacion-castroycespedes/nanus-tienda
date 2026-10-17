@@ -80,6 +80,8 @@ export const extractFactuCoreValidationDetails = (payload: unknown): FactuCoreVa
 };
 
 export class FactuCoreError extends ElectronicBillingProviderError {
+  public responseBodyPresent: boolean | null = null;
+
   constructor(
     message: string,
     code: string,
