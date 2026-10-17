@@ -1116,7 +1116,7 @@ export class ElectronicBillingProcessingService {
             source: "electronic-billing-processing",
             recoveryReason: "CONFIRMED_PROVIDER_ABSENCE",
             reconciliation: "NOT_FOUND",
-            previousStatus: "TECHNICAL_ERROR",
+            previousStatus: document.status,
             previousStage: "PROVIDER_CREATE_INTENT",
           },
           createdAt: new Date(),
@@ -1145,11 +1145,16 @@ export class ElectronicBillingProcessingService {
     const hasRetryableProviderErrorHistory = aggregate.events.some((event) =>
       isRetryableProviderCode(event.error_code ?? ""),
     );
-    return document.status === "TECHNICAL_ERROR"
+    const isCorrectedValidationRejection =
+      document.status === "REJECTED"
+      && document.last_error_code === RECOVERABLE_PRE_PROVIDER_ERROR_CODE;
+    return (document.status === "TECHNICAL_ERROR" || isCorrectedValidationRejection)
       && document.processing_stage === "PROVIDER_CREATE_INTENT"
       && !document.provider_document_id
       && Boolean(document.external_reference)
       && (
+        isCorrectedValidationRejection
+        ||
         isRetryableProviderCode(document.last_error_code ?? "")
         || isProviderAuthenticationCode(document.last_error_code ?? "")
         || hasRetryableProviderErrorHistory

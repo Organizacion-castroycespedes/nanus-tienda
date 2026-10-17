@@ -228,6 +228,36 @@ export type FactuCoreStatusResponse = FactuCoreDocumentResponse & {
   trackingId?: string | null;
 };
 
+export type FactuCoreClientContextResponse = {
+  apiClientId: string;
+  tenantId: string;
+  environment: string;
+  issuer: {
+    identificationTypeCode: string | null;
+    identificationNumber: string | null;
+    verificationDigit: string | null;
+    legalName: string | null;
+    tradeName: string | null;
+    complete: boolean;
+  };
+  resolution: {
+    configured: boolean;
+    status: string | null;
+    isDefault: boolean;
+    validTo: string | null;
+    remaining: number | null;
+  };
+  dianReadiness: {
+    status: "READY" | "NOT_READY" | "UNKNOWN";
+    configurationComplete: boolean;
+    issuerComplete: boolean;
+    resolutionConfigured: boolean;
+    configurationEnvironment: string | null;
+    failedChecks: string[];
+    basis: "CONFIGURATION_ONLY";
+  };
+};
+
 export type FactuCoreDocumentOperationsResponse = {
   documentId?: string | null;
   providerDocumentId?: string | null;
@@ -259,6 +289,7 @@ export const FACTUCORE_DEFAULT_SYNC_TIMEOUT_MS = 45_000;
 export const FACTUCORE_TENANT_ID_SETTING = "factuCoreTenantId";
 
 export const FACTUCORE_DOCUMENT_ENDPOINT = "/api/v1/external/documents";
+export const FACTUCORE_CLIENT_CONTEXT_ENDPOINT = "/api/v1/external/client-context";
 
 export type FactuCoreRuntimeContext = {
   baseUrl: string;
@@ -267,6 +298,7 @@ export type FactuCoreRuntimeContext = {
   syncTimeoutMs?: number;
   transmissionMode?: FactuCoreTransmissionMode;
   factuCoreTenantId?: string;
+  correlationId?: string;
 };
 
 export type FactuCoreStatusMapping = {

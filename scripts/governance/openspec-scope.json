@@ -52,6 +52,43 @@
       "exemptions": []
     },
     {
+      "change_id": "administrar-facturacion-electronica-por-tenant",
+      "paths": [
+        "api/src/common/constants/menu-keys.ts",
+        "api/src/modules/electronic-invoicing/admin/**",
+        "api/src/modules/electronic-invoicing/electronic-invoicing.module.ts",
+        "api/src/modules/integration-outbox/services/billing-integration-client.ts",
+        "api/src/modules/integration-outbox/services/billing-integration-client.spec.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/**",
+        "backend-facturacion-electronica/.env.example",
+        "backend-facturacion-electronica/test/electronic-billing-admin.controller.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-admin.runtime.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-context-classifier.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-credential-crypto.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-credential-resolver.encrypted.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-credential-transition-policy.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-operational-approval.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-provider-admin.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-provider-resolver.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-tenant-config-admin.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing.processing.service.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing.repositories.spec.ts",
+        "backend-facturacion-electronica/test/factucore.client.spec.ts",
+        "web/app/[tenant]/configuracion/facturacion-electronica/proveedores/page.tsx",
+        "web/app/[tenant]/configuracion/page.tsx",
+        "web/components/design-system/WizardModal.tsx",
+        "web/domains/electronic-billing/**",
+        "web/domains/menu/constants.ts",
+        "web/lib/route-permissions.ts",
+        "web/modules/operational-sales/components/wizard/PreInvoiceWizardModal.tsx",
+        "openspec/changes/administrar-facturacion-electronica-por-tenant/**",
+        "openspec/changes/administrar-proveedores-facturacion-electronica/**",
+        "openspec/changes/recuperar-rechazo-facturacion-electronica/**",
+        "openspec/changes/transicion-credenciales-electronicas-legacy/**"
+      ],
+      "exemptions": []
+    },
+    {
       "change_id": "corregir-anulacion-fiscal-ventas-operativas",
       "paths": [
         "api/.env.example",

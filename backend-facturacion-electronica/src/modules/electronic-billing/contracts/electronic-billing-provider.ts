@@ -11,6 +11,8 @@ import type {
   RetryElectronicDocumentCommand,
 } from "./electronic-billing-commands";
 import { ElectronicBillingProviderCapabilityError } from "./electronic-billing-errors";
+import type { FactuCoreClientContextResponse } from "../providers/factucore/factucore.types";
+import type { ElectronicBillingProviderContext } from "../domain/electronic-billing.types";
 
 export interface ElectronicBillingProvider {
   readonly code: string;
@@ -46,6 +48,8 @@ export interface ElectronicBillingProvider {
   downloadAttachment?(
     command: DownloadElectronicDocumentAttachmentCommand
   ): Promise<ElectronicBillingProviderAttachmentResult>;
+
+  getClientContext?(context: ElectronicBillingProviderContext): Promise<FactuCoreClientContextResponse>;
 }
 
 export function assertElectronicBillingProviderCapability(

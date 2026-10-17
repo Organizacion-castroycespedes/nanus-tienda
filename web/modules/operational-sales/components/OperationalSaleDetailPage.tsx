@@ -134,6 +134,7 @@ const BillingCard = ({ sale }: { sale: OperationalSaleDetail }) => {
 
 const ActionCard = ({
   sale,
+  tenantContext,
   onReload,
   onRefreshStatus,
   onRetry,
@@ -148,6 +149,7 @@ const ActionCard = ({
   onEditPayments,
 }: {
   sale: OperationalSaleDetail;
+  tenantContext: string;
   onReload: () => void;
   onRefreshStatus: () => Promise<void>;
   onRetry: () => Promise<void>;
@@ -375,7 +377,7 @@ const ActionCard = ({
         open={recoveryConfirmOpen}
         onOpenChange={setRecoveryConfirmOpen}
         title="Recuperar procesamiento de factura electrónica"
-        description={PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION}
+        description={`Venta: ${sale.id}. Tenant: ${tenantContext}. ${PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION}`}
         confirmText="Recuperar procesamiento"
         cancelText="Cancelar"
         variant="default"
@@ -524,6 +526,7 @@ export const OperationalSaleDetailPage = () => {
       {/* Action Toolbar placed at the TOP for maximum operator UX */}
       <ActionCard
         sale={sale}
+        tenantContext={tenant}
         onReload={reload}
         onRefreshStatus={refreshBillingStatus}
         onRetry={retryBilling}

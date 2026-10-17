@@ -191,7 +191,8 @@ export const PreInvoiceWizardModal: React.FC<PreInvoiceWizardModalProps> = ({
                   }
 
                   onSuccess(
-                    result.message ?? "Solicitud de facturación electrónica enviada exitosamente."
+                    result.message
+                      ?? "Solicitud aceptada por MANUS. Esto no confirma creación del proveedor, transmisión ni aceptación DIAN."
                   );
                   onClose();
                 }}
