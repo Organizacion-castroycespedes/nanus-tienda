@@ -256,6 +256,40 @@
         "openspec/changes/autorizar-balanza-real-pos-peso/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "habilitar-escpos-raw-usb-thermal-80mm",
+      "paths": [
+        "backend-perifericos/src/modules/cash-drawer/cash-drawer.service.ts",
+        "backend-perifericos/src/modules/printer/printer.service.ts",
+        "backend-perifericos/src/platform/windows/windows-gdi-spooler.transport.ts",
+        "backend-perifericos/src/platform/windows/windows-raw-spooler.transport.ts",
+        "backend-perifericos/src/shared/adapters/usb-system-printer.adapter.ts",
+        "backend-perifericos/src/shared/filters/sanitized-http-exception.filter.ts",
+        "backend-perifericos/src/shared/printing/print-diagnostic.ts",
+        "backend-perifericos/test/print-diagnostic.spec.ts",
+        "backend-perifericos/test/support/no-hardware.ts",
+        "backend-perifericos/test/windows-usb-queue-correlation.spec.ts",
+        "web/domains/peripherals/contracts.ts",
+        "web/domains/peripherals/print-errors.spec.ts",
+        "web/domains/peripherals/print-errors.ts",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/design.md",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/specs/usb-raw-escpos-thermal-printing/spec.md",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/tasks.md"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "windows-pnp-discovery-observability",
+      "paths": [
+        "openspec/changes/windows-pnp-discovery-observability/.openspec.yaml",
+        "openspec/changes/windows-pnp-discovery-observability/design.md",
+        "openspec/changes/windows-pnp-discovery-observability/proposal.md",
+        "openspec/changes/windows-pnp-discovery-observability/qa-evidence-qa05-print04.json",
+        "openspec/changes/windows-pnp-discovery-observability/specs/windows-pnp-discovery-observability/spec.md",
+        "openspec/changes/windows-pnp-discovery-observability/tasks.md"
+      ],
+      "exemptions": []
     }
   ]
 }
