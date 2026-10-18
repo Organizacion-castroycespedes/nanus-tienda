@@ -21,6 +21,7 @@ import { UpdateSaleCustomerDto } from "./dto/update-sale-customer.dto";
 import { CorrectSalePaymentsDto } from "./dto/correct-sale-payments.dto";
 import { VoidOperationalSaleDto } from "./dto/void-operational-sale.dto";
 import { OperationalDebitNoteDto } from "./dto/operational-debit-note.dto";
+import { StockMovementService } from "../inventory/services/stock-movement.service";
 
 const OPERATIONAL_FE_PROVIDER_RECOVERY_AUDIT_ACTION = "OP_FE_PROVIDER_RECOVERY";
 const VOID_REQUEST_RETRY_BASE_MS = 60_000;
@@ -45,6 +46,8 @@ export class OperationalSalesService {
     private readonly dashboardRepository?: OperationalDashboardRepository,
     @Optional() @Inject(DatabaseService)
     private readonly db?: DatabaseService,
+    @Optional() @Inject(StockMovementService)
+    private readonly stockMovementService?: StockMovementService,
   ) {}
 
   async list(actor: OperationalSaleActor, queryDto: OperationalSalesQueryDto) {
@@ -579,6 +582,11 @@ export class OperationalSalesService {
     if (!dto.reason || dto.reason.trim().length < 5) {
       throw new BadRequestException("El motivo de anulación debe tener al menos 5 caracteres");
     }
+    if (dto.discrepancyResponseCode && dto.discrepancyResponseCode !== "2") {
+      throw new BadRequestException(
+        "Solo se permite el motivo DIAN 2 - Anulación de factura electrónica (Total)"
+      );
+    }
     const tenantId = actor.tenantId;
     if (!tenantId) {
       throw new BadRequestException("tenantId es requerido");
@@ -1047,27 +1055,25 @@ export class OperationalSalesService {
         );
 
         for (const mov of stockMovements.rows) {
-          const qty = Number(mov.quantity);
-          const reverseMovResult = await client.query<{ id: string }>(
-            `INSERT INTO stock_movements (
-              id, tenant_id, product_id, type, quantity, reference_type, reference_id,
-              branch_id, terminal_id, pos_session_code, user_id, reference_table, created_at
-            ) VALUES (
-              gen_random_uuid(), $1, $2, 'IN', $3, 'SALE', $4,
-              $5, $6, $7, $8, 'sales', NOW()
-            ) RETURNING id`,
-            [
+          const reverseMovement = await this.stockMovementService!.createMovement(
+            {
+              id: crypto.randomUUID(),
               tenantId,
-              mov.product_id,
-              qty,
-              saleId,
-              mov.branch_id,
-              mov.terminal_id,
-              mov.pos_session_code,
-              actor.id ?? mov.user_id,
-            ]
+              productId: mov.product_id,
+              type: "IN",
+              quantity: Number(mov.quantity),
+              referenceType: "SALE",
+              referenceId: saleId,
+              branchId: mov.branch_id,
+              terminalId: mov.terminal_id,
+              posSessionCode: mov.pos_session_code,
+              userId: actor.id ?? mov.user_id,
+              referenceTable: "sales",
+              createdAt: new Date(),
+            },
+            client
           );
-          const reverseMovId = reverseMovResult.rows[0].id;
+          const reverseMovId = reverseMovement.id;
 
           const lotLinks = await client.query<{
             lot_id: string;
