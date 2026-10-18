@@ -145,10 +145,7 @@
         "openspec/changes/integrar-venta-real-por-peso-en-pos/**",
         "web/domains/peripherals/runtime-contract.spec.ts",
         "web/modules/pos/components/PosScreen.scale-fail-closed.spec.ts",
-        "web/modules/pos/components/PosScreen.tsx",
         "web/modules/pos/services/pos.service.ts",
-        "web/store/posCart.spec.ts",
-        "web/store/posCart.ts",
         "web/domains/peripherals/api.spec.ts",
         "web/modules/pos/utils/scale-capture-error.spec.ts",
         "web/modules/pos/utils/scale-capture-error.ts"
@@ -224,7 +221,6 @@
         "desktop/electron/config.spec.ts",
         "desktop/electron/config.ts",
         "desktop/electron/resources/manus-shell.config.json",
-        "web/app/[tenant]/layout.tsx",
         "web/domains/peripherals/contracts.spec.ts",
         "web/domains/peripherals/header-readiness.spec.ts",
         "web/domains/peripherals/header-readiness.ts",
@@ -291,6 +287,64 @@
         "web/domains/peripherals/scale-authorization-ui-state.spec.ts",
         "web/domains/peripherals/scale-authorization-ui-state.ts",
         "openspec/changes/autorizar-balanza-real-pos-peso/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "habilitar-escpos-raw-usb-thermal-80mm",
+      "paths": [
+        "backend-perifericos/src/modules/cash-drawer/cash-drawer.service.ts",
+        "backend-perifericos/src/modules/printer/printer.service.ts",
+        "backend-perifericos/src/platform/windows/windows-gdi-spooler.transport.ts",
+        "backend-perifericos/src/platform/windows/windows-raw-spooler.transport.ts",
+        "backend-perifericos/src/shared/adapters/usb-system-printer.adapter.ts",
+        "backend-perifericos/src/shared/filters/sanitized-http-exception.filter.ts",
+        "backend-perifericos/src/shared/printing/print-diagnostic.ts",
+        "backend-perifericos/test/print-diagnostic.spec.ts",
+        "backend-perifericos/test/support/no-hardware.ts",
+        "backend-perifericos/test/windows-usb-queue-correlation.spec.ts",
+        "web/domains/peripherals/contracts.ts",
+        "web/domains/peripherals/print-errors.spec.ts",
+        "web/domains/peripherals/print-errors.ts",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/design.md",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/specs/usb-raw-escpos-thermal-printing/spec.md",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/tasks.md"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "windows-pnp-discovery-observability",
+      "paths": [
+        "openspec/changes/windows-pnp-discovery-observability/.openspec.yaml",
+        "openspec/changes/windows-pnp-discovery-observability/design.md",
+        "openspec/changes/windows-pnp-discovery-observability/proposal.md",
+        "openspec/changes/windows-pnp-discovery-observability/qa-evidence-qa05-print04.json",
+        "openspec/changes/windows-pnp-discovery-observability/specs/windows-pnp-discovery-observability/spec.md",
+        "openspec/changes/windows-pnp-discovery-observability/tasks.md"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "pos-unknown-sale-recovery",
+      "paths": [
+        "web/app/[tenant]/layout.tsx",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "web/modules/pos/components/PosScreen.integration.test.tsx",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/modules/pos/utils/sale-postprocessing.ts",
+        "web/modules/pos/utils/sale-postprocessing.spec.ts",
+        "web/vitest.config.ts",
+        "web/package.json",
+        "web/package-lock.json",
+        "openspec/changes/pos-unknown-sale-recovery/.openspec.yaml",
+        "openspec/changes/pos-unknown-sale-recovery/proposal.md",
+        "openspec/changes/pos-unknown-sale-recovery/design.md",
+        "openspec/changes/pos-unknown-sale-recovery/specs/pos-unknown-sale-recovery/spec.md",
+        "openspec/changes/pos-unknown-sale-recovery/tasks.md"
       ],
       "exemptions": []
     }

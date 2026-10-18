@@ -1,3 +1,4 @@
+import { toPeripheralOperationErrorCode } from "./print-errors";
 import {
   fetchCurrentWeight,
   fetchPeripheralDevices,
@@ -127,7 +128,7 @@ const normalizeOperationError = (
   error: unknown
 ): PeripheralOperationError => {
   if (isPeripheralAgentRequestError(error)) {
-    return buildOperationError(operation, error.code, error.message);
+    return buildOperationError(operation, toPeripheralOperationErrorCode(error.code), error.message);
   }
 
   const message = getErrorMessage(error);
@@ -532,7 +533,7 @@ export const subscribePeripheralEvents = (
       emitSubscriptionError(
         callback,
         "subscribePeripheralEvents",
-        config.errorCode ?? "INVALID_CONFIG",
+        toPeripheralOperationErrorCode(config.errorCode ?? "INVALID_CONFIG"),
         config.message ?? "Configuracion de backend-perifericos invalida."
       );
       return () => undefined;

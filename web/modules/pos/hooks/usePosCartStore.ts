@@ -9,6 +9,8 @@ import {
   allowUnknownSaleRetry,
   beginSaleSubmission,
   markSaleSubmissionUnknown,
+  markUnknownForAccount,
+  confirmSaleForAccount,
   persistPosCartState,
   removeAccount,
   renameAccount,
@@ -21,6 +23,8 @@ import {
   POS_SALE_STATUSES,
   POS_CART_PRICING_STATUSES,
   type PosSaleStatus,
+  type PosSaleOperationTarget,
+  type PaymentDraft,
   type PosCartPricingStatus,
 } from "../../../store/posCart";
 
@@ -74,6 +78,25 @@ export const usePosCartStore = () => {
     dispatch(markSaleSubmissionUnknown());
     persistPosCartState(store.getState().posCart);
   }, [dispatch]);
+  const markUnknownForAccountAction = useCallback(
+    (target: PosSaleOperationTarget) => {
+      dispatch(markUnknownForAccount(target));
+      persistPosCartState(store.getState().posCart);
+    },
+    [dispatch]
+  );
+  const confirmSaleForAccountAction = useCallback(
+    (
+      target: PosSaleOperationTarget & {
+        selectedCustomerId: string | null;
+        payments: PaymentDraft[];
+      }
+    ) => {
+      dispatch(confirmSaleForAccount(target));
+      persistPosCartState(store.getState().posCart);
+    },
+    [dispatch]
+  );
   const allowSaleSubmissionRetryAction = useCallback(() => {
     dispatch(allowSaleSubmissionRetry());
     persistPosCartState(store.getState().posCart);
@@ -128,6 +151,8 @@ export const usePosCartStore = () => {
       setSaleStatus: setSaleStatusAction,
       beginSaleSubmission: beginSaleSubmissionAction,
       markSaleSubmissionUnknown: markSaleSubmissionUnknownAction,
+      markUnknownForAccount: markUnknownForAccountAction,
+      confirmSaleForAccount: confirmSaleForAccountAction,
       allowSaleSubmissionRetry: allowSaleSubmissionRetryAction,
       allowUnknownSaleRetry: allowUnknownSaleRetryAction,
       resetPosCartSale: resetPosCartSaleAction,
@@ -144,6 +169,8 @@ export const usePosCartStore = () => {
       setSaleStatusAction,
       beginSaleSubmissionAction,
       markSaleSubmissionUnknownAction,
+      markUnknownForAccountAction,
+      confirmSaleForAccountAction,
       allowSaleSubmissionRetryAction,
       allowUnknownSaleRetryAction,
       resetPosCartSaleAction,

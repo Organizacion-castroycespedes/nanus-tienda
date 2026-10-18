@@ -30,6 +30,9 @@ const rawSpoolerScript = String.raw`param(
   [Parameter(Mandatory=$true)][string]$PayloadPath,
   [Parameter(Mandatory=$true)][string]$JobName
 )
+$ErrorActionPreference = 'Stop'
+$stage = 'process'
+try {
 Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
 [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public class MANUS_DOC_INFO_1 { public string pDocName; public string pOutputFile; public string pDatatype; }
@@ -46,7 +49,8 @@ public static class MANUS_RAW_PRINTER {
 $payload = [IO.File]::ReadAllBytes($PayloadPath)
 $handle = [IntPtr]::Zero; $docStarted = $false; $pageStarted = $false
 try {
-  if (-not [MANUS_RAW_PRINTER]::OpenPrinter($QueueName, [ref]$handle, [IntPtr]::Zero)) { throw ('OpenPrinter failed: ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }
+  $stage = 'spooler'
+  if (-not [MANUS_RAW_PRINTER]::OpenPrinter($QueueName, [ref]$handle, [IntPtr]::Zero)) { if ([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1801) { exit 41 }; throw 'spooler open failed' }
   $doc = New-Object MANUS_DOC_INFO_1; $doc.pDocName = $JobName; $doc.pDatatype = 'RAW'
   if ([MANUS_RAW_PRINTER]::StartDocPrinter($handle, 1, $doc) -le 0) { throw ('StartDocPrinter failed: ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }; $docStarted = $true
   if (-not [MANUS_RAW_PRINTER]::StartPagePrinter($handle)) { throw ('StartPagePrinter failed: ' + [Runtime.InteropServices.Marshal]::GetLastWin32Error()) }; $pageStarted = $true
@@ -54,7 +58,9 @@ try {
   if ($written -ne $payload.Length) { throw ('WritePrinter partial write: ' + $written + '/' + $payload.Length) }
 } finally {
   if ($pageStarted) { [void][MANUS_RAW_PRINTER]::EndPagePrinter($handle) }; if ($docStarted) { [void][MANUS_RAW_PRINTER]::EndDocPrinter($handle) }; if ($handle -ne [IntPtr]::Zero) { [void][MANUS_RAW_PRINTER]::ClosePrinter($handle) }
-}`;
+}
+} catch { if ($stage -eq 'spooler') { exit 42 }; exit 43 }
+`;
 
 const systemTempDirectory = (): string => mkdtempSync(join(tmpdir(), "manus-raw-"));
 

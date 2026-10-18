@@ -76,11 +76,21 @@ The final `FEED` is encoded as `ESC d 6`, rather than two line feeds, so the
 spooler sequence is `BODY -> FOOTER -> FINAL FEED -> CUT`. This advances the
 paper below the footer before `GS V 0` is processed.
 
-`supportsPhysicalCut` para USB RAW solo es true cuando
-`PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED=true` se habilita después de QA
-observada. Antes de eso RAW puede mandar `CUT` para QA, pero la capability
-permanece false. La respuesta confirma envío al spooler/transport, no corte
-físico; QA manual es la única evidencia de corte real.
+The current USB adapter reports `supportsPhysicalCut=false` for both RAW and
+GDI. The legacy global `PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED` setting
+does not enable that capability. RAW still transmits feed/cut when the profile
+supports cutting; this is separate from capability reporting and physical QA.
+Spooler submission alone does not prove physical cutting. Drawer pulse uses
+its independent per-device `usbRawCashDrawerPulseCertified` safeguard.
+
+Operator evidence recorded 2026-10-16 (date of this QA session; the exact
+physical-test timestamp was not supplied): the user reports canonical XP-80
+`usb-printer-1f0028d1fa5243c2`, Windows queue `XP-80`, printed a complete,
+readable ticket, advanced paper and cut once with
+`PERIPHERALS_USB_PRINT_TRANSPORT=RAW`. The user separately reports physical
+cash drawer opening. Codex did not independently reproduce these operations.
+These observations apply to that QA setup only, do not certify all devices,
+and do not change cutter capability reporting or drawer authorization metadata.
 
 ## Risks / Trade-offs
 
@@ -99,11 +109,29 @@ físico; QA manual es la única evidencia de corte real.
    explícitamente.
 2. En el host Windows aprobado, definir RAW y reiniciar el Agent.
 3. Ejecutar test print y ticket directo; validar contenido y corte físico.
-4. Solo tras corte observado, definir
-   `PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED=true` y reiniciar.
+4. Record observed cutting separately from the conservative USB capability;
+   do not enable capability reporting through the legacy global variable.
 5. Para rollback, definir `PERIPHERALS_USB_PRINT_TRANSPORT=GDI` y reiniciar.
 
+The QA RAW setting was a runtime launch/session choice. A Git commit or code
+deployment does not persist it. Reproduction requires a separately authorized
+launch configuration selecting RAW explicitly, the same verified canonical
+device/queue/profile, and independent drawer certification. No environment
+file, machine credential or runtime configuration is stored by this increment.
+
 ## Open Questions
+
+### QA_PRINT_18 Windows relationship proof
+
+QA_PRINT_21 narrows the present-device pipeline before expensive property acquisition: retain only USB instance IDs with Class_07 compatible IDs, plus USBPRINT instance IDs. Generic USB class membership alone is not sufficient. Parent/Children/ContainerId queries remain downstream of this filter. The 7000 ms command budget, serial inventory and exact correlation checks remain unchanged. This removes irrelevant property work; it does not prove which subquery caused the observed timeout or guarantee runtime latency. Mock/static validation and physical QA remain distinct.
+
+Extend the existing read-only PnP inventory with USBPRINT nodes and DEVPKEY_Device_Parent, Children and ContainerId properties. Support only the observed USBPRINT instance form ending in an exact `&USB<number>` port; other forms remain uncorrelated. Require unique queue name/port, a unique present/OK USBPRINT and parent, reciprocal child identity, equal nonzero GUID containers, and parent VID/PID consistency with hardware IDs. Publish proof in queue fingerprint metadata. Reconciliation substitutes the proven parent as the queue's physical matching key, then retains the original queue descriptor's ID when normalizing a correlated result. Existing configured-device merge preserves profile/association. Missing proof leaves the existing fail-closed path; runtime status follows the computed discovered status. No printing, pulse, scale, authentication or runtime operation is part of this change.
+
+### QA_PRINT_08 diagnostics boundary
+
+Use a typed HTTP diagnostic exception for USB print and drawer failures. Command failures use Node error codes and reserved PowerShell exit codes (41 invalid queue, 42 spooler submission, 43 process failure). Unknown errors stay generic; stderr and arbitrary exception messages are never classified or returned. Print failures retain HTTP 400; drawer unexpected transport failures retain HTTP 500. Existing logging records only safe categories and bounded non-secret device/queue identity plus configured transport. Client allowlists are explicit and checked for parity. No live QA action or hardware certification is part of this increment.
+
+QA_PRINT_08S scopes reserved statuses to an explicit Agent-owned Windows USB RAW/GDI command context. Other command sources, including Unix lp, use generic nonzero-process classification. Metadata records connectionType; RAW/GDI configuredTransport and bounded expectedQueue apply only to USB. NETWORK and other connections retain their existing connection category as transport. USB drawer transport remains RAW. This changes diagnostics only, not job submission or payloads.
 
 - La XP-80 puede requerir code page distinta para caracteres fuera de Latin-1;
   esta entrega no cambia code page por modelo.
