@@ -30,6 +30,7 @@ import {
   type WindowsPrintCommandRunner,
 } from "../../platform/windows/windows-raw-spooler.transport";
 import { WindowsGdiSpoolerTransport } from "../../platform/windows/windows-gdi-spooler.transport";
+import { classifyPrintCommandError, PrintDiagnosticError } from "../printing/print-diagnostic";
 
 export type UsbPrintCommandRunner = WindowsPrintCommandRunner;
 
@@ -83,21 +84,27 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
     this.validateDevice(input.device);
     const capabilities = this.getCapabilities(input.profile, input.device);
     if (!capabilities.supportsCashDrawerPulse) {
-      throw new BadRequestException("printer drawer pulse is not certified for this device");
+      throw new PrintDiagnosticError("DRAWER_NOT_CERTIFIED");
     }
 
     const queueName = this.resolveWindowsQueueName(input.device);
     if (!queueName) {
-      throw new BadRequestException("WINDOWS_PRINT_QUEUE_REQUIRED: configure a Windows print queue before opening the drawer");
+      throw new PrintDiagnosticError("WINDOWS_PRINT_QUEUE_REQUIRED");
     }
 
     const commands = createCashDrawerPulseCommands();
     const payload = buildCashDrawerPulseBytes(input.pulse);
-    const bytesSent = this.rawTransport.send({
+    let bytesSent: number;
+    try {
+      bytesSent = this.rawTransport.send({
       nativeIdentifier: queueName,
       payload,
       jobName: "Manus POS cash drawer pulse",
-    }).bytesSent;
+      }).bytesSent;
+    } catch (error) {
+      const code = classifyPrintCommandError(error, "WINDOWS_USB_RAW");
+      throw new PrintDiagnosticError(code === "PRINT_FAILED" ? "DRAWER_RAW_TRANSPORT_FAILED" : code, 500);
+    }
 
     return {
       adapterName: this.adapterName,
@@ -189,7 +196,7 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
   ): number | undefined {
     const queueName = this.resolveWindowsQueueName(device);
     if (!queueName) {
-      throw new BadRequestException("PRINT_TRANSPORT_NOT_READY: a Windows print queue is required for USB printing");
+      throw new PrintDiagnosticError("PRINT_TRANSPORT_NOT_READY");
     }
 
     try {
@@ -215,15 +222,13 @@ export class UsbSystemPrinterAdapter implements PrinterAdapter {
       this.printGdi(queueName, preview);
       return undefined;
     } catch (error) {
-      if (error instanceof BadRequestException) {
+      if (error instanceof PrintDiagnosticError) {
         throw error;
       }
-      const rawMessage = error instanceof Error ? error.message : "unknown print error";
-      const message = /(?:1801|invalid printer name|OpenPrinter failed)/i.test(rawMessage)
-        ? `WINDOWS_INVALID_PRINTER_QUEUE: Windows no reconoce una cola de impresión con ese nombre (${queueName}) [win32Error=1801]`
-        : rawMessage;
-      const label = this.transport === "RAW" ? "USB RAW printer" : "USB GDI printer";
-      throw new BadRequestException(`${label} print failed: ${message}`);
+      const source = this.platform === "win32"
+        ? this.transport === "RAW" ? "WINDOWS_USB_RAW" : "WINDOWS_USB_GDI"
+        : "OTHER";
+      throw new PrintDiagnosticError(classifyPrintCommandError(error, source));
     }
   }
 

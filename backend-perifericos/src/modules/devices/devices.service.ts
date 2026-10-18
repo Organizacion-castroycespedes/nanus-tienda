@@ -237,12 +237,23 @@ export class DevicesService {
     try {
       usbDescriptors = await this.usbDiscovery.list();
       printerCommandDurationMs = Date.now() - usbStartedAt;
+      for (const diagnostic of this.usbDiscovery.getLastUsbDiscoveryDiagnostics?.() ?? []) {
+        this.logsService.append({
+          source: 'devices',
+          event: 'devices.discover.pnp',
+          message: 'Windows PnP discovery stage observed',
+          metadata: diagnostic,
+        });
+      }
       if (config.mode === "REAL") {
        const physical = usbDescriptors.filter((d) => d.descriptor.fingerprint.source === "WINDOWS_PNP").map((d) => ({ name: d.name, deviceId: d.deviceId, nativeIdentifier: d.descriptor.nativeIdentifier, fingerprint: d.descriptor.fingerprint.values }));
        const queues = usbDescriptors.filter((d) => d.descriptor.fingerprint.source === "WINDOWS_PRINT_QUEUE").map((d) => ({
         name: d.name,
         portName: d.descriptor.fingerprint.values?.portName ?? d.printerName,
-        nativeIdentifier: d.descriptor.nativeIdentifier,
+        nativeIdentifier: d.descriptor.platform === "WINDOWS"
+          && d.descriptor.fingerprint.values?.queueCorrelation === "USBPRINT_PARENT_CONTAINER_PORT"
+          ? d.descriptor.fingerprint.values.physicalNativeIdentifier
+          : d.descriptor.nativeIdentifier,
         ready: d.descriptor.fingerprint.values?.queueReady !== "false",
        }));
        const configuredPrinterBindings: ExplicitPrinterBinding[] = [...this.configuredDevices.values(), ...this.seedDevices]
@@ -256,18 +267,25 @@ export class DevicesService {
        const reconciled = reconcilePrinters(physical, queues, configuredPrinterBindings);
        reconciliationDurationMs = Date.now() - reconciliationStartedAt;
        const normalized = reconciled.map((item) => {
-        const original = usbDescriptors.find((d) => d.descriptor.nativeIdentifier === item.nativeIdentifier);
+        const correlatedQueues = usbDescriptors.filter((d) => d.descriptor.platform === "WINDOWS"
+          && d.descriptor.fingerprint.source === "WINDOWS_PRINT_QUEUE"
+          && d.name === item.windowsQueueName
+          && d.descriptor.fingerprint.values?.queueCorrelation === "USBPRINT_PARENT_CONTAINER_PORT"
+          && d.descriptor.fingerprint.values.physicalNativeIdentifier === item.nativeIdentifier);
+        const original = correlatedQueues.length === 1 ? correlatedQueues[0]
+          : usbDescriptors.find((d) => d.descriptor.nativeIdentifier === item.nativeIdentifier);
         const source = item.physicalDetected ? "WINDOWS_PNP" : "WINDOWS_PRINT_QUEUE";
         const descriptorValues = {
           ...(original?.descriptor.fingerprint.values ?? {}),
           physicalDetected: String(item.physicalDetected),
           queueInstalled: String(item.queueInstalled),
           reconciliationStatus: item.status,
+          ...(item.portName ? { portName: item.portName } : {}),
         };
         if (original) {
           return {
             ...original,
-            name: item.name,
+            name: correlatedQueues.length === 1 ? original.name : item.name,
             windowsQueueName: item.windowsQueueName,
             descriptor: {
               ...original.descriptor,
@@ -368,7 +386,7 @@ export class DevicesService {
 
       nextDiscoveredUsbDevices.set(runtimeId, discoveredDevice);
       matchedConfiguredIds.add(runtimeId);
-      this.runtimeStatuses.set(runtimeId, DeviceStatus.CONNECTED);
+      this.runtimeStatuses.set(runtimeId, discoveredDevice.status);
     }
 
     if (!usbDiscoveryFailed) {

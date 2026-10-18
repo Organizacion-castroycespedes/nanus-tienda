@@ -81,6 +81,12 @@ export type PosSaleAttempt = {
   startedAt: string;
 };
 
+export type PosSaleOperationTarget = {
+  accountId: string;
+  attemptId: string;
+  contextKey: string;
+};
+
 export type PosCartAccount = {
   id: string;
   name: string;
@@ -102,6 +108,15 @@ export type PosCartState = PosCartContext & {
   saleStatus: PosSaleStatus;
   saleAttempt: PosSaleAttempt | null;
 };
+
+export const hasProtectedSaleAttempt = (
+  state: Pick<PosCartState, "accounts">
+) =>
+  state.accounts.some(
+    (account) =>
+      account.saleStatus === POS_SALE_STATUSES.SUBMITTING ||
+      account.saleStatus === POS_SALE_STATUSES.UNKNOWN
+  );
 
 export const POS_CART_STORAGE_PREFIX = "pos-cart:";
 
@@ -168,6 +183,22 @@ const loadAccountIntoState = (
     account.payments.length > 0 ? account.payments : buildDefaultPayments();
   state.saleStatus = account.saleStatus;
   state.saleAttempt = account.saleAttempt;
+};
+
+const findSaleOperationTarget = (
+  state: PosCartState,
+  target: PosSaleOperationTarget
+) => {
+  if (state.contextKey !== target.contextKey) {
+    return null;
+  }
+
+  const account = state.accounts.find((candidate) => candidate.id === target.accountId);
+  if (account?.saleAttempt?.attemptId !== target.attemptId) {
+    return null;
+  }
+
+  return account;
 };
 
 export const buildPosCartStorageKey = (context: PosCartContext) => {
@@ -411,9 +442,9 @@ const posCartSlice = createSlice({
     },
     setSaleStatus(state, action: PayloadAction<PosSaleStatus>) {
       if (
-        state.saleStatus === POS_SALE_STATUSES.UNKNOWN &&
-        action.payload === POS_SALE_STATUSES.DRAFT &&
-        state.items.length > 0
+        (state.saleStatus === POS_SALE_STATUSES.UNKNOWN ||
+          state.saleStatus === POS_SALE_STATUSES.SUBMITTING) &&
+        action.payload === POS_SALE_STATUSES.DRAFT
       ) {
         return;
       }
@@ -434,7 +465,54 @@ const posCartSlice = createSlice({
         syncActiveAccount(state);
       }
     },
+    markUnknownForAccount(
+      state,
+      action: PayloadAction<PosSaleOperationTarget>
+    ) {
+      const account = findSaleOperationTarget(state, action.payload);
+      if (!account) {
+        return;
+      }
+
+      account.saleStatus = POS_SALE_STATUSES.UNKNOWN;
+      if (state.activeAccountId === account.id) {
+        loadAccountIntoState(state, account);
+      }
+    },
+    confirmSaleForAccount(
+      state,
+      action: PayloadAction<
+        PosSaleOperationTarget & {
+          selectedCustomerId: string | null;
+          payments: PaymentDraft[];
+        }
+      >
+    ) {
+      const account = findSaleOperationTarget(state, action.payload);
+      if (!account) {
+        return;
+      }
+
+      account.items = [];
+      account.selectedCustomerId = action.payload.selectedCustomerId;
+      account.payments =
+        action.payload.payments.length > 0
+          ? action.payload.payments
+          : buildDefaultPayments();
+      account.saleStatus = POS_SALE_STATUSES.CONFIRMED;
+      account.saleAttempt = null;
+
+      if (state.activeAccountId === account.id) {
+        loadAccountIntoState(state, account);
+      }
+    },
     allowSaleSubmissionRetry(state) {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN ||
+        state.saleStatus === POS_SALE_STATUSES.SUBMITTING
+      ) {
+        return;
+      }
       state.saleStatus = POS_SALE_STATUSES.DRAFT;
       state.saleAttempt = null;
       syncActiveAccount(state);
@@ -449,6 +527,12 @@ const posCartSlice = createSlice({
       }
     },
     resetPosCartSale(state) {
+      if (
+        state.saleStatus === POS_SALE_STATUSES.UNKNOWN ||
+        state.saleStatus === POS_SALE_STATUSES.SUBMITTING
+      ) {
+        return;
+      }
       state.items = [];
       state.selectedCustomerId = null;
       state.payments = buildDefaultPayments();
@@ -508,6 +592,13 @@ const posCartSlice = createSlice({
     },
     removeAccount(state, action: PayloadAction<string>) {
       const targetId = action.payload;
+      const target = state.accounts.find((account) => account.id === targetId);
+      if (
+        target?.saleStatus === POS_SALE_STATUSES.UNKNOWN ||
+        target?.saleStatus === POS_SALE_STATUSES.SUBMITTING
+      ) {
+        return;
+      }
       if (state.accounts.length <= 1) {
         state.items = [];
         state.selectedCustomerId = null;
@@ -644,6 +735,8 @@ export const {
   setSaleStatus,
   beginSaleSubmission,
   markSaleSubmissionUnknown,
+  markUnknownForAccount,
+  confirmSaleForAccount,
   allowSaleSubmissionRetry,
   allowUnknownSaleRetry,
   resetPosCartSale,

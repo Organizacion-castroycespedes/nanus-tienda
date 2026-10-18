@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import http from "node:http";
-import { describe, it } from "node:test";
+import { after, describe, it, mock } from "node:test";
 
 import {
   CASH_DRAWER_REQUEST_TIMEOUT_MS,
@@ -25,6 +25,18 @@ const config = {
   agentLoopbackOrigin: "http://127.0.0.1:4050",
 };
 
+// Every request, including connection-error cases, must target a live fake
+// owned by this file. Never use the QA Agent or a presumed unused fixed port.
+const fakeServerPorts = new Set<number>();
+const originalRequest = http.request;
+const requestGuard = mock.method(http, "request", function (...args: Parameters<typeof http.request>) {
+  const options = args[0] as http.RequestOptions;
+  assert.equal(options.hostname, "127.0.0.1");
+  assert.ok(fakeServerPorts.has(Number(options.port)), "HTTP request escaped a test-owned fake server");
+  return originalRequest.apply(http, args);
+});
+after(() => requestGuard.mock.restore());
+
 const withServer = async (
   handler: http.RequestListener,
   callback: (port: number) => Promise<void>,
@@ -33,9 +45,11 @@ const withServer = async (
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
+  fakeServerPorts.add(address.port);
   try {
     await callback(address.port);
   } finally {
+    fakeServerPorts.delete(address.port);
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 };
@@ -98,9 +112,11 @@ describe("getAgentHealth", () => {
   });
 
   it("returns a safe unavailable result when the agent is absent", async () => {
-    const result = await getAgentHealth(configForPort(9));
-    assert.equal(result.available, false);
-    assert.ok(result.reason === "UNAVAILABLE" || result.reason === "TIMEOUT");
+    await withServer((request) => request.socket.destroy(), async (port) => {
+      const result = await getAgentHealth(configForPort(port));
+      assert.equal(result.available, false);
+      assert.ok(result.reason === "UNAVAILABLE" || result.reason === "TIMEOUT");
+    });
   });
 
   it("rejects malformed and oversized responses", async () => {
@@ -157,6 +173,21 @@ describe("discoverAgentDevices", () => {
         (error: unknown) => error instanceof Error && error.message === "AGENT_TIMEOUT",
       );
     });
+  });
+
+  it("rejects null and incomplete discovery responses", async () => {
+    for (const responseBody of ["null", JSON.stringify({}), JSON.stringify({ devices: "not-an-array" })]) {
+      await withServer((_request, response) => {
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "application/json");
+        response.end(responseBody);
+      }, async (port) => {
+        await assert.rejects(
+          discoverAgentDevices(configForPort(port), "terminal-qa"),
+          (error: unknown) => error instanceof Error && error.message === "AGENT_RESPONSE_INVALID",
+        );
+      });
+    }
   });
 });
 
@@ -283,11 +314,12 @@ describe("controlled Agent HTTP errors", () => {
   });
 
   it("maps Agent connection failures to the safe unavailable IPC code", async () => {
-    const unavailableConfig = { ...config, agentLoopbackOrigin: "http://127.0.0.1:1" };
-    assert.deepEqual(await captureAgentWeightForSaleIpc(unavailableConfig, { captureId: "capture-1" }), {
-      kind: "scale-capture-result-v1",
-      ok: false,
-      errorCode: "AGENT_UNAVAILABLE",
+    await withServer((request) => request.socket.destroy(), async (port) => {
+      assert.deepEqual(await captureAgentWeightForSaleIpc(configForPort(port), { captureId: "capture-1" }), {
+        kind: "scale-capture-result-v1",
+        ok: false,
+        errorCode: "AGENT_UNAVAILABLE",
+      });
     });
   });
 
@@ -348,6 +380,33 @@ describe("controlled Agent HTTP errors", () => {
           && error.code === "AGENT_HTTP_ERROR"
           && error.message === "AGENT_HTTP_ERROR",
       );
+    });
+  });
+
+  for (const code of [
+    "WINDOWS_INVALID_PRINTER_QUEUE", "PRINT_COMMAND_LAUNCH_FAILED",
+    "PRINT_PROCESS_FAILED", "PRINT_TIMEOUT", "PRINT_SPOOLER_SUBMISSION_FAILED",
+    "PRINT_FAILED", "DRAWER_NOT_CERTIFIED", "DRAWER_RAW_TRANSPORT_FAILED",
+  ]) {
+    it(`preserves structured ${code} without response text`, async () => {
+      await withServer((_request, response) => {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ code, message: "C:\\private\\token stderr payload" }));
+      }, async (port) => {
+        await assert.rejects(testAgentPrint(configForPort(port), {}),
+          (error: unknown) => error instanceof AgentHttpError
+            && error.statusCode === 400 && error.code === code && error.message === code);
+      });
+    });
+  }
+
+  it("masks unknown structured codes even with a misleading known message", async () => {
+    await withServer((_request, response) => {
+      response.statusCode = 500;
+      response.end(JSON.stringify({ code: "PRIVATE_ERROR", message: "PRINT_TIMEOUT: C:\\secret" }));
+    }, async (port) => {
+      await assert.rejects(testAgentPrint(configForPort(port), {}),
+        (error: unknown) => error instanceof AgentHttpError && error.code === "AGENT_HTTP_ERROR");
     });
   });
 });

@@ -41,9 +41,16 @@ import {
 } from "../hooks/usePosCartStore";
 import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
+import { store } from "../../../store";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { ApiError } from "../../../lib/request";
+import {
+  acquireSaleSubmission,
+  isSaleIdempotencyConflict,
+  releaseSaleSubmission,
+} from "../utils/sale-recovery";
+import { runConfirmedSalePostProcessing } from "../utils/sale-postprocessing";
 import { hasMenuAccess } from "../../../lib/permissions";
 import { fetchSystemVersion } from "../../../domains/system/api";
 import {
@@ -531,6 +538,7 @@ export const PosScreen = () => {
     items: cart,
     accounts,
     activeAccountId,
+    contextKey,
     payments,
     saleStatus,
     saleAttempt,
@@ -540,9 +548,8 @@ export const PosScreen = () => {
     setSaleStatus,
     setSelectedCustomerId,
     beginSaleSubmission,
-    markSaleSubmissionUnknown,
-    allowSaleSubmissionRetry,
-    allowUnknownSaleRetry,
+    markUnknownForAccount,
+    confirmSaleForAccount,
     resetPosCartSale,
     addAccount,
     switchAccount,
@@ -604,10 +611,14 @@ export const PosScreen = () => {
   const [financialInstitutionsCatalog, setFinancialInstitutionsCatalog] = useState<FinancialInstitution[]>([]);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [processingSale, setProcessingSale] = useState(false);
+  const [processingAccountIds, setProcessingAccountIds] = useState<Record<string, boolean>>({});
+  const processingSale = Boolean(processingAccountIds[activeAccountId]);
+  const saleSubmissionGateRef = useRef<Record<string, { inFlight: boolean }>>({});
+  const reconciliationGateRef = useRef<Record<string, { inFlight: boolean }>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [retryableUnknownAttemptIds, setRetryableUnknownAttemptIds] = useState<Record<string, string>>({});
   const [paymentWarning, setPaymentWarning] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
   const [scannerMockCode, setScannerMockCode] = useState("46564567");
@@ -625,6 +636,57 @@ export const PosScreen = () => {
   const [scaleConfigState, setScaleConfigState] = useState<
     "loading" | "unconfigured" | "configured" | "error"
   >("loading");
+  const getSaleSubmissionGate = (accountId: string) =>
+    (saleSubmissionGateRef.current[accountId] ??= { inFlight: false });
+  const getReconciliationGate = (accountId: string) =>
+    (reconciliationGateRef.current[accountId] ??= { inFlight: false });
+  const setAccountProcessing = (accountId: string, processing: boolean) => {
+    setProcessingAccountIds((current) => {
+      if (processing) {
+        return { ...current, [accountId]: true };
+      }
+
+      if (!current[accountId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[accountId];
+      return next;
+    });
+  };
+  const isSaleTargetCurrent = (target: {
+    accountId: string;
+    attemptId: string;
+    contextKey: string;
+  }) => {
+    const current = store.getState().posCart;
+    return (
+      current.contextKey === target.contextKey &&
+      current.accounts.some(
+        (account) =>
+          account.id === target.accountId &&
+          account.saleAttempt?.attemptId === target.attemptId
+      )
+    );
+  };
+  const isSaleTargetActive = (target: {
+    accountId: string;
+    attemptId: string;
+    contextKey: string;
+  }) =>
+    isSaleTargetCurrent(target) && isSaleOriginActive(target);
+  const isSaleOriginActive = (target: {
+    accountId: string;
+    attemptId: string;
+    contextKey: string;
+  }) => {
+    const current = store.getState().posCart;
+    return (
+      current.contextKey === target.contextKey &&
+      current.activeAccountId === target.accountId
+    );
+  };
   const {
     pdfConfig,
     isBillingProcessing,
@@ -1711,7 +1773,10 @@ export const PosScreen = () => {
 
   const setProductQuantityInCart = useCallback(
     (product: ProductResponse, quantity: number) => {
-      allowSaleSubmissionRetry();
+      if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+        setSubmitError("Verifica la venta pendiente antes de modificar este carrito.");
+        return false;
+      }
       setSubmitError(null);
 
       const currentCart = cartRef.current;
@@ -1763,7 +1828,7 @@ export const PosScreen = () => {
       queueCartItemPricing([...currentCart, nextItem], product.id, quantity, "UNIT");
       return true;
     },
-    [allowSaleSubmissionRetry, queueCartItemPricing, showToast]
+    [queueCartItemPricing, saleStatus, showToast]
   );
 
   const addToCart = useCallback(
@@ -2102,6 +2167,10 @@ export const PosScreen = () => {
   );
 
   const updateQuantity = (productId: string, nextQuantity: number) => {
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+      setSubmitError("Verifica la venta pendiente antes de modificar este carrito.");
+      return;
+    }
     setSaleStatus(POS_SALE_STATUSES.DRAFT);
     setSubmitError(null);
 
@@ -2135,6 +2204,10 @@ export const PosScreen = () => {
   };
 
   const removeCartItem = (productId: string) => {
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+      setSubmitError("Verifica la venta pendiente antes de modificar este carrito.");
+      return;
+    }
     setSaleStatus(POS_SALE_STATUSES.DRAFT);
     setSubmitError(null);
     setCartItemsAndRef(cartRef.current.filter((item) => item.productId !== productId));
@@ -2162,27 +2235,80 @@ export const PosScreen = () => {
       return;
     }
 
-    setProcessingSale(true);
-    setSubmitError(null);
+    if (!contextKey) {
+      return;
+    }
+
+    const target = {
+      accountId: activeAccountId,
+      attemptId: saleAttempt.attemptId,
+      contextKey,
+    };
+    const reconciliationGate = getReconciliationGate(target.accountId);
+    if (!acquireSaleSubmission(reconciliationGate)) {
+      return;
+    }
+
+    setAccountProcessing(target.accountId, true);
+    if (isSaleTargetActive(target)) {
+      setSubmitError(null);
+    }
     try {
-      const sale = await reconcileSale(saleAttempt.attemptId);
-      setSaleStatus(POS_SALE_STATUSES.CONFIRMED);
-      setCartItemsAndRef([]);
-      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
-      setExpandedTaxItems({});
-      setPaymentModalOpen(false);
-      resetPayments();
-      showToast(`Venta ${sale.id} encontrada y confirmada.`, "success");
+      const sale = await reconcileSale(target.attemptId);
+      if (!isSaleTargetCurrent(target)) {
+        return;
+      }
+
+      confirmSaleForAccount({
+        ...target,
+        selectedCustomerId: finalConsumerCustomer?.id ?? null,
+        payments: buildDefaultPayments(),
+      });
+      setRetryableUnknownAttemptIds((current) => {
+        const next = { ...current };
+        delete next[target.accountId];
+        return next;
+      });
+      if (isSaleOriginActive(target)) {
+        setExpandedTaxItems({});
+        setPaymentModalOpen(false);
+        showToast(`Venta ${sale.id} encontrada y confirmada.`, "success");
+      }
     } catch (error) {
+      if (!isSaleTargetCurrent(target)) {
+        return;
+      }
+
       if (error instanceof ApiError && error.status === 404) {
-        setSubmitError("No se encontro una venta con esta clave. Puedes reintentar con la misma clave.");
+        setRetryableUnknownAttemptIds((current) => ({
+          ...current,
+          [target.accountId]: target.attemptId,
+        }));
+        if (isSaleTargetActive(target)) {
+          setSubmitError("No se encontro una venta con esta clave. Puedes reintentar con la misma clave.");
+        }
       } else if (error instanceof ApiError && error.status === 409) {
-        setSubmitError("La venta sigue pendiente en el servidor. Espera y verifica de nuevo.");
+        setRetryableUnknownAttemptIds((current) => {
+          const next = { ...current };
+          delete next[target.accountId];
+          return next;
+        });
+        if (isSaleTargetActive(target)) {
+          setSubmitError("La venta sigue pendiente en el servidor. Espera y verifica de nuevo.");
+        }
       } else {
-        setSubmitError("No se pudo verificar la venta. Conservamos el intento para evitar duplicados.");
+        setRetryableUnknownAttemptIds((current) => {
+          const next = { ...current };
+          delete next[target.accountId];
+          return next;
+        });
+        if (isSaleTargetActive(target)) {
+          setSubmitError("No se pudo verificar la venta. Conservamos el intento para evitar duplicados.");
+        }
       }
     } finally {
-      setProcessingSale(false);
+      releaseSaleSubmission(reconciliationGate);
+      setAccountProcessing(target.accountId, false);
     }
   };
 
@@ -2216,6 +2342,10 @@ export const PosScreen = () => {
   ]);
 
   const cancelCurrentSale = useCallback(async () => {
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+      setSubmitError("Verifica la venta pendiente antes de cancelar este carrito.");
+      return;
+    }
     if (cartRef.current.length > 0) {
       try {
         await confirm({
@@ -2246,7 +2376,23 @@ export const PosScreen = () => {
     setCartItemsAndRef,
     setCartSheetOpen,
     setSelectedCustomerId,
+    saleStatus,
   ]);
+
+  const handleRemoveAccount = useCallback((accountId: string) => {
+    const account = accounts.find((candidate) => candidate.id === accountId);
+    if (account?.saleStatus === POS_SALE_STATUSES.UNKNOWN || account?.saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+      setSubmitError("Verifica la venta pendiente antes de eliminar esta cuenta.");
+      return;
+    }
+    removeAccount(accountId);
+  }, [accounts, removeAccount]);
+
+  const handleSwitchAccount = useCallback((accountId: string) => {
+    setPaymentModalOpen(false);
+    setSubmitError(null);
+    switchAccount(accountId);
+  }, [switchAccount]);
 
   const closeCartSheet = useCallback(() => {
     setCartSheetOpen(false);
@@ -2591,11 +2737,25 @@ export const PosScreen = () => {
   const submitSale = async (options?: {
     paymentsOverride?: PaymentDraft[];
     customerIdOverride?: string | null;
+    allowUnknownRetry?: boolean;
   }) => {
-    if (saleStatus === POS_SALE_STATUSES.UNKNOWN) {
+    const retryableUnknownAttemptId = retryableUnknownAttemptIds[activeAccountId];
+    const isApprovedUnknownRetry =
+      options?.allowUnknownRetry === true &&
+      saleStatus === POS_SALE_STATUSES.UNKNOWN &&
+      saleAttempt?.attemptId === retryableUnknownAttemptId;
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN && !isApprovedUnknownRetry) {
       setSubmitError(
         "La solicitud anterior quedo sin respuesta comprobable. Verifica la lista de ventas antes de habilitar otro intento."
       );
+      return;
+    }
+    if (options?.allowUnknownRetry && !saleAttempt) {
+      setSubmitError("No existe un intento comprobable para reintentar.");
+      return;
+    }
+    if (!contextKey) {
+      setSubmitError("La sesión POS no está lista para registrar la venta.");
       return;
     }
 
@@ -2630,16 +2790,32 @@ export const PosScreen = () => {
     const saleType: PosSalePayload["type"] =
       paymentTotal >= summary.total ? "CASH" : "CREDIT";
 
+    const saleGate = getSaleSubmissionGate(activeAccountId);
+    if (!acquireSaleSubmission(saleGate)) {
+      return;
+    }
+
     const attempt = saleAttempt ?? {
       attemptId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
       startedAt: new Date().toISOString(),
     };
+    const target = {
+      accountId: activeAccountId,
+      attemptId: attempt.attemptId,
+      contextKey,
+    };
+    const notifyOrigin = (message: string, variant: ToastVariant) => {
+      if (isSaleOriginActive(target)) {
+        showToast(message, variant);
+      }
+    };
     beginSaleSubmission(attempt);
-    setProcessingSale(true);
+    setAccountProcessing(target.accountId, true);
     setSubmitError(null);
 
+    let sale: Awaited<ReturnType<typeof createSale>>;
     try {
-      const sale = await createSale(
+      sale = await createSale(
         {
           customerId: customerIdForSubmit!,
           type: saleType,
@@ -2675,15 +2851,46 @@ export const PosScreen = () => {
         },
         { "Idempotency-Key": attempt.attemptId },
       );
+    } catch (error) {
+      markUnknownForAccount(target);
+      setRetryableUnknownAttemptIds((current) => {
+        const next = { ...current };
+        delete next[target.accountId];
+        return next;
+      });
+      if (isSaleTargetActive(target)) {
+        setSubmitError(
+          isSaleIdempotencyConflict(error)
+            ? "La solicitud usa una clave de idempotencia en conflicto. Verifica la venta antes de reintentar."
+            : "No se recibio una respuesta comprobable. La venta podria haberse registrado; revisa la lista de ventas antes de reintentar."
+        );
+        notifyOrigin("Venta pendiente de verificacion.", "warning");
+      }
+      releaseSaleSubmission(saleGate);
+      setAccountProcessing(target.accountId, false);
+      return;
+    }
 
-      setSaleStatus(POS_SALE_STATUSES.CONFIRMED);
-      // Successful checkout clears the persisted sale for this POS context.
-      setCartItemsAndRef([]);
-      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
-      setExpandedTaxItems({});
-      setPaymentModalOpen(false);
-      resetPayments();
-      showToast("Venta confirmada correctamente.", "success");
+    try {
+      if (!isSaleTargetCurrent(target)) {
+        return;
+      }
+
+      confirmSaleForAccount({
+        ...target,
+        selectedCustomerId: finalConsumerCustomer?.id ?? null,
+        payments: buildDefaultPayments(),
+      });
+      setRetryableUnknownAttemptIds((current) => {
+        const next = { ...current };
+        delete next[target.accountId];
+        return next;
+      });
+      if (isSaleOriginActive(target)) {
+        setExpandedTaxItems({});
+        setPaymentModalOpen(false);
+        notifyOrigin("Venta confirmada correctamente.", "success");
+      }
 
       const salePeripheralContext: PosSalePeripheralContext = {
         saleId: sale.id,
@@ -2733,9 +2940,9 @@ export const PosScreen = () => {
             reason: "SALE_CASH_PAYMENT",
           }).then((drawerRes) => {
             if (drawerRes.success) {
-              showToast("Cajón abierto", "success");
+              notifyOrigin("Cajón abierto", "success");
             }
-          });
+          }).catch(() => undefined);
         }
       }
 
@@ -2751,35 +2958,21 @@ export const PosScreen = () => {
             ? PARAMETER_MODES.ON_DEMAND
             : PARAMETER_MODES.AUTOMATIC,
         electronicBilling: sale.electronicBilling ?? null,
-        showToast,
-      });
+        showToast: notifyOrigin,
+      }).catch(() => undefined);
 
-      try {
-        if (!activeBranchId) {
-          throw new Error("missing branch");
-        }
-        const productsResult = await getPosProducts(activeBranchId);
-        setProducts(productsResult.filter((product) => product.isActive));
-      } catch {
-        // ignore background refresh issues
-      }
-    } catch (error) {
-      const isDefinitiveRejection =
-        error instanceof ApiError && error.status >= 400 && error.status < 500;
-      if (isDefinitiveRejection) {
-        allowSaleSubmissionRetry();
-        const msg = (error instanceof Error && error.message?.trim()) ? error.message.trim() : 'La venta fue rechazada. Revisa stock, pagos y permisos.';
-        setSubmitError(msg);
-        showToast("La venta fue rechazada.", "error");
-      } else {
-        markSaleSubmissionUnknown();
-        setSubmitError(
-          "No se recibio una respuesta comprobable. La venta podria haberse registrado; revisa la lista de ventas antes de reintentar."
-        );
-        showToast("Venta pendiente de verificacion.", "warning");
-      }
+      await runConfirmedSalePostProcessing({
+        refreshProducts: async () => {
+          if (!activeBranchId) {
+            throw new Error("missing branch");
+          }
+          const productsResult = await getPosProducts(activeBranchId);
+          setProducts(productsResult.filter((product) => product.isActive));
+        },
+      });
     } finally {
-      setProcessingSale(false);
+      releaseSaleSubmission(saleGate);
+      setAccountProcessing(target.accountId, false);
     }
   };
 
@@ -2787,6 +2980,13 @@ export const PosScreen = () => {
     saleStatus === POS_SALE_STATUSES.CONFIRMED && cartWithDerivedValues.length === 0
       ? POS_SALE_STATUSES.CONFIRMED
       : POS_SALE_STATUSES.DRAFT;
+
+  const retryUnknownSaleWithSameKey = () => {
+    if (!saleAttempt || saleAttempt.attemptId !== retryableUnknownAttemptIds[activeAccountId]) {
+      return;
+    }
+    void submitSale({ allowUnknownRetry: true });
+  };
 
   if (!canRead) {
     return (
@@ -2945,6 +3145,23 @@ export const PosScreen = () => {
           {catalogError}
         </section>
       ) : null}
+      {saleStatus === POS_SALE_STATUSES.UNKNOWN && saleAttempt ? (
+        <section className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+          <p className="font-semibold">Venta pendiente de verificación</p>
+          <p className="mt-1">Verifica la venta antes de modificar, cancelar o eliminar esta cuenta.</p>
+          {submitError ? <p className="mt-2">{submitError}</p> : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => void reconcileUnknownSale()} disabled={processingSale}>
+              Verificar venta
+            </Button>
+            {retryableUnknownAttemptIds[activeAccountId] === saleAttempt.attemptId ? (
+              <Button type="button" variant="primary" onClick={retryUnknownSaleWithSameKey} disabled={processingSale}>
+                Reintentar con la misma clave
+              </Button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       {/* Main Layout - Sale-first workspace */}
       <div className="grid gap-4">
         {/* Products Panel - Always visible */}
@@ -2954,10 +3171,10 @@ export const PosScreen = () => {
               <PosAccountTabs
                 accounts={accounts}
                 activeAccountId={activeAccountId}
-                onSelectAccount={switchAccount}
+                onSelectAccount={handleSwitchAccount}
                 onAddAccount={addAccount}
                 onRenameAccount={renameAccount}
-                onRemoveAccount={removeAccount}
+                onRemoveAccount={handleRemoveAccount}
                 formatCurrency={formatCurrency}
               />
 
