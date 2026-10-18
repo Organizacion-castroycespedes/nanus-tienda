@@ -69,6 +69,7 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { setAuthPermissions, setUser } from "../../store/authSlice";
 import { setMenuCache, setMenuItems, setPermissions } from "../../store/menuSlice";
 import { usePosUiStore } from "../../modules/pos/hooks/usePosUiStore";
+import { hasProtectedSaleAttempt } from "../../store/posCart";
 import type { AuthProfile } from "../../domains/auth/types";
 import type { MenuItem, MenuResponse } from "../../domains/menu/types";
 import { Select } from "../../components/design-system/Select";
@@ -250,6 +251,9 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const { openCartSheet } = usePosUiStore();
   const posCartItemCount = useAppSelector((state) =>
     state.posCart.items.reduce((sum, item) => sum + item.quantity, 0)
+  );
+  const hasProtectedPosSale = useAppSelector((state) =>
+    hasProtectedSaleAttempt(state.posCart)
   );
   const hasPendingPosSale = posCartItemCount > 0;
   const confirm = useConfirm();
@@ -497,6 +501,28 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     setToastMessage(message);
     setToastVariant(variant);
   }, []);
+
+  const handleLogout = async () => {
+    if (!hasProtectedPosSale) {
+      await logout();
+      return;
+    }
+
+    try {
+      await confirm({
+        title: "Venta POS pendiente de verificación",
+        description:
+          "Hay una cuenta procesando o con una venta sin respuesta comprobable. Verifica la venta en el POS antes de cerrar sesión.",
+        confirmText: "Ir al POS y verificar",
+        cancelText: "Seguir aquí",
+      });
+      router.push(`/${tenantSlug}/pos`);
+    } catch (error) {
+      if (!isConfirmCancelledError(error)) {
+        showToast("No se pudo abrir la verificación del POS.", "error");
+      }
+    }
+  };
 
   const buildAuthHeaders = () => {
     const headers: Record<string, string> = {};
@@ -1726,7 +1752,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }}
                 aria-label="Cerrar sesion"
                 title="Cerrar sesión"
-                onClick={() => logout()}
+                onClick={() => void handleLogout()}
               >
                 <LogOut className="h-4 w-4" />
               </button>

@@ -6,17 +6,21 @@ import posCartReducer, {
   allowSaleSubmissionRetry,
   allowUnknownSaleRetry,
   beginSaleSubmission,
+  confirmSaleForAccount,
   buildPosCartStorageKey,
   hydratePosCart,
   initialPosCartState,
   loadPersistedPosCartState,
   markSaleSubmissionUnknown,
+  markUnknownForAccount,
   persistPosCartState,
   removeAccount,
   renameAccount,
+  resetPosCartSale,
   setSaleStatus,
   setPosCartContext,
   setCartItems,
+  hasProtectedSaleAttempt,
   switchAccount,
   POS_SALE_STATUSES,
 } from "./posCart";
@@ -134,10 +138,78 @@ describe("POS sale submission recovery", () => {
     assert.equal(unknown.saleStatus, POS_SALE_STATUSES.UNKNOWN);
     assert.equal(editAttempt.saleStatus, POS_SALE_STATUSES.UNKNOWN);
     assert.deepEqual(cartEditAttempt.items, unknown.items);
-    assert.equal(retryable.saleStatus, POS_SALE_STATUSES.DRAFT);
-    assert.equal(retryable.saleAttempt, null);
+    assert.equal(retryable.saleStatus, POS_SALE_STATUSES.UNKNOWN);
+    assert.equal(retryable.saleAttempt?.attemptId, "attempt-a");
     assert.equal(sameKeyRetry.saleStatus, POS_SALE_STATUSES.DRAFT);
     assert.equal(sameKeyRetry.saleAttempt?.attemptId, "attempt-a");
+  });
+
+  it("does not remove an account while its sale attempt is UNKNOWN", () => {
+    const scoped = posCartReducer(initialPosCartState, setPosCartContext(context));
+    const withItem = posCartReducer(scoped, setCartItems([{
+      productId: "product-a",
+      name: "Producto A",
+      sku: "A-1",
+      quantity: 1,
+      price: 100,
+      stock: 5,
+      taxId: null,
+      priceWithoutTax: 100,
+    }]));
+    const unknown = posCartReducer(
+      posCartReducer(withItem, beginSaleSubmission({ attemptId: "attempt-a", startedAt: "2026-09-16T12:00:00.000Z" })),
+      markSaleSubmissionUnknown()
+    );
+    const protectedState = posCartReducer(unknown, removeAccount(unknown.activeAccountId));
+
+    assert.equal(protectedState.accounts.length, 1);
+    assert.equal(protectedState.saleStatus, POS_SALE_STATUSES.UNKNOWN);
+    assert.equal(protectedState.saleAttempt?.attemptId, "attempt-a");
+  });
+
+  it("keeps the attempt while SUBMITTING receives stale draft or reset actions", () => {
+    const submitting = posCartReducer(
+      {
+        ...initialPosCartState,
+        contextKey: "pos-cart:test",
+        items: [{
+          productId: "product-a",
+          name: "Producto A",
+          sku: "A-1",
+          quantity: 1,
+          price: 100,
+          stock: 5,
+          taxId: null,
+          priceWithoutTax: 100,
+        }],
+      },
+      beginSaleSubmission({ attemptId: "attempt-a", startedAt: "2026-09-16T12:00:00.000Z" })
+    );
+    const staleDraft = posCartReducer(submitting, setSaleStatus(POS_SALE_STATUSES.DRAFT));
+    const staleRetry = posCartReducer(submitting, allowSaleSubmissionRetry());
+    const staleReset = posCartReducer(submitting, resetPosCartSale());
+
+    for (const state of [staleDraft, staleRetry, staleReset]) {
+      assert.equal(state.saleStatus, POS_SALE_STATUSES.SUBMITTING);
+      assert.equal(state.saleAttempt?.attemptId, "attempt-a");
+      assert.equal(state.items.length, 1);
+    }
+  });
+
+  it("protects voluntary logout when any account is submitting or unknown", () => {
+    assert.equal(hasProtectedSaleAttempt(initialPosCartState), false);
+
+    const submitting = posCartReducer(
+      initialPosCartState,
+      beginSaleSubmission({ attemptId: "attempt-a", startedAt: "2026-09-16T12:00:00.000Z" })
+    );
+    assert.equal(hasProtectedSaleAttempt(submitting), true);
+
+    const unknown = posCartReducer(submitting, markSaleSubmissionUnknown());
+    assert.equal(hasProtectedSaleAttempt(unknown), true);
+
+    const withSecondAccount = posCartReducer(unknown, addAccount({ name: "Cuenta 2" }));
+    assert.equal(hasProtectedSaleAttempt(withSecondAccount), true);
   });
 
   it("supports multi-account cart management (create, switch, rename, remove and persist)", () => {
@@ -222,6 +294,102 @@ describe("POS sale submission recovery", () => {
     const removed = posCartReducer(rehydrated, removeAccount(account2Id));
     assert.equal(removed.accounts.length, 1);
     assert.equal(removed.accounts[0].id, account1Id);
+  });
+
+  it("applies a late confirmation only to the origin account", () => {
+    const scoped = posCartReducer(initialPosCartState, setPosCartContext(context));
+    const account1Id = scoped.activeAccountId;
+    const withAccount1Sale = posCartReducer(
+      posCartReducer(scoped, setCartItems([{
+        productId: "product-1",
+        name: "Cuenta 1 item",
+        sku: "C1",
+        quantity: 1,
+        price: 155500,
+        stock: 10,
+        taxId: null,
+        priceWithoutTax: 155500,
+      }])),
+      beginSaleSubmission({ attemptId: "attempt-account-1", startedAt: "2026-10-17T12:00:00.000Z" })
+    );
+    const withAccount2 = posCartReducer(withAccount1Sale, addAccount({ name: "Cuenta 2" }));
+    const account2Id = withAccount2.activeAccountId;
+    const withAccount2Items = posCartReducer(withAccount2, setCartItems([{
+      productId: "product-2",
+      name: "Seis artículos",
+      sku: "C2",
+      quantity: 6,
+      price: 155500,
+      stock: 10,
+      taxId: null,
+      priceWithoutTax: 155500,
+    }]));
+    const withAccount3 = posCartReducer(withAccount2Items, addAccount({ name: "Cuenta 3" }));
+    const account3Id = withAccount3.activeAccountId;
+
+    const confirmedOrigin = posCartReducer(
+      withAccount3,
+      confirmSaleForAccount({
+        accountId: account1Id,
+        attemptId: "attempt-account-1",
+        contextKey: withAccount3.contextKey!,
+        selectedCustomerId: null,
+        payments: [],
+      })
+    );
+
+    const account1 = confirmedOrigin.accounts.find((account) => account.id === account1Id);
+    const account2 = confirmedOrigin.accounts.find((account) => account.id === account2Id);
+    const account3 = confirmedOrigin.accounts.find((account) => account.id === account3Id);
+    assert.equal(confirmedOrigin.activeAccountId, account3Id);
+    assert.equal(account1?.saleStatus, POS_SALE_STATUSES.CONFIRMED);
+    assert.equal(account1?.saleAttempt, null);
+    assert.equal(account1?.items.length, 0);
+    assert.equal(account2?.items[0]?.quantity, 6);
+    assert.equal(account3?.items.length, 0);
+    assert.equal(confirmedOrigin.items.length, 0);
+  });
+
+  it("rejects late callbacks when the attempt or context is stale", () => {
+    const scoped = posCartReducer(initialPosCartState, setPosCartContext(context));
+    const withAttempt = posCartReducer(
+      posCartReducer(scoped, setCartItems([{
+        productId: "product-a",
+        name: "Producto A",
+        sku: "A-1",
+        quantity: 1,
+        price: 100,
+        stock: 5,
+        taxId: null,
+        priceWithoutTax: 100,
+      }])),
+      beginSaleSubmission({ attemptId: "attempt-a", startedAt: "2026-10-17T12:00:00.000Z" })
+    );
+    const staleAttempt = posCartReducer(
+      withAttempt,
+      beginSaleSubmission({ attemptId: "attempt-b", startedAt: "2026-10-17T12:01:00.000Z" })
+    );
+    const staleResult = posCartReducer(
+      staleAttempt,
+      markUnknownForAccount({
+        accountId: staleAttempt.activeAccountId,
+        attemptId: "attempt-a",
+        contextKey: staleAttempt.contextKey!,
+      })
+    );
+    const staleContext = posCartReducer(
+      staleAttempt,
+      markUnknownForAccount({
+        accountId: staleAttempt.activeAccountId,
+        attemptId: "attempt-b",
+        contextKey: "pos-cart:other-context",
+      })
+    );
+
+    assert.equal(staleResult.saleStatus, POS_SALE_STATUSES.SUBMITTING);
+    assert.equal(staleResult.saleAttempt?.attemptId, "attempt-b");
+    assert.equal(staleContext.saleStatus, POS_SALE_STATUSES.SUBMITTING);
+    assert.equal(staleContext.saleAttempt?.attemptId, "attempt-b");
   });
 });
 
