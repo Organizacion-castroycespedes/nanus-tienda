@@ -1419,7 +1419,8 @@ class GovernanceDiagnosticTests(unittest.TestCase):
     def test_windows_access_denied_marks_cli_unavailable_even_with_exit_one(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(diagnostic_module, "resolve_openspec_command", return_value=["openspec.cmd"]), \
+            with patch.object(diagnostic_module.os, "name", "nt"), \
+                    patch.object(diagnostic_module, "resolve_openspec_command", return_value=["openspec.cmd"]), \
                     patch.object(diagnostic_module, "run", return_value=(1, "Acceso denegado.")):
                 result = validate_openspec(root, "change-a")
             self.assertFalse(result["cli_available"])
