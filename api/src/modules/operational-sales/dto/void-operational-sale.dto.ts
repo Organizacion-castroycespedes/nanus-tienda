@@ -7,7 +7,7 @@ export class VoidOperationalSaleDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(["1", "2", "3", "4", "5"])
+  @IsIn(["2"])
   discrepancyResponseCode?: string;
 
   @IsOptional()

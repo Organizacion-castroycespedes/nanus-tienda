@@ -479,6 +479,31 @@ const posCartSlice = createSlice({
         loadAccountIntoState(state, account);
       }
     },
+    applyDefinitiveStockRejection(
+      state,
+      action: PayloadAction<
+        PosSaleOperationTarget & {
+          productId: string;
+          availableQuantity: number;
+        }
+      >
+    ) {
+      const account = findSaleOperationTarget(state, action.payload);
+      if (!account) {
+        return;
+      }
+
+      account.items = account.items.map((item) =>
+        item.productId === action.payload.productId
+          ? { ...item, stock: action.payload.availableQuantity }
+          : item,
+      );
+      account.saleStatus = POS_SALE_STATUSES.DRAFT;
+      account.saleAttempt = null;
+      if (state.activeAccountId === account.id) {
+        loadAccountIntoState(state, account);
+      }
+    },
     confirmSaleForAccount(
       state,
       action: PayloadAction<
@@ -736,6 +761,7 @@ export const {
   beginSaleSubmission,
   markSaleSubmissionUnknown,
   markUnknownForAccount,
+  applyDefinitiveStockRejection,
   confirmSaleForAccount,
   allowSaleSubmissionRetry,
   allowUnknownSaleRetry,

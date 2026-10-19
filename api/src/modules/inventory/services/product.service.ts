@@ -136,6 +136,17 @@ type ProductSaleModelRules = {
   measurementUnit: ProductMeasurementUnit;
 };
 
+const PRODUCT_STRUCTURAL_FIELDS = [
+  "unitId",
+  "saleType",
+  "measurementUnit",
+  "isPerishable",
+  "requiresLot",
+  "requiresExpiration",
+] as const satisfies ReadonlyArray<keyof ProductProps>;
+
+type ProductStructuralField = (typeof PRODUCT_STRUCTURAL_FIELDS)[number];
+
 type PosProductBarcode = {
   code: string;
   barcode: string;
@@ -603,6 +614,24 @@ export class ProductService {
     return Object.prototype.hasOwnProperty.call(data, field);
   }
 
+  private assertStructuralConfigurationUnchanged(
+    current: ProductEntity,
+    data: ProductUpdatePayload
+  ) {
+    const changedFields = PRODUCT_STRUCTURAL_FIELDS.filter((field) => {
+      if (!this.hasOwn(data, field) || data[field] === undefined) {
+        return false;
+      }
+      return data[field] !== current[field as ProductStructuralField];
+    });
+
+    if (changedFields.length > 0) {
+      throw new BadRequestException(
+        `product structural configuration cannot be changed after creation; blocked fields: ${changedFields.join(", ")}`
+      );
+    }
+  }
+
   private hasImageMetadata(data: Record<string, unknown>) {
     return [
       "imageUrl",
@@ -1029,6 +1058,8 @@ export class ProductService {
     if (!current) {
       throw new NotFoundException("product not found");
     }
+
+    this.assertStructuralConfigurationUnchanged(current, data);
 
     if (data.name !== undefined) {
       this.validateName(data.name);

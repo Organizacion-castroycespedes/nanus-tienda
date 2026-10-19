@@ -8,6 +8,7 @@ import { ProductService } from "./product.service";
 const tenantId = randomUUID();
 const secondTenantId = randomUUID();
 const unitId = randomUUID();
+const secondUnitId = randomUUID();
 const productId = randomUUID();
 const categoryId = randomUUID();
 const otherCategoryId = randomUUID();
@@ -70,6 +71,12 @@ type BuildServiceOptions = {
     tenantId: string;
     categoryId: string;
   }>;
+  findByIdCalls?: Array<{ id: string; tenantId: string }>;
+  updateCalls?: Array<{
+    id: string;
+    tenantId: string;
+    data: Partial<ProductProps>;
+  }>;
 };
 
 const buildService = (
@@ -81,19 +88,29 @@ const buildService = (
     findBySku: async () => null,
     create: async (product: ProductProps) => ProductEntity.create(product),
     findAllByTenant: async () => products,
-    findById: async () => currentProduct,
+    findById: async (id: string, requestedTenantId: string) => {
+      options.findByIdCalls?.push({ id, tenantId: requestedTenantId });
+      return (
+        products.find(
+          (product) =>
+            product.id === id && product.tenantId === requestedTenantId
+        ) ?? null
+      );
+    },
     update: async (
       id: string,
       productTenantId: string,
       data: Partial<ProductProps>
-    ) =>
-      ProductEntity.create({
+    ) => {
+      options.updateCalls?.push({ id, tenantId: productTenantId, data });
+      return ProductEntity.create({
         ...currentProduct,
         ...data,
         id,
         tenantId: productTenantId,
         updatedAt: new Date("2026-01-02T00:00:00.000Z"),
-      }),
+      });
+    },
     replaceProductTaxes: async () => undefined,
     findProductTaxes: async () => [],
     findProductTaxProfile: async () => null,
@@ -796,17 +813,80 @@ describe("ProductService enriched product rules", () => {
     );
   });
 
-  it("updates formal sale model fields without touching price", async () => {
+  it("creates a product with explicit structural configuration", async () => {
     const service = buildService();
 
-    const updated = await service.updateProduct(productId, tenantId, {
+    const created = await service.createProduct({
+      ...baseCreateInput(),
       saleType: "WEIGHT",
       measurementUnit: "KG",
+      isPerishable: true,
+      requiresLot: true,
+      requiresExpiration: true,
     });
 
-    assert.equal(updated.saleType, "WEIGHT");
-    assert.equal(updated.measurementUnit, "KG");
-    assert.equal(updated.price, 100);
+    assert.equal(created.saleType, "WEIGHT");
+    assert.equal(created.measurementUnit, "KG");
+    assert.equal(created.isPerishable, true);
+    assert.equal(created.requiresLot, true);
+    assert.equal(created.requiresExpiration, true);
+  });
+
+  it("rejects all structural changes even when the product has no movements", async () => {
+    const structuralChanges: Array<[keyof ProductProps, unknown]> = [
+      ["unitId", secondUnitId],
+      ["saleType", "WEIGHT"],
+      ["measurementUnit", "KG"],
+      ["isPerishable", true],
+      ["requiresLot", true],
+      ["requiresExpiration", true],
+    ];
+
+    for (const [field, value] of structuralChanges) {
+      const service = buildService();
+      await assert.rejects(
+        () =>
+          service.updateProduct(productId, tenantId, {
+            [field]: value,
+          } as any),
+        new RegExp(`blocked fields: ${field}`)
+      );
+    }
+  });
+
+  it("accepts identical structural values with an allowed commercial update", async () => {
+    const updateCalls: BuildServiceOptions["updateCalls"] = [];
+    const service = buildService(buildProduct(), { updateCalls });
+
+    const updated = await service.updateProduct(productId, tenantId, {
+      name: "Producto comercial actualizado",
+      unitId,
+      saleType: "UNIT",
+      measurementUnit: "UND",
+      isPerishable: false,
+      requiresLot: false,
+      requiresExpiration: false,
+    });
+
+    assert.equal(updated.name, "Producto comercial actualizado");
+    assert.equal(updateCalls?.length, 1);
+  });
+
+  it("uses tenant scope to read the structural baseline", async () => {
+    const findByIdCalls: BuildServiceOptions["findByIdCalls"] = [];
+    const service = buildService(buildProduct(), { findByIdCalls });
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, secondTenantId, {
+          name: "No autorizado",
+        }),
+      /product not found/
+    );
+
+    assert.deepEqual(findByIdCalls, [
+      { id: productId, tenantId: secondTenantId },
+    ]);
   });
 
   it("changes product price and stores applied history", async () => {

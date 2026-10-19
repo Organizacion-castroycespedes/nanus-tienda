@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "changes": [
     {
       "change_id": "implementar-gobernanza-openspec-migraciones-manus",
@@ -94,12 +94,38 @@
         "api/.env.example",
         "api/src/modules/integration-outbox/contracts/electronic-billing-outcome.ts",
         "api/src/modules/operational-sales/operational-sales.service.spec.ts",
-        "api/src/modules/operational-sales/operational-sales.service.ts",
         "web/modules/operational-sales/components/OperationalSaleDetailPage.tsx",
         "web/modules/operational-sales/components/VoidSaleModal.tsx",
         "web/modules/operational-sales/services/operational-sales.service.spec.ts",
         "web/modules/operational-sales/services/operational-sales.service.ts",
         "openspec/changes/corregir-anulacion-fiscal-ventas-operativas/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "restringir-anulacion-dian-y-kardex",
+      "paths": [
+        "api/src/modules/inventory/services/stock-movement.service.ts",
+        "api/src/modules/inventory/services/stock-movement.service.spec.ts",
+        "api/src/modules/operational-sales/dto/void-operational-sale.dto.ts",
+        "api/src/modules/operational-sales/on-demand-billing-validation.spec.ts",
+        "api/src/modules/operational-sales/operational-sales.module.ts",
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "openspec/changes/restringir-anulacion-dian-y-kardex/**",
+        "scripts/database/tests/20261018_operational_sale_void_kardex_qa_test.ts"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "inmutabilizar-configuracion-estructural-productos",
+      "paths": [
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/product.service.spec.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/product-form/ProductBasicSection.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "openspec/changes/inmutabilizar-configuracion-estructural-productos/**"
       ],
       "exemptions": []
     },
@@ -347,6 +373,66 @@
         "openspec/changes/pos-unknown-sale-recovery/tasks.md"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "corregir-stock-insuficiente-y-recuperacion-carrito-pos",
+      "paths": [
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/services/sale-stock-rejection.spec.ts",
+        "web/lib/http.ts",
+        "web/modules/pos/components/PosScreen.integration.test.tsx",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "openspec/changes/corregir-stock-insuficiente-y-recuperacion-carrito-pos/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "evolucionar-gobernanza-openspec-ownership-windows",
+      "paths": [
+        "scripts/governance/openspec_governance_diagnostic.py",
+        "scripts/governance/openspec-scope.json",
+        "scripts/governance/test_openspec_governance_diagnostic.py",
+        "scripts/governance/README.md",
+        "openspec/changes/evolucionar-gobernanza-openspec-ownership-windows/**"
+      ],
+      "exemptions": []
+    }
+  ],
+  "current_ownership": [
+    {
+      "change_id": "corregir-stock-insuficiente-y-recuperacion-carrito-pos",
+      "paths": [
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/services/sale-stock-rejection.spec.ts",
+        "web/lib/http.ts",
+        "web/modules/pos/components/PosScreen.integration.test.tsx",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "openspec/changes/corregir-stock-insuficiente-y-recuperacion-carrito-pos/**"
+      ],
+      "reason": "Current branch diff implements the P1 definitive stock rejection and safe POS cart recovery. Historical HU paths remain unchanged."
+    },
+    {
+      "change_id": "evolucionar-gobernanza-openspec-ownership-windows",
+      "paths": [
+        "scripts/governance/openspec_governance_diagnostic.py",
+        "scripts/governance/openspec-scope.json",
+        "scripts/governance/test_openspec_governance_diagnostic.py",
+        "scripts/governance/README.md",
+        "openspec/changes/evolucionar-gobernanza-openspec-ownership-windows/**"
+      ],
+      "reason": "Current branch diff evolves the repository-owned governance contract and documents the Windows runtime limitation."
     }
   ]
 }

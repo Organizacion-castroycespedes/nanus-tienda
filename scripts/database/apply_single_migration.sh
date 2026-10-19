@@ -121,6 +121,19 @@ if [[ "$MIGRATION_GOVERNANCE_ERA" == "POST_CUTOVER" ]]; then
 fi
 
 case "$TARGET_ENV" in
+  LOCAL)
+    [[ "${DB_HOST,,}" == "localhost" || "${DB_HOST:-}" == "127.0.0.1" ]] || {
+      echo "[apply_single_migration] Refusing target: explicit LOCAL host guard failed." >&2
+      exit 1
+    }
+    [[ "${DB_PORT:-}" == "5432" && "${DB_NAME:-}" == "manus_tienda_qa" && \
+       "$DB_SCHEMA" == "public" && "$ENVIRONMENT_NORMALIZED" == "LOCAL" && \
+       "${DB_USER:-}" == "postgres" && "${DB_ADMIN_USER:-}" == "postgres" ]] || {
+      echo "[apply_single_migration] Refusing target: explicit LOCAL identity guard failed." >&2
+      exit 1
+    }
+    EFFECTIVE_DB_HOST="127.0.0.1"
+    ;;
   QA)
     [[ "${DB_NAME:-}" == "manus_tienda_qa" && "$DB_SCHEMA" == "public" && "$ENVIRONMENT_NORMALIZED" == "QA" ]] || {
       echo "[apply_single_migration] Refusing target: explicit QA guard failed." >&2
@@ -138,6 +151,8 @@ case "$TARGET_ENV" in
     exit 1
     ;;
 esac
+
+EFFECTIVE_DB_HOST="${EFFECTIVE_DB_HOST:-$DB_HOST}"
 
 for var_name in DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD DB_ADMIN_USER DB_ADMIN_PASSWORD; do
   [[ -n "${!var_name:-}" ]] || { echo "[apply_single_migration] Missing ${var_name}." >&2; exit 1; }
@@ -291,14 +306,18 @@ if [[ -z "$EXPECTED_BINDING" || "${EXECUTION_BINDING,,}" != "${EXPECTED_BINDING,
 fi
 
 export PGPASSWORD="$DB_ADMIN_PASSWORD"
-PSQL=(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q)
+PSQL=(psql -h "$EFFECTIVE_DB_HOST" -p "$DB_PORT" -U "$DB_ADMIN_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q)
 
 if [[ ! "$DB_SCHEMA" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
   echo "[apply_single_migration] Invalid DB_SCHEMA identifier." >&2
   exit 1
 fi
 
-"${PSQL[@]}" -tAc "SELECT current_database() = '$DB_NAME' AND current_schema() = '$DB_SCHEMA';" | grep -qx t
+if [[ "$TARGET_ENV" == "LOCAL" ]]; then
+  "${PSQL[@]}" -tAc "SELECT current_database() = 'manus_tienda_qa' AND current_schema() = 'public' AND inet_server_addr() = inet '127.0.0.1' AND inet_server_port() = 5432 AND current_user = 'postgres';" | grep -qx t
+else
+  "${PSQL[@]}" -tAc "SELECT current_database() = '$DB_NAME' AND current_schema() = '$DB_SCHEMA';" | grep -qx t
+fi
 "${PSQL[@]}" -tAc "SELECT to_regclass('${DB_SCHEMA}.migrations_history') IS NOT NULL;" | grep -qx t
 
 already_applied_row="$("${PSQL[@]}" -F $'\t' -Atc "SELECT COALESCE(checksum, ''), success::text FROM \"${DB_SCHEMA}\".migrations_history WHERE version = '$VERSION' LIMIT 1;")"

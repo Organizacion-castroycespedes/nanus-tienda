@@ -5,6 +5,7 @@ import posCartReducer, {
   addAccount,
   allowSaleSubmissionRetry,
   allowUnknownSaleRetry,
+  applyDefinitiveStockRejection,
   beginSaleSubmission,
   confirmSaleForAccount,
   buildPosCartStorageKey,
@@ -390,6 +391,39 @@ describe("POS sale submission recovery", () => {
     assert.equal(staleResult.saleAttempt?.attemptId, "attempt-b");
     assert.equal(staleContext.saleStatus, POS_SALE_STATUSES.SUBMITTING);
     assert.equal(staleContext.saleAttempt?.attemptId, "attempt-b");
+  });
+
+  it("returns only the rejected account to draft and updates its stock", () => {
+    const scoped = posCartReducer(initialPosCartState, setPosCartContext(context));
+    const withItems = posCartReducer(scoped, setCartItems([{
+      productId: "product-a",
+      name: "Producto A",
+      sku: "A-1",
+      quantity: 6,
+      price: 100,
+      stock: 10,
+      taxId: null,
+      priceWithoutTax: 100,
+    }]));
+    const submitting = posCartReducer(
+      withItems,
+      beginSaleSubmission({ attemptId: "attempt-stock", startedAt: "2026-10-19T12:00:00.000Z" }),
+    );
+    const recovered = posCartReducer(
+      submitting,
+      applyDefinitiveStockRejection({
+        accountId: submitting.activeAccountId,
+        attemptId: "attempt-stock",
+        contextKey: submitting.contextKey!,
+        productId: "product-a",
+        availableQuantity: 2,
+      }),
+    );
+
+    assert.equal(recovered.saleStatus, POS_SALE_STATUSES.DRAFT);
+    assert.equal(recovered.saleAttempt, null);
+    assert.equal(recovered.items[0].quantity, 6);
+    assert.equal(recovered.items[0].stock, 2);
   });
 });
 
