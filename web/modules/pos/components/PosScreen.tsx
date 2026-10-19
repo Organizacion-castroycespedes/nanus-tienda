@@ -48,6 +48,7 @@ import { ApiError } from "../../../lib/request";
 import {
   acquireSaleSubmission,
   isSaleIdempotencyConflict,
+  readDefinitiveStockRejection,
   releaseSaleSubmission,
 } from "../utils/sale-recovery";
 import { runConfirmedSalePostProcessing } from "../utils/sale-postprocessing";
@@ -549,6 +550,7 @@ export const PosScreen = () => {
     setSelectedCustomerId,
     beginSaleSubmission,
     markUnknownForAccount,
+    applyDefinitiveStockRejection,
     confirmSaleForAccount,
     resetPosCartSale,
     addAccount,
@@ -611,10 +613,12 @@ export const PosScreen = () => {
   const [financialInstitutionsCatalog, setFinancialInstitutionsCatalog] = useState<FinancialInstitution[]>([]);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [availabilityRefreshing, setAvailabilityRefreshing] = useState(false);
   const [processingAccountIds, setProcessingAccountIds] = useState<Record<string, boolean>>({});
   const processingSale = Boolean(processingAccountIds[activeAccountId]);
   const saleSubmissionGateRef = useRef<Record<string, { inFlight: boolean }>>({});
   const reconciliationGateRef = useRef<Record<string, { inFlight: boolean }>>({});
+  const availabilityRefreshGateRef = useRef(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -2312,32 +2316,118 @@ export const PosScreen = () => {
     }
   };
 
-  const openChargeModal = useCallback(() => {
-    setSubmitError(null);
-    const selectedCustomerIsAvailable = customers.some(
-      (customer) => customer.id === selectedCustomerId
-    );
-    if (!selectedCustomerIsAvailable) {
-      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+  const openChargeModal = useCallback(async () => {
+    if (availabilityRefreshGateRef.current) {
+      return;
     }
-    const result = createDefaultCashPayment(
-      summary.total,
-      paymentMethodsCatalog,
-      createPaymentDraft
-    );
-    setPaymentWarning(result.error);
-    setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
-    setPaymentModalOpen(true);
-    setCartSheetOpen(false);
+    if (!activeBranchId || !contextKey) {
+      setSubmitError("No hay un contexto POS activo para actualizar disponibilidad.");
+      return;
+    }
+
+    const targetContextKey = contextKey;
+    const targetAccountId = activeAccountId;
+    availabilityRefreshGateRef.current = true;
+    setAvailabilityRefreshing(true);
+    setSubmitError(null);
+
+    try {
+      const refreshedProducts = (await getPosProducts(activeBranchId)).filter(
+        (product) => product.isActive,
+      );
+      const currentState = store.getState().posCart;
+      if (
+        currentState.contextKey !== targetContextKey ||
+        currentState.activeAccountId !== targetAccountId
+      ) {
+        return;
+      }
+
+      setProducts(refreshedProducts);
+      const refreshedByProductId = new Map(
+        refreshedProducts.map((product) => [product.id, product]),
+      );
+      const refreshedCart = cartRef.current.map((item) => {
+        const product = refreshedByProductId.get(item.productId);
+        return product && typeof product.stock === "number"
+          ? { ...item, stock: product.stock }
+          : item;
+      });
+      setCartItemsAndRef(refreshedCart);
+
+      const exceeded = refreshedCart.find(
+        (item) =>
+          item.saleMode !== "WEIGHT" &&
+          item.quantity > item.stock,
+      );
+      if (exceeded) {
+        setSubmitError(
+          `${exceeded.name}: solicitas ${exceeded.quantity} y hay ${exceeded.stock} disponibles. Reduce la cantidad o elimina el producto.`,
+        );
+        showToast("Disponibilidad actualizada. Revisa el carrito.", "warning");
+        return;
+      }
+
+      const selectedCustomerIsAvailable = customers.some(
+        (customer) => customer.id === selectedCustomerId,
+      );
+      if (!selectedCustomerIsAvailable) {
+        setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+      }
+      const result = createDefaultCashPayment(
+        summary.total,
+        paymentMethodsCatalog,
+        createPaymentDraft,
+      );
+      setPaymentWarning(result.error);
+      setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
+      setPaymentModalOpen(true);
+      setCartSheetOpen(false);
+    } catch {
+      const currentState = store.getState().posCart;
+      if (
+        currentState.contextKey !== targetContextKey ||
+        currentState.activeAccountId !== targetAccountId
+      ) {
+        return;
+      }
+
+      setSubmitError(
+        "No se pudo actualizar la disponibilidad. El backend validará el stock nuevamente antes de registrar la venta.",
+      );
+      const selectedCustomerIsAvailable = customers.some(
+        (customer) => customer.id === selectedCustomerId,
+      );
+      if (!selectedCustomerIsAvailable) {
+        setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+      }
+      const result = createDefaultCashPayment(
+        summary.total,
+        paymentMethodsCatalog,
+        createPaymentDraft,
+      );
+      setPaymentWarning(result.error);
+      setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
+      setPaymentModalOpen(true);
+      setCartSheetOpen(false);
+    } finally {
+      availabilityRefreshGateRef.current = false;
+      setAvailabilityRefreshing(false);
+    }
   }, [
+    activeAccountId,
+    activeBranchId,
     createPaymentDraft,
+    contextKey,
     customers,
     finalConsumerCustomer,
     paymentMethodsCatalog,
     selectedCustomerId,
+    setCartItemsAndRef,
     setCartSheetOpen,
     setPayments,
     setSelectedCustomerId,
+    showToast,
     summary.total,
   ]);
 
@@ -2852,6 +2942,33 @@ export const PosScreen = () => {
         { "Idempotency-Key": attempt.attemptId },
       );
     } catch (error) {
+      const definitiveStockRejection = readDefinitiveStockRejection(error);
+      if (definitiveStockRejection) {
+        applyDefinitiveStockRejection({
+          ...target,
+          productId: definitiveStockRejection.productId,
+          availableQuantity: definitiveStockRejection.availableQuantity,
+        });
+        setRetryableUnknownAttemptIds((current) => {
+          const next = { ...current };
+          delete next[target.accountId];
+          return next;
+        });
+        if (isSaleTargetActive(target)) {
+          const failedItem = cartWithDerivedValues.find(
+            (item) => item.productId === definitiveStockRejection.productId,
+          );
+          const productName = failedItem?.name ?? definitiveStockRejection.productId;
+          setSubmitError(
+            `${productName}: solicitaste ${definitiveStockRejection.requestedQuantity} y hay ${definitiveStockRejection.availableQuantity} disponibles. Ajusta el carrito y vuelve a cobrar.`,
+          );
+          notifyOrigin("Stock insuficiente. El carrito quedó editable.", "warning");
+        }
+        releaseSaleSubmission(saleGate);
+        setAccountProcessing(target.accountId, false);
+        return;
+      }
+
       markUnknownForAccount(target);
       setRetryableUnknownAttemptIds((current) => {
         const next = { ...current };
@@ -3424,7 +3541,7 @@ export const PosScreen = () => {
         items={cartWithDerivedValues}
         summary={summary}
         expandedTaxItems={expandedTaxItems}
-        canCharge={canCharge}
+        canCharge={canCharge && !availabilityRefreshing}
         hasPricingPending={hasPricingPending}
         pricingErrorMessage={pricingErrorMessage}
         scaleControlsVisible={scaleCaptureControlsVisible}

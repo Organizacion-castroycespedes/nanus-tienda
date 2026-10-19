@@ -1050,7 +1050,8 @@ export class OperationalSalesService {
           `SELECT id, product_id, quantity::text, branch_id, terminal_id, pos_session_code, user_id
              FROM stock_movements
             WHERE tenant_id = $1 AND reference_type = 'SALE' AND reference_id = $2
-              AND reference_table = 'sales' AND type = 'OUT'`,
+            AND reference_table = 'sales' AND type = 'OUT'
+            ORDER BY created_at ASC, id ASC`,
           [tenantId, saleId]
         );
 
@@ -1076,33 +1077,62 @@ export class OperationalSalesService {
           const reverseMovId = reverseMovement.id;
 
           const lotLinks = await client.query<{
+            product_id: string;
             lot_id: string;
+            location_id: string | null;
             quantity: string;
           }>(
-            `SELECT lot_id, quantity::text
+            `SELECT product_id, lot_id, location_id, quantity::text
                FROM stock_movement_lots
-              WHERE tenant_id = $1 AND stock_movement_id = $2`,
+              WHERE tenant_id = $1 AND stock_movement_id = $2
+              ORDER BY created_at ASC, id ASC`,
             [tenantId, mov.id]
           );
 
           for (const link of lotLinks.rows) {
             const lotQty = Number(link.quantity);
-            await client.query(
+            const balanceResult = await client.query<{ id: string }>(
               `UPDATE inventory_lot_balances
                   SET quantity_on_hand = quantity_on_hand + $1,
                       last_movement_at = NOW(),
                       updated_at = NOW()
-                WHERE tenant_id = $2 AND lot_id = $3`,
-              [lotQty, tenantId, link.lot_id]
+                WHERE tenant_id = $2
+                  AND branch_id = $3
+                  AND product_id = $4
+                  AND lot_id = $5
+                  AND (($6::uuid IS NULL AND location_id IS NULL) OR location_id = $6::uuid)
+                RETURNING id`,
+              [
+                lotQty,
+                tenantId,
+                mov.branch_id,
+                mov.product_id,
+                link.lot_id,
+                link.location_id,
+              ]
             );
+
+            if (!balanceResult.rows[0]) {
+              throw new BadRequestException(
+                "inventory lot balance not found for reversal"
+              );
+            }
 
             await client.query(
               `INSERT INTO stock_movement_lots (
-                id, tenant_id, stock_movement_id, lot_id, quantity, created_at
+                id, tenant_id, stock_movement_id, product_id, lot_id,
+                location_id, quantity, created_at
               ) VALUES (
-                gen_random_uuid(), $1, $2, $3, $4, NOW()
+                gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW()
               )`,
-              [tenantId, reverseMovId, link.lot_id, lotQty]
+              [
+                tenantId,
+                reverseMovId,
+                link.product_id,
+                link.lot_id,
+                link.location_id,
+                lotQty,
+              ]
             );
           }
         }

@@ -28,4 +28,4 @@ El flujo de anulación de facturas electrónicas permite seleccionar motivos DIA
 - `api/src/modules/operational-sales/dto/void-operational-sale.dto.ts` y `operational-sales.service.ts`.
 - `api/src/modules/inventory/services/stock-movement.service.ts` como lógica reutilizable de snapshots.
 - Pruebas API, frontend y contratos FactuCore relacionados.
-- No requiere modificar FactuCore ni migraciones de esquema.
+- No requiere modificar FactuCore. La serialización se entrega como migración forward-only `V108__serialize_stock_movement_snapshots.sql`.

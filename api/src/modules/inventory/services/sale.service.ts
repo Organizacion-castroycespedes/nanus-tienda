@@ -180,6 +180,36 @@ type SalePaymentMethodRow = {
   created_at: Date;
 };
 
+type DefinitiveStockFailureKind =
+  | "INSUFFICIENT_STOCK"
+  | "INSUFFICIENT_FEFO_STOCK";
+
+type PostgresSaleError = {
+  code?: unknown;
+  message?: unknown;
+};
+
+export const readDefinitiveStockFailureKind = (
+  error: unknown,
+): DefinitiveStockFailureKind | null => {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const candidate = error as PostgresSaleError;
+  if (candidate.code !== "P0001" || typeof candidate.message !== "string") {
+    return null;
+  }
+
+  if (candidate.message.startsWith("insufficient FEFO lot stock for product ")) {
+    return "INSUFFICIENT_FEFO_STOCK";
+  }
+  if (candidate.message.startsWith("insufficient stock for product ")) {
+    return "INSUFFICIENT_STOCK";
+  }
+  return null;
+};
+
 type InvoiceableOrderRow = {
   id: string;
   customer_id: string;
@@ -465,6 +495,79 @@ export class SaleService {
 
   private roundCurrency(value: number) {
     return Math.round(value * 100) / 100;
+  }
+
+  private roundStockQuantity(value: number) {
+    return Math.round(value * 1000) / 1000;
+  }
+
+  private async translateDefinitiveStockFailure(
+    error: unknown,
+    data: CreateSaleRequestData,
+    saleContext: Awaited<ReturnType<SaleService["normalizeSaleContext"]>>,
+    client: PoolClient,
+  ) {
+    const failureKind = readDefinitiveStockFailureKind(error);
+    if (!failureKind) {
+      return null;
+    }
+
+    const errorMessage = (error as PostgresSaleError).message;
+    const failedItem = data.items.find(
+      (item) => typeof errorMessage === "string" && errorMessage.includes(item.productId),
+    );
+    if (!failedItem) {
+      return null;
+    }
+
+    const requestedQuantity = data.items
+      .filter((item) => item.productId === failedItem.productId)
+      .reduce(
+        (sum, item) =>
+          sum + (typeof item.quantity === "number" ? item.quantity : 0),
+        0,
+      );
+    if (requestedQuantity <= 0) {
+      return null;
+    }
+
+    let availability;
+    try {
+      availability = await this.repository.getStockAvailability(
+        saleContext.tenantId,
+        saleContext.branchId,
+        failedItem.productId,
+        client,
+      );
+    } catch {
+      return null;
+    }
+    if (!availability) {
+      return null;
+    }
+
+    const availableQuantity =
+      failureKind === "INSUFFICIENT_FEFO_STOCK"
+        ? availability.eligibleLotQuantity ?? 0
+        : availability.aggregateAvailableQuantity;
+
+    return new ConflictException({
+      code: failureKind,
+      message:
+        failureKind === "INSUFFICIENT_FEFO_STOCK"
+          ? "La disponibilidad de lotes FEFO no alcanza para esta venta."
+          : "La disponibilidad actual no alcanza para esta venta.",
+      productId: failedItem.productId,
+      requestedQuantity: this.roundStockQuantity(requestedQuantity),
+      availableQuantity: this.roundStockQuantity(availableQuantity),
+      aggregateAvailableQuantity: this.roundStockQuantity(
+        availability.aggregateAvailableQuantity,
+      ),
+      eligibleLotQuantity:
+        availability.eligibleLotQuantity === null
+          ? null
+          : this.roundStockQuantity(availability.eligibleLotQuantity),
+    });
   }
 
   private toDecimalWireValue(value: number | string | null | undefined) {
@@ -3282,8 +3385,18 @@ export class SaleService {
       const sale = await this.getSaleById(saleRow.id, saleContext);
       return electronicBilling ? { ...sale, electronicBilling } : sale;
     } catch (error) {
-      console.error("[SaleService.createSale] Error:", error);
       await client.query("ROLLBACK");
+      const definitiveStockFailure =
+        await this.translateDefinitiveStockFailure(
+          error,
+          data,
+          saleContext,
+          client,
+        );
+      if (definitiveStockFailure) {
+        throw definitiveStockFailure;
+      }
+      console.error("[SaleService.createSale] Error:", error);
       throw error;
     } finally {
       client.release();

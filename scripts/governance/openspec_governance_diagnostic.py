@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -128,8 +129,8 @@ def load_manifest(root: Path) -> tuple[dict[str, object] | None, list[str]]:
         return None, [f"MANIFEST_MISSING: {MANIFEST_RELATIVE}"]
     except (OSError, json.JSONDecodeError) as error:
         return None, [f"MANIFEST_INVALID_JSON: {error}"]
-    if not isinstance(data, dict) or data.get("version") != 1:
-        errors.append("MANIFEST_SCHEMA_VERSION_MUST_BE_1")
+    if not isinstance(data, dict) or data.get("version") not in {1, 2}:
+        errors.append("MANIFEST_SCHEMA_VERSION_MUST_BE_1_OR_2")
     changes = data.get("changes") if isinstance(data, dict) else None
     if not isinstance(changes, list) or not changes:
         errors.append("MANIFEST_CHANGES_MUST_BE_NONEMPTY_LIST")
@@ -164,6 +165,38 @@ def load_manifest(root: Path) -> tuple[dict[str, object] | None, list[str]]:
                 errors.append(f"EXEMPTION_PATTERN_INVALID: {change_id}: {exemption['path']}")
             elif not isinstance(exemption.get("reason"), str) or not exemption["reason"].strip():
                 errors.append(f"EXEMPTION_REASON_MISSING: {change_id}")
+    current_ownership = data.get("current_ownership", []) if isinstance(data, dict) else []
+    if not isinstance(current_ownership, list):
+        errors.append("CURRENT_OWNERSHIP_MUST_BE_LIST")
+        current_ownership = []
+    change_ids = {entry.get("change_id") for entry in changes if isinstance(entry, dict)}
+    current_patterns: dict[str, str] = {}
+    for owner in current_ownership:
+        if not isinstance(owner, dict):
+            errors.append("CURRENT_OWNERSHIP_ENTRY_MUST_BE_OBJECT")
+            continue
+        owner_id = owner.get("change_id")
+        owner_paths = owner.get("paths")
+        reason = owner.get("reason")
+        if not isinstance(owner_id, str) or not CHANGE_ID_RE.fullmatch(owner_id):
+            errors.append("CURRENT_OWNER_CHANGE_ID_INVALID")
+        elif owner_id not in change_ids:
+            errors.append(f"CURRENT_OWNER_CHANGE_NOT_DECLARED: {owner_id}")
+        if not isinstance(owner_paths, list) or not owner_paths:
+            errors.append(f"CURRENT_OWNER_PATHS_MUST_BE_NONEMPTY_LIST: {owner_id}")
+            owner_paths = []
+        if not isinstance(reason, str) or not reason.strip():
+            errors.append(f"CURRENT_OWNER_REASON_MISSING: {owner_id}")
+        for pattern in owner_paths:
+            if not isinstance(pattern, str) or not valid_pattern(pattern):
+                errors.append(f"CURRENT_OWNER_PATH_PATTERN_INVALID: {owner_id}: {pattern}")
+                continue
+            normalized = normalize_path(pattern)
+            previous = current_patterns.get(normalized)
+            if previous and previous != owner_id:
+                errors.append(f"CURRENT_OWNER_PATTERN_DUPLICATE: {normalized}: {previous}, {owner_id}")
+            else:
+                current_patterns[normalized] = owner_id
     return data if isinstance(data, dict) else None, errors
 
 
@@ -176,6 +209,12 @@ def run(command: list[str], cwd: Path) -> tuple[int, str]:
     except OSError as error:
         return 127, f"TOOL_UNAVAILABLE: {error}"
     return completed.returncode, completed.stdout
+
+
+def classify_openspec_tool_failure(output: str) -> str:
+    if os.name == "nt" and re.search(r"winerror\s*5|access is denied|acceso denegado", output, re.IGNORECASE):
+        return "WINDOWS_CHILD_PROCESS_ACCESS_DENIED"
+    return "TOOL_UNAVAILABLE"
 
 
 def resolve_openspec_command(override: str | None = None) -> list[str] | None:
@@ -211,15 +250,19 @@ def validate_openspec(root: Path, change_id: str, cli_override: str | None = Non
     if cli is None:
         return {"change_id": change_id, "cli_available": False,
                 "change_strict_pass": False, "global_preexisting_failures": [],
-                "global_new_failures": [], "tool_status": "TOOL_UNAVAILABLE"}
+                "global_new_failures": [], "tool_status": "TOOL_UNAVAILABLE",
+                "tool_failure": "TOOL_UNAVAILABLE"}
     status_code, status_output = run(cli + ["status", "--change", change_id, "--json"], root)
     strict_code, strict_output = run(cli + ["validate", change_id, "--type", "change", "--strict"], root)
     global_code, global_output = run(cli + ["validate", "--all", "--strict"], root)
-    if 127 in {status_code, strict_code, global_code}:
+    tool_output = (status_output + strict_output + global_output).strip()
+    tool_failure = classify_openspec_tool_failure(tool_output)
+    if 127 in {status_code, strict_code, global_code} or tool_failure == "WINDOWS_CHILD_PROCESS_ACCESS_DENIED":
         return {"change_id": change_id, "cli_available": False,
                 "change_strict_pass": False, "global_preexisting_failures": [],
                 "global_new_failures": [], "tool_status": "TOOL_UNAVAILABLE",
-                "tool_output": (status_output + strict_output + global_output).strip()}
+                "tool_failure": tool_failure,
+                "tool_output": tool_output}
     failed = re.findall(r"(?:✗|FAIL)\s+(?:change|spec)/([^\s]+)", global_output)
     return {"change_id": change_id, "cli_available": True,
             "change_status_exit": status_code, "change_strict_exit": strict_code,
@@ -228,6 +271,53 @@ def validate_openspec(root: Path, change_id: str, cli_override: str | None = Non
             "global_new_failures": [item for item in failed if item != KNOWN_GLOBAL_FAILURE],
             "tool_status": "AVAILABLE", "status_output": status_output.strip(),
             "strict_output": strict_output.strip()}
+
+
+def changed_paths_fingerprint(changed_paths: Iterable[str]) -> str:
+    payload = "\n".join(sorted(normalize_path(path) for path in changed_paths)) + "\n"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def validate_external_openspec_evidence(
+    root: Path, evidence_path: str | None, change_id: str, changed_paths: Iterable[str],
+) -> dict[str, object]:
+    if not evidence_path:
+        return {"status": "NOT_SUPPLIED", "strict_eligible": False}
+    path = Path(evidence_path)
+    try:
+        evidence = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {"status": "INVALID", "strict_eligible": False, "error": str(error)}
+    if not isinstance(evidence, dict):
+        return {"status": "INVALID", "strict_eligible": False, "error": "EVIDENCE_MUST_BE_OBJECT"}
+    head_code, head_output = run(["git", "rev-parse", "HEAD"], root)
+    expected_head = head_output.strip().splitlines()[-1] if head_code == 0 and head_output.strip() else ""
+    expected_manifest = sha256_file(root / MANIFEST_RELATIVE)
+    expected_paths = changed_paths_fingerprint(changed_paths)
+    checks = {
+        "schema_version": evidence.get("schema_version") == 1,
+        "change_id": evidence.get("change_id") == change_id,
+        "head": evidence.get("head") == expected_head and bool(expected_head),
+        "manifest_sha256": evidence.get("manifest_sha256") == expected_manifest,
+        "changed_paths_sha256": evidence.get("changed_paths_sha256") == expected_paths,
+        "openspec_version": isinstance(evidence.get("openspec_version"), str)
+        and bool(evidence.get("openspec_version", "").strip()),
+        "source": evidence.get("source") in {"powershell-direct", "ci"},
+        "result": isinstance(evidence.get("result"), dict)
+        and evidence["result"].get("change_strict_pass") is True
+        and evidence["result"].get("global_exit") == 0,
+    }
+    if not all(checks.values()):
+        return {"status": "STALE_OR_INVALID", "strict_eligible": False,
+                "checks": checks, "path": path.as_posix()}
+    return {
+        "status": "BOUND_EXTERNAL_EVIDENCE_NOT_AUTHORITATIVE",
+        "strict_eligible": False,
+        "checks": checks,
+        "path": path.as_posix(),
+        "openspec_version": evidence["openspec_version"],
+        "source": evidence["source"],
+    }
 
 
 def parse_git_status_entries(raw: bytes) -> list[dict[str, str]]:
@@ -957,17 +1047,40 @@ def evaluate_coverage(root: Path, changed_paths: Iterable[str], manifest: dict[s
     results: list[dict[str, object]] = []
     invalid: list[str] = []
     ambiguous: list[str] = []
+    ambiguous_current: list[str] = []
     uncovered: list[str] = []
     for raw_path in changed_paths:
         path = normalize_path(raw_path)
         classification = classify_changed_file(path)
-        matches = [entry for entry in entries if any(path_matches(pattern, path) for pattern in entry.get("paths", []))]
-        matching_ids = [entry.get("change_id") for entry in matches]
+        historical_matches = [entry for entry in entries
+                              if any(path_matches(pattern, path) for pattern in entry.get("paths", []))]
+        current_entries = [entry for entry in (manifest or {}).get("current_ownership", [])
+                           if isinstance(entry, dict)]
+        current_matches = [entry for entry in current_entries
+                           if any(path_matches(pattern, path) for pattern in entry.get("paths", []))]
+        historical_ids = [entry.get("change_id") for entry in historical_matches]
+        current_ids = [entry.get("change_id") for entry in current_matches]
+        matches = current_matches if current_matches else historical_matches
+        matching_ids = current_ids if current_matches else historical_ids
         exemptions = [exemption for entry in entries for exemption in entry.get("exemptions", [])
                       if isinstance(exemption, dict) and path_matches(exemption.get("path", ""), path)]
         if exemptions and classification == "TECHNICAL_REQUIRES_OPENSPEC":
             status = "INVALID_EXEMPTION"
             invalid.append(path)
+        elif len(current_matches) > 1:
+            status = "AMBIGUOUS_CURRENT_OWNERSHIP"
+            ambiguous_current.append(path)
+        elif current_matches:
+            entry = current_matches[0]
+            change_id = entry.get("change_id")
+            usable = isinstance(change_id, str) and change_exists(root, change_id)
+            if validate_changes:
+                validations = validation.get("validations")
+                candidate = validations.get(change_id) if isinstance(validations, dict) else validation
+                usable = usable and isinstance(candidate, dict) and candidate.get("change_strict_pass") is True
+            status = "CURRENT_SINGLE_MATCH" if usable else "INVALID_CHANGE"
+            if status == "INVALID_CHANGE":
+                invalid.append(path)
         elif len(matches) > 1:
             status = "MULTIPLE_MATCH"
             ambiguous.append(path)
@@ -1000,9 +1113,13 @@ def evaluate_coverage(root: Path, changed_paths: Iterable[str], manifest: dict[s
             status = "REVIEW_REQUIRED"
             invalid.append(path)
         results.append({"path": path, "classification": classification,
-                        "matched_change_ids": matching_ids, "coverage_status": status})
+                        "matched_change_ids": matching_ids,
+                        "current_owner_change_ids": current_ids,
+                        "historical_change_ids": historical_ids,
+                        "coverage_status": status})
     return {"manifest_valid": not manifest_errors, "manifest_errors": manifest_errors,
             "files": results, "invalid_files": invalid, "ambiguous_files": ambiguous,
+            "ambiguous_current_ownership": ambiguous_current,
             "uncovered_files": uncovered, "diagnostic_only": True}
 
 
@@ -1121,6 +1238,8 @@ def repository_strict_gate(report: Mapping[str, Any], requested_mode: str | None
                             ("uncovered_files", "UNCOVERED_TECHNICAL_FILE")):
             for item in coverage.get(field, []) or []:
                 add_block(code, item)
+        for item in coverage.get("ambiguous_current_ownership", []) or []:
+            add_block("AMBIGUOUS_CURRENT_OWNERSHIP", item)
 
     migration = report.get("migration_validation", {})
     if isinstance(migration, Mapping):
@@ -1217,7 +1336,8 @@ def diagnostic_report(root: Path, change_id: str = CHANGE_ID, changed_paths: Ite
                       cli_override: str | None = None, validate_changes: bool = True,
                       target_ref: str | None = None,
                       environment_evidence: Mapping[str, Any] | None = None,
-                      enforcement_mode: str | None = None) -> dict[str, object]:
+                      enforcement_mode: str | None = None,
+                      openspec_evidence: str | None = None) -> dict[str, object]:
     manifest, manifest_errors = load_manifest(root)
     validation = validate_openspec(root, change_id, cli_override)
     validations: dict[str, dict[str, object]] = {change_id: validation}
@@ -1226,7 +1346,13 @@ def diagnostic_report(root: Path, change_id: str = CHANGE_ID, changed_paths: Ite
             validations[entry["change_id"]] = validate_openspec(root, entry["change_id"], cli_override)
     paths = list(changed_paths) if changed_paths is not None else git_changed_paths(root)
     coverage = evaluate_coverage(root, paths, manifest, manifest_errors, {"validations": validations}, validate_changes)
-    policy_status = "DIAGNOSTIC_FINDINGS" if coverage["invalid_files"] or coverage["ambiguous_files"] or coverage["uncovered_files"] else "COVERAGE_VISIBLE"
+    policy_status = "DIAGNOSTIC_FINDINGS" if (
+        coverage["invalid_files"] or coverage["ambiguous_files"]
+        or coverage.get("ambiguous_current_ownership") or coverage["uncovered_files"]
+    ) else "COVERAGE_VISIBLE"
+    external_evidence = validate_external_openspec_evidence(
+        root, openspec_evidence, change_id, paths,
+    )
     baseline, baseline_errors = load_baseline_manifest(root)
     cutover_boundary = baseline.get("cutover_boundary") if baseline else None
     required_environments = tuple(
@@ -1285,6 +1411,7 @@ def diagnostic_report(root: Path, change_id: str = CHANGE_ID, changed_paths: Ite
     report = {"mode": "DIAGNOSTIC_ONLY", "database_access": False,
             "historical_sql_reexecuted": False, "open_spec_policy_status": policy_status,
             "openspec": validation, "coverage": coverage,
+            "openspec_external_evidence": external_evidence,
             "git": git_boundary(root, ["AGENTS.md", "scripts/governance", f"openspec/changes/{change_id}" ]),
             "migration_classification": migration_classification(root),
             "migration_validation": migration_validation_report(root, target_ref),
@@ -1313,6 +1440,7 @@ def main() -> int:
     parser.add_argument("--change", default=CHANGE_ID)
     parser.add_argument("--changed-file", action="append", default=None)
     parser.add_argument("--openspec-command", default=None)
+    parser.add_argument("--openspec-evidence", default=None)
     parser.add_argument("--target-ref", default=None)
     parser.add_argument("--qa-read-only", action="store_true")
     parser.add_argument("--prd-read-only", action="store_true")
@@ -1330,7 +1458,7 @@ def main() -> int:
         report = diagnostic_report(
             root, args.change, args.changed_file, args.openspec_command,
             target_ref=args.target_ref, environment_evidence=qa_evidence,
-            enforcement_mode=args.enforcement_mode,
+            enforcement_mode=args.enforcement_mode, openspec_evidence=args.openspec_evidence,
         )
         print(render_warning_console(report), file=sys.stderr)
         print(json.dumps(report, indent=2, ensure_ascii=False))
@@ -1345,13 +1473,14 @@ def main() -> int:
         report = diagnostic_report(
             root, args.change, args.changed_file, args.openspec_command,
             target_ref=args.target_ref, environment_evidence=prd_evidence,
-            enforcement_mode=args.enforcement_mode,
+            enforcement_mode=args.enforcement_mode, openspec_evidence=args.openspec_evidence,
         )
         print(render_warning_console(report), file=sys.stderr)
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return int(report["enforcement"]["exit_code"])
     report = diagnostic_report(Path(args.root).resolve(), args.change, args.changed_file, args.openspec_command,
-                               target_ref=args.target_ref, enforcement_mode=args.enforcement_mode)
+                               target_ref=args.target_ref, enforcement_mode=args.enforcement_mode,
+                               openspec_evidence=args.openspec_evidence)
     print(render_warning_console(report), file=sys.stderr)
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return int(report["enforcement"]["exit_code"])
