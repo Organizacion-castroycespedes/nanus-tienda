@@ -6,18 +6,44 @@ repository utility.
 ## Scope manifest
 
 `openspec-scope.json` is a Manus-owned sidecar. It does not modify or extend
-OpenSpec `.openspec.yaml` schema. Version `1` has only:
+OpenSpec `.openspec.yaml` schema. Version `1` has only historical
+`changes` declarations. Version `2` adds:
 
 - `changes`: active change declarations;
 - `change_id`: existing kebab-case OpenSpec directory;
 - `paths`: exact paths or directory descendants ending in `/**`;
 - `exemptions`: optional `{path, reason}` records.
+- `current_ownership`: explicit current owner declarations with `change_id`,
+  `paths`, and a non-empty `reason`.
+
+`changes[].paths` remains historical association data. For a changed file,
+`current_ownership` has precedence. Exactly one current owner reports
+`CURRENT_SINGLE_MATCH`; its historical matches remain visible as
+`historical_change_ids`. Two current owners report
+`AMBIGUOUS_CURRENT_OWNERSHIP`. If no current owner exists, the legacy rules
+remain active: zero matches are `ZERO_MATCH` and multiple historical matches
+are `MULTIPLE_MATCH`.
 
 Patterns are relative and portable. They cannot contain `..`, broad wildcards,
 or implicit exclusions. A technical file with zero matches is `ZERO_MATCH`;
 one usable strict-valid change is `SINGLE_MATCH`; multiple matches are
 `MULTIPLE_MATCH`; an exemption covering technical content is
 `INVALID_EXEMPTION`.
+
+Current ownership does not support hunk attribution. It is a reviewed,
+file-level declaration for the current diff. The owner must exist and pass
+strict OpenSpec validation. Invalid owner IDs, duplicate owner patterns,
+contradictory manifest data, and uncovered technical files remain blocking.
+
+On Windows, a child-process `WinError 5`, `Access is denied`, or
+`Acceso denegado` is reported as `WINDOWS_CHILD_PROCESS_ACCESS_DENIED`.
+PowerShell evidence from another process does not become a strict pass when
+the Python diagnostic cannot execute the same runtime. Optional external
+evidence is accepted only as a diagnostic envelope bound to `HEAD`, the
+manifest SHA-256, the changed-path fingerprint, the change ID, and the
+declared OpenSpec version. Bound evidence is still marked
+`BOUND_EXTERNAL_EVIDENCE_NOT_AUTHORITATIVE` until runtime equivalence is
+verified.
 
 It reports:
 

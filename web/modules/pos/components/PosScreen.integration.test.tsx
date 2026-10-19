@@ -4,6 +4,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
 import { Provider } from "react-redux";
+import { ApiError } from "../../../lib/request";
 
 const mocks = vi.hoisted(() => ({
   createSale: vi.fn(),
@@ -415,6 +416,34 @@ describe("PosScreen sale recovery integration", () => {
 
     await waitFor(() => expect(mocks.createSale).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(store.getState().posCart.saleStatus).toBe("CONFIRMED"));
+    expect(mocks.createSale).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a definitive stock rejection to an editable draft without retrying", async () => {
+    mocks.createSale.mockRejectedValueOnce(
+      new ApiError("Stock unavailable", 409, "INSUFFICIENT_STOCK", {
+        code: "INSUFFICIENT_STOCK",
+        productId: product.id,
+        requestedQuantity: 6,
+        availableQuantity: 0,
+        aggregateAvailableQuantity: 0,
+        eligibleLotQuantity: null,
+      }),
+    );
+
+    renderScreen();
+    const charge = await screen.findByRole("button", { name: "Abrir cobro de prueba" });
+    await waitFor(() => expect(charge.getAttribute("data-can-charge")).toBe("true"));
+    fireEvent.click(charge);
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmar venta" }));
+
+    await waitFor(() => expect(mocks.createSale).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(store.getState().posCart.saleStatus).toBe("DRAFT"));
+
+    const state = store.getState().posCart;
+    expect(state.saleAttempt).toBeNull();
+    expect(state.items[0]?.quantity).toBe(1);
+    expect(state.items[0]?.stock).toBe(0);
     expect(mocks.createSale).toHaveBeenCalledTimes(1);
   });
 

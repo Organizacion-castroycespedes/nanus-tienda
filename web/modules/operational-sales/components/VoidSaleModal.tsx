@@ -46,10 +46,6 @@ export const buildVoidSaleSuccessMessage = (result: VoidOperationalSaleResult) =
 
 const DIAN_DISCREPANCY_REASONS = [
   { code: "2", label: "2 - Anulación de factura electrónica (Total)" },
-  { code: "1", label: "1 - Devolución parcial de los bienes y/o no aceptación parcial del servicio" },
-  { code: "3", label: "3 - Rebaja total o descuento total aplicado" },
-  { code: "4", label: "4 - Ajuste de precio" },
-  { code: "5", label: "5 - Otros" },
 ];
 
 export const VoidSaleModal = ({

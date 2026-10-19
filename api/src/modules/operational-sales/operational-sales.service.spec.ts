@@ -132,6 +132,9 @@ const createService = (options: { creditNoteResult?: unknown } = {}) => {
     },
   };
   const executedQueries: Array<{ text: string; params?: unknown[] }> = [];
+  const stockMovementService = {
+    createMovement: async () => ({ id: "reverse-movement-1" }),
+  };
   const db = {
     getClient: async () => ({
       query: async (text: string, params?: unknown[]) => {
@@ -203,6 +206,7 @@ const createService = (options: { creditNoteResult?: unknown } = {}) => {
       auditService as any,
       undefined,
       db as any,
+      stockMovementService as any,
     ),
     calls,
     auditEvents,
@@ -451,6 +455,22 @@ test("voidSale voids only after the online credit note is accepted by DIAN", asy
   assert.ok(executedQueries.some((q) => q.text.includes("document_type = 'INVOICE'")));
 });
 
+test("voidSale rejects unsupported DIAN discrepancy codes", async () => {
+  for (const code of ["1", "3", "4", "5"]) {
+    const { service, calls } = createService();
+    const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+    await assert.rejects(
+      () => service.voidSale(actor, "sale-accepted-fe", {
+        reason: "Anulación total con motivo no habilitado",
+        discrepancyResponseCode: code,
+      }),
+      /Solo se permite el motivo DIAN 2/
+    );
+    assert.ok(!calls.some((call) => call.method === "issueCreditNote"));
+  }
+});
+
 test("voidSale keeps the sale when DIAN rejects the credit note and returns code + solution", async () => {
   const { service, executedQueries } = createService({
     creditNoteResult: {
@@ -519,6 +539,7 @@ test("processDueVoidRequests skips quietly when V096 is not applied", async () =
         release: () => undefined,
       }),
     } as never,
+    {} as never,
   );
 
   assert.deepEqual(await service.processDueVoidRequests(), { processed: 0 });

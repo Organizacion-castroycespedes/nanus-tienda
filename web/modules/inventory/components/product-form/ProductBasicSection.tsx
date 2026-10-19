@@ -23,6 +23,7 @@ type ProductBasicSectionProps = {
   errors: ProductFormErrors;
   unitOptions: ProductOption[];
   catalogLoading: boolean;
+  structuralConfigurationLocked: boolean;
   onFieldChange: <K extends keyof ProductFormValues>(
     field: K,
     value: ProductFormValues[K],
@@ -39,6 +40,7 @@ export const ProductBasicSection = ({
   errors,
   unitOptions,
   catalogLoading,
+  structuralConfigurationLocked,
   onFieldChange,
   onSaleModelChange,
 }: ProductBasicSectionProps) => (
@@ -47,6 +49,12 @@ export const ProductBasicSection = ({
     description="Información general del producto para su identificación en el sistema."
     icon={<FileText className="h-5 w-5" />}
   >
+    {structuralConfigurationLocked ? (
+      <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="note">
+        La unidad base y el modelo de venta se definen al crear el producto y
+        no pueden cambiarse despues del primer guardado.
+      </p>
+    ) : null}
     <div className="grid gap-6 md:grid-cols-2">
       <div className="space-y-1">
         <Input
@@ -143,9 +151,15 @@ export const ProductBasicSection = ({
           required
           value={values.unitId}
           onChange={(event) => onFieldChange("unitId", event.target.value)}
-          disabled={catalogLoading || unitOptions.length === 0}
-          hint={
+          disabled={
+            structuralConfigurationLocked ||
+            catalogLoading ||
             unitOptions.length === 0
+          }
+          hint={
+            structuralConfigurationLocked
+              ? "Configuracion estructural bloqueada despues de crear."
+              : unitOptions.length === 0
               ? "Aun no hay unidades disponibles para seleccionar."
               : undefined
           }
@@ -168,7 +182,12 @@ export const ProductBasicSection = ({
           onChange={(event) =>
             onSaleModelChange("saleType", event.target.value as ProductSaleType)
           }
-          hint="Unidad no usa balanza. Peso usa balanza. Mixto permite ambos modos en POS."
+          disabled={structuralConfigurationLocked}
+          hint={
+            structuralConfigurationLocked
+              ? "Configuracion estructural bloqueada despues de crear."
+              : "Unidad no usa balanza. Peso usa balanza. Mixto permite ambos modos en POS."
+          }
         >
           {saleTypeOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -192,7 +211,12 @@ export const ProductBasicSection = ({
               event.target.value as ProductMeasurementUnit,
             )
           }
-          hint="Para peso usa KG, LB, G u OZ."
+          disabled={structuralConfigurationLocked}
+          hint={
+            structuralConfigurationLocked
+              ? "Configuracion estructural bloqueada despues de crear."
+              : "Para peso usa KG, LB, G u OZ."
+          }
         >
           {measurementUnitOptions.map((option) => (
             <option
