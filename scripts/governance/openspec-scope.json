@@ -106,6 +106,10 @@
       "change_id": "restringir-anulacion-dian-y-kardex",
       "paths": [
         "api/src/modules/inventory/services/stock-movement.service.ts",
+        "api/src/modules/inventory/services/stock-movement.service.spec.ts",
+        "api/src/modules/operational-sales/dto/void-operational-sale.dto.ts",
+        "api/src/modules/operational-sales/on-demand-billing-validation.spec.ts",
+        "api/src/modules/operational-sales/operational-sales.module.ts",
         "api/src/modules/operational-sales/operational-sales.service.ts",
         "openspec/changes/restringir-anulacion-dian-y-kardex/**",
         "scripts/database/tests/20261018_operational_sale_void_kardex_qa_test.ts"
