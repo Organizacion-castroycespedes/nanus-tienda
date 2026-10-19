@@ -189,6 +189,7 @@ test("On-Demand Validation 4: Pre-invoice wizard customer update and payment cor
     auditService as never,
     {} as never,
     db as never,
+    {} as never,
   );
 
   const actor = {

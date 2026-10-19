@@ -839,11 +839,18 @@ export const ProductForm = ({
     setErrors({});
 
     try {
+      const editablePayload: UpdateProductPayload = { ...payload };
+      delete editablePayload.unitId;
+      delete editablePayload.saleType;
+      delete editablePayload.measurementUnit;
+      delete editablePayload.isPerishable;
+      delete editablePayload.requiresLot;
+      delete editablePayload.requiresExpiration;
       const savedProduct =
         mode === "create"
           ? await createProduct(payload)
           : await updateProduct(product!.id, {
-              ...payload,
+              ...editablePayload,
               price: undefined,
               priceWithTax: undefined,
               priceWithoutTax: undefined,
@@ -888,6 +895,7 @@ export const ProductForm = ({
           errors={errors}
           unitOptions={unitOptions}
           catalogLoading={catalogLoading}
+          structuralConfigurationLocked={mode === "edit"}
           onFieldChange={setFieldValue}
           onSaleModelChange={setSaleModelValue}
         />
@@ -938,6 +946,7 @@ export const ProductForm = ({
         <ProductOperationalSection
           values={values}
           errors={errors}
+          structuralConfigurationLocked={mode === "edit"}
           onOperationalChange={setOperationalValue}
         />
 

@@ -120,7 +120,14 @@ const parseError = async (response: Response) => {
     (typeof payload?.error === "string" && payload.error) ||
     "Request failed";
 
-  return new ApiError(message, response.status, undefined, payload);
+  const code =
+    typeof payload?.code === "string"
+      ? payload.code
+      : typeof payload?.message?.code === "string"
+        ? payload.message.code
+        : undefined;
+
+  return new ApiError(message, response.status, code, payload);
 };
 
 const sendAuthorizedRequest = async (

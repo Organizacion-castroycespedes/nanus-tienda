@@ -11,7 +11,9 @@ from unittest.mock import patch
 import openspec_governance_diagnostic as diagnostic_module
 from openspec_governance_diagnostic import (
     classify_change,
+    classify_openspec_tool_failure,
     classify_sql_path,
+    changed_paths_fingerprint,
     diagnostic_report,
     evaluate_coverage,
     load_manifest,
@@ -32,6 +34,7 @@ from openspec_governance_diagnostic import (
     repository_strict_gate,
     sanitize_environment_history_row,
     validate_openspec,
+    validate_external_openspec_evidence,
 )
 from migration_runner_policy import (
     OFFICIAL_RUNNER,
@@ -1153,7 +1156,7 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         report_mock.assert_called_once_with(
             root, "weighted-sale-change", ["api/src/first.ts", "api/src/second.ts"], command,
             target_ref="origin/develop", environment_evidence=evidence,
-            enforcement_mode="STRICT",
+            enforcement_mode="STRICT", openspec_evidence=None,
         )
 
     def test_prd_read_only_main_propagates_change_files_command_and_target_ref(self):
@@ -1169,21 +1172,21 @@ class GovernanceDiagnosticTests(unittest.TestCase):
         report_mock.assert_called_once_with(
             root, "weighted-sale-change", ["api/src/first.ts", "api/src/second.ts"], command,
             target_ref="origin/develop", environment_evidence=evidence,
-            enforcement_mode="STRICT",
+            enforcement_mode="STRICT", openspec_evidence=None,
         )
 
     def test_qa_read_only_main_preserves_default_selection_arguments(self):
         root, evidence, report_mock = self._invoke_read_only_main("qa")
         report_mock.assert_called_once_with(
             root, diagnostic_module.CHANGE_ID, None, None, target_ref=None,
-            environment_evidence=evidence, enforcement_mode=None,
+            environment_evidence=evidence, enforcement_mode=None, openspec_evidence=None,
         )
 
     def test_prd_read_only_main_preserves_default_selection_arguments(self):
         root, evidence, report_mock = self._invoke_read_only_main("prd")
         report_mock.assert_called_once_with(
             root, diagnostic_module.CHANGE_ID, None, None, target_ref=None,
-            environment_evidence=evidence, enforcement_mode=None,
+            environment_evidence=evidence, enforcement_mode=None, openspec_evidence=None,
         )
 
     def test_diagnostic_report_exposes_baseline_and_cutover_states(self):
@@ -1350,6 +1353,111 @@ class GovernanceDiagnosticTests(unittest.TestCase):
             manifest["changes"].append({"change_id": "change-b", "paths": ["api/**"], "exemptions": []})
             result = evaluate_coverage(root, ["api/src/a.ts"], manifest, [], validation, False)
             self.assertEqual(result["files"][0]["coverage_status"], "MULTIPLE_MATCH")
+
+    def test_current_owner_overrides_historical_overlap(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for change_id in ("historical-a", "historical-b"):
+                change_root = root / "openspec" / "changes" / change_id
+                change_root.mkdir(parents=True)
+                (change_root / ".openspec.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
+            path = "api/shared.ts"
+            manifest = {
+                "version": 2,
+                "changes": [
+                    {"change_id": "historical-a", "paths": [path], "exemptions": []},
+                    {"change_id": "historical-b", "paths": [path], "exemptions": []},
+                ],
+                "current_ownership": [{
+                    "change_id": "historical-b", "paths": [path], "reason": "Current diff owner",
+                }],
+            }
+            result = evaluate_coverage(
+                root, [path], manifest, [],
+                {"validations": {"historical-b": {"change_strict_pass": True}}}, True,
+            )
+            file_result = result["files"][0]
+            self.assertEqual(file_result["coverage_status"], "CURRENT_SINGLE_MATCH")
+            self.assertEqual(file_result["matched_change_ids"], ["historical-b"])
+            self.assertEqual(file_result["historical_change_ids"], ["historical-a", "historical-b"])
+            self.assertEqual(result["ambiguous_files"], [])
+
+    def test_current_owner_ambiguity_and_invalid_owner_are_blocking(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for change_id in ("change-a", "change-b"):
+                change_root = root / "openspec" / "changes" / change_id
+                change_root.mkdir(parents=True)
+                (change_root / ".openspec.yaml").write_text("schema: spec-driven\n", encoding="utf-8")
+            manifest = {
+                "version": 2,
+                "changes": [
+                    {"change_id": "change-a", "paths": ["api/shared.ts"], "exemptions": []},
+                    {"change_id": "change-b", "paths": ["api/shared.ts"], "exemptions": []},
+                ],
+                "current_ownership": [
+                    {"change_id": "change-a", "paths": ["api/shared.ts"], "reason": "A"},
+                    {"change_id": "change-b", "paths": ["api/shared.ts"], "reason": "B"},
+                ],
+            }
+            manifest_path = root / "scripts" / "governance" / "openspec-scope.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = evaluate_coverage(root, ["api/shared.ts"], manifest, [], {"validations": {}}, False)
+            self.assertEqual(result["files"][0]["coverage_status"], "AMBIGUOUS_CURRENT_OWNERSHIP")
+            self.assertEqual(result["ambiguous_current_ownership"], ["api/shared.ts"])
+            _, errors = load_manifest(root)
+            self.assertIn("CURRENT_OWNER_PATTERN_DUPLICATE: api/shared.ts: change-a, change-b", errors)
+
+    def test_windows_access_denied_is_classified_without_pass(self):
+        with patch.object(diagnostic_module.os, "name", "nt"):
+            self.assertEqual(
+                classify_openspec_tool_failure("TOOL_UNAVAILABLE: [WinError 5] Acceso denegado"),
+                "WINDOWS_CHILD_PROCESS_ACCESS_DENIED",
+            )
+
+    def test_windows_access_denied_marks_cli_unavailable_even_with_exit_one(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(diagnostic_module.os, "name", "nt"), \
+                    patch.object(diagnostic_module, "resolve_openspec_command", return_value=["openspec.cmd"]), \
+                    patch.object(diagnostic_module, "run", return_value=(1, "Acceso denegado.")):
+                result = validate_openspec(root, "change-a")
+            self.assertFalse(result["cli_available"])
+            self.assertEqual(result["tool_failure"], "WINDOWS_CHILD_PROCESS_ACCESS_DENIED")
+
+    def test_external_evidence_is_bound_but_not_authoritative(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest_path = root / "scripts" / "governance" / "openspec-scope.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text("{\"version\": 2}\n", encoding="utf-8")
+            changed = ["api/shared.ts"]
+            evidence_path = root / "evidence.json"
+            evidence_path.write_text(json.dumps({
+                "schema_version": 1,
+                "change_id": "change-a",
+                "head": "abc",
+                "manifest_sha256": sha256_file(manifest_path),
+                "changed_paths_sha256": changed_paths_fingerprint(changed),
+                "openspec_version": "1.3.1",
+                "source": "powershell-direct",
+                "result": {"change_strict_pass": True, "global_exit": 0},
+            }), encoding="utf-8")
+            with patch.object(diagnostic_module, "run", return_value=(0, "abc\n")):
+                result = validate_external_openspec_evidence(
+                    root, str(evidence_path), "change-a", changed,
+                )
+            self.assertEqual(result["status"], "BOUND_EXTERNAL_EVIDENCE_NOT_AUTHORITATIVE")
+            self.assertFalse(result["strict_eligible"])
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            evidence["head"] = "stale"
+            evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+            with patch.object(diagnostic_module, "run", return_value=(0, "abc\n")):
+                stale = validate_external_openspec_evidence(
+                    root, str(evidence_path), "change-a", changed,
+                )
+            self.assertEqual(stale["status"], "STALE_OR_INVALID")
 
     def test_invalid_manifest_and_exemption(self):
         with tempfile.TemporaryDirectory() as temporary:

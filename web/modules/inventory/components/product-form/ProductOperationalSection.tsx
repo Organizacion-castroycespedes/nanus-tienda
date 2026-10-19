@@ -18,6 +18,7 @@ import {
 type ProductOperationalSectionProps = {
   values: ProductFormValues;
   errors: ProductFormErrors;
+  structuralConfigurationLocked: boolean;
   onOperationalChange: <K extends keyof ProductFormValues>(
     field: K,
     value: ProductFormValues[K],
@@ -27,6 +28,7 @@ type ProductOperationalSectionProps = {
 export const ProductOperationalSection = ({
   values,
   errors,
+  structuralConfigurationLocked,
   onOperationalChange,
 }: ProductOperationalSectionProps) => (
   <ProductSectionCard
@@ -35,11 +37,18 @@ export const ProductOperationalSection = ({
     icon={<Settings2 className="h-5 w-5" />}
   >
     <div className="space-y-5">
+      {structuralConfigurationLocked ? (
+        <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="note">
+          Perecibilidad, lote y vencimiento se definen al crear el producto y
+          no pueden cambiarse despues del primer guardado.
+        </p>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-3">
         <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
           <input
             type="checkbox"
             checked={values.isPerishable}
+            disabled={structuralConfigurationLocked}
             onChange={(event) =>
               onOperationalChange("isPerishable", event.target.checked)
             }
@@ -59,6 +68,7 @@ export const ProductOperationalSection = ({
           <input
             type="checkbox"
             checked={values.requiresLot}
+            disabled={structuralConfigurationLocked}
             onChange={(event) =>
               onOperationalChange("requiresLot", event.target.checked)
             }
@@ -78,6 +88,7 @@ export const ProductOperationalSection = ({
           <input
             type="checkbox"
             checked={values.requiresExpiration}
+            disabled={structuralConfigurationLocked}
             onChange={(event) =>
               onOperationalChange("requiresExpiration", event.target.checked)
             }

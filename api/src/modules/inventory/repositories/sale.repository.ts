@@ -112,6 +112,12 @@ export type SaleCreationIdempotencyRecord = {
   created: boolean;
 };
 
+export type SaleStockAvailability = {
+  requiresLot: boolean;
+  aggregateAvailableQuantity: number;
+  eligibleLotQuantity: number | null;
+};
+
 type ProductForSaleRow = {
   id: string;
   tax_id: string | null;
@@ -441,6 +447,72 @@ export class SaleRepository {
     );
     const value = result.rows[0]?.available_stock ?? 0;
     return typeof value === "number" ? value : Number(value);
+  }
+
+  async getStockAvailability(
+    tenantId: string,
+    branchId: string,
+    productId: string,
+    client: PoolClient,
+  ): Promise<SaleStockAvailability | null> {
+    const result = await this.query<{
+      requires_lot: boolean;
+      aggregate_available_quantity: string | number;
+      eligible_lot_quantity: string | number | null;
+    }>(
+      `WITH movement_stock AS (
+         SELECT
+           COALESCE(SUM(quantity) FILTER (WHERE type = 'IN'), 0)
+             - COALESCE(SUM(quantity) FILTER (WHERE type = 'OUT'), 0)
+             AS available_quantity
+         FROM stock_movements
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND product_id = $3
+       ), eligible_lot_stock AS (
+         SELECT COALESCE(SUM(balance.quantity_available), 0) AS available_quantity
+         FROM inventory_lot_balances AS balance
+         INNER JOIN inventory_lots AS lot
+           ON lot.id = balance.lot_id
+          AND lot.tenant_id = balance.tenant_id
+          AND lot.branch_id = balance.branch_id
+          AND lot.product_id = balance.product_id
+         WHERE balance.tenant_id = $1
+           AND balance.branch_id = $2
+           AND balance.product_id = $3
+           AND balance.quantity_available > 0
+           AND lot.status = 'ACTIVE'
+           AND (lot.expiration_date IS NULL OR lot.expiration_date >= CURRENT_DATE)
+       )
+       SELECT
+         product.requires_lot,
+         movement_stock.available_quantity AS aggregate_available_quantity,
+         eligible_lot_stock.available_quantity AS eligible_lot_quantity
+       FROM products AS product
+       CROSS JOIN movement_stock
+       CROSS JOIN eligible_lot_stock
+       WHERE product.id = $3
+         AND product.tenant_id = $1
+       LIMIT 1`,
+      [tenantId, branchId, productId],
+      client,
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const toNumber = (value: string | number | null | undefined) =>
+      value == null ? 0 : typeof value === "number" ? value : Number(value);
+
+    return {
+      requiresLot: row.requires_lot,
+      aggregateAvailableQuantity: toNumber(row.aggregate_available_quantity),
+      eligibleLotQuantity: row.requires_lot
+        ? toNumber(row.eligible_lot_quantity)
+        : null,
+    };
   }
 
   async createSale(

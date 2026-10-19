@@ -159,6 +159,44 @@ if [[ -e "$DOTENV_MARKER" ]]; then
   exit 1
 fi
 
+# LOCAL is an explicit, fail-closed target. The runner normalizes localhost to
+# IPv4 and verifies the effective server identity before any migration DDL.
+cp "$ENV_FILE" "${TEST_ROOT}/qa.env.saved"
+printf '%s\n' \
+  'DB_HOST=localhost' \
+  'DB_PORT=5432' \
+  'DB_NAME=manus_tienda_qa' \
+  'DB_USER=postgres' \
+  'DB_PASSWORD=fixture-password' \
+  'DB_ADMIN_USER=postgres' \
+  'DB_ADMIN_PASSWORD=fixture-password' \
+  'ENVIRONMENT=local' \
+  'DB_SCHEMA=public' \
+  'MIGRATION_EXPECTED_PREDECESSOR_KIND=PRE_GOVERNANCE_BOUNDARY' \
+  'MIGRATION_EXPECTED_PREDECESSOR_VERSION=V095' \
+  > "$ENV_FILE"
+
+: > "$PSQL_LOG"
+run_runner MIGRATION_TARGET_ENV=LOCAL V096__electronic_billing_failure_detail.sql "$V096_CHECKSUM" \
+  > "${TEST_ROOT}/local-success.out"
+grep -Fq -- '-h 127.0.0.1' "$PSQL_LOG"
+grep -Fq -- '-U postgres' "$PSQL_LOG"
+grep -Fq -- "inet_server_addr() = inet '127.0.0.1'" "$PSQL_LOG"
+
+sed -i 's/^DB_HOST=.*/DB_HOST=qa.example.invalid/' "$ENV_FILE"
+: > "$PSQL_LOG"
+if run_runner MIGRATION_TARGET_ENV=LOCAL V096__electronic_billing_failure_detail.sql "$V096_CHECKSUM" \
+  > "${TEST_ROOT}/local-host-guard.out" 2>&1; then
+  echo 'FAIL non-local host was accepted for LOCAL target' >&2
+  exit 1
+fi
+grep -Fq 'explicit LOCAL host guard failed' "${TEST_ROOT}/local-host-guard.out"
+if [[ -s "$PSQL_LOG" ]]; then
+  echo 'FAIL invalid LOCAL target reached DB client' >&2
+  exit 1
+fi
+cp "${TEST_ROOT}/qa.env.saved" "$ENV_FILE"
+
 # Dotenv is parsed as data, and malformed or incomplete configuration fails
 # before the database client is reached without echoing values.
 : > "$PSQL_LOG"
