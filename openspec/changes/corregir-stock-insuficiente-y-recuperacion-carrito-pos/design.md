@@ -12,6 +12,14 @@ la llamada a la función, pagos y finalización. Su `ROLLBACK` cubre el rechazo
 de la función. El defecto está en la traducción y en la clasificación de UI,
 no en una autorización para saltarse inventario.
 
+Para HU-PRODUCT-013C este change también es dueño de la presentación POS de la
+política por producto en sus siete rutas asignadas: catálogo, carrito, pantalla,
+store y contratos de venta existentes. Un producto con
+`is_inventoryable=false` se presenta como `Servicio`, puede entrar al carrito
+con stock cero y no activa la validación visual de stock. La fuente de verdad
+para efectos físicos sigue siendo `products` en backend/SQL; el navegador no
+puede autorizar ni fabricar inventario.
+
 ## Decisions
 
 1. **Traducir después de rollback.** Reconocer únicamente los mensajes
@@ -39,6 +47,10 @@ no en una autorización para saltarse inventario.
    tardío no puede desbloquear otra cuenta ni modificar otro tenant o terminal.
 
 ## Non-Goals
+
+La redefinición forward-only de `inventory_create_sale_v2` queda coordinada
+con `soportar-productos-no-inventariables`; este change no crea ni aplica esa
+migración y conserva V108/V109 intactas.
 
 - No se eliminan claves de idempotencia de resultados ambiguos.
 - No se desactiva FEFO ni se modifica `inventory_create_sale_v2`, V108,

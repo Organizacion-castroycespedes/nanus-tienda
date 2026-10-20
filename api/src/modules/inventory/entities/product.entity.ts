@@ -82,6 +82,7 @@ export type ProductProps = {
   priceWithTax: number;
   priceWithoutTax: number;
   isActive?: boolean;
+  isInventoryable?: boolean;
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
@@ -119,6 +120,7 @@ export class ProductEntity {
   readonly priceWithTax: number;
   readonly priceWithoutTax: number;
   readonly isActive: boolean;
+  readonly isInventoryable: boolean;
   readonly isPerishable: boolean;
   readonly requiresLot: boolean;
   readonly requiresExpiration: boolean;
@@ -185,10 +187,19 @@ export class ProductEntity {
     assertNonNegativeDecimal(props.cost, "cost");
     assertNonNegativeDecimal(props.priceWithTax, "priceWithTax");
     assertNonNegativeDecimal(props.priceWithoutTax, "priceWithoutTax");
-    if (props.minStock !== undefined && props.minStock !== null) {
+    const isInventoryable = props.isInventoryable ?? true;
+    if (
+      isInventoryable &&
+      props.minStock !== undefined &&
+      props.minStock !== null
+    ) {
       assertNonNegativeDecimal(props.minStock, "minStock");
     }
-    if (props.maxStock !== undefined && props.maxStock !== null) {
+    if (
+      isInventoryable &&
+      props.maxStock !== undefined &&
+      props.maxStock !== null
+    ) {
       assertNonNegativeDecimal(props.maxStock, "maxStock");
     }
     if (props.imageSizeBytes !== undefined && props.imageSizeBytes !== null) {
@@ -235,6 +246,7 @@ export class ProductEntity {
       throw new Error("weighted products must use a weight measurementUnit");
     }
     if (
+      isInventoryable &&
       props.minStock !== undefined &&
       props.minStock !== null &&
       props.maxStock !== undefined &&
@@ -243,7 +255,11 @@ export class ProductEntity {
     ) {
       throw new Error("maxStock must be greater than or equal to minStock");
     }
-    if (props.requiresExpiration === true && props.requiresLot !== true) {
+    if (
+      isInventoryable &&
+      props.requiresExpiration === true &&
+      props.requiresLot !== true
+    ) {
       throw new Error("requiresLot is required when requiresExpiration is true");
     }
     if (
@@ -254,6 +270,7 @@ export class ProductEntity {
       throw new Error("categoryId is required when subcategoryId is provided");
     }
     if (
+      isInventoryable &&
       props.isPerishable === true &&
       props.requiresLot !== true &&
       props.requiresExpiration !== true
@@ -283,6 +300,7 @@ export class ProductEntity {
     this.priceWithTax = props.priceWithTax;
     this.priceWithoutTax = props.priceWithoutTax;
     this.isActive = props.isActive ?? true;
+    this.isInventoryable = isInventoryable;
     this.isPerishable = props.isPerishable ?? false;
     this.requiresLot = props.requiresLot ?? false;
     this.requiresExpiration = props.requiresExpiration ?? false;

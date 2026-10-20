@@ -72,6 +72,7 @@ type CreateProductBody = {
   priceWithTax?: number;
   priceWithoutTax?: number;
   isActive?: boolean;
+  isInventoryable?: boolean;
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
@@ -94,6 +95,7 @@ type CreateProductBody = {
 type UpdateProductBody = Partial<
   Omit<CreateProductBody, "unitId"> & {
     unitId?: string;
+    inventoryabilityChangeReason?: string | null;
   }
 >;
 
@@ -242,7 +244,11 @@ export class ProductController {
     return this.productService.updateProduct(
       id,
       this.getTenantId(request),
-      body
+      body,
+      {
+        userId: request.user?.id ?? null,
+        inventoryabilityChangeReason: body.inventoryabilityChangeReason ?? null,
+      }
     );
   }
 

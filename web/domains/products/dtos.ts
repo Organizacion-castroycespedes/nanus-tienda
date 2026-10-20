@@ -84,6 +84,7 @@ export type ProductResponse = {
   priceWithTax: number;
   priceWithoutTax: number;
   isActive: boolean;
+  isInventoryable?: boolean;
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
