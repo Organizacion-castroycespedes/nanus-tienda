@@ -53,6 +53,8 @@ export type CreateProductPayload = {
   priceWithTax?: number;
   priceWithoutTax?: number;
   isActive?: boolean;
+  isInventoryable?: boolean;
+  inventoryabilityChangeReason?: string | null;
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -207,6 +208,10 @@ export class PurchaseController {
     @Body() body: ReceivePurchaseBody,
     @Req() request: AuthRequest
   ) {
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (!idempotencyKey) {
+      throw new BadRequestException("Idempotency-Key is required");
+    }
     return this.purchaseService.receivePurchase(
       id,
       this.getTenantId(request),
@@ -231,7 +236,8 @@ export class PurchaseController {
       {
         supplierInvoiceNumber: body.supplierInvoiceNumber ?? body.supplier_invoice_number,
         supplierInvoiceDate: body.supplierInvoiceDate ?? body.supplier_invoice_date,
-      }
+      },
+      idempotencyKey
     );
   }
 
