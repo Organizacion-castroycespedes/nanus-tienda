@@ -26,3 +26,11 @@
 
 - [ ] 4.1 Run affected tests, lint, builds, strict OpenSpec validation, and governance checks.
 - [x] 4.2 Record PASS/FAIL/PARTIAL/BLOCKED and preserve historical DIAN/Kardex evidence without rerunning real electronic documents.
+
+## 5. Feedback and billing-phase correction
+
+- [x] 5.1 Add verifiable feedback, notification isolation and fiscal-phase criteria; confirm ready, strict validity and file ownership before implementation.
+- [x] 5.2 Reproduce the missing stock/FEFO feedback and premature fiscal modal with real PaymentDialog integration and mocked external services.
+- [x] 5.3 Validate result ownership before attempt cleanup, retain visible stock feedback and reuse only the confirmed-sale fiscal workflow indicator.
+- [x] 5.4 Cover local validation, ambiguous HTTP/transport failures, reconciliation and same-key retry, stale accounts/contexts/attempts, and confirmed-sale fiscal failures.
+- [x] 5.5 Run focused tests, relevant regressions, lint, build, strict OpenSpec and repository-only governance; record outcomes and pending QA without remote writes.
