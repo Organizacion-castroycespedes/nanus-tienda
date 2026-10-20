@@ -106,4 +106,20 @@ describe("product structural configuration controls", () => {
       screen.getByText(/no pueden cambiarse despues del primer guardado/i),
     ).toBeTruthy();
   });
+
+  it("locks the persisted product type and hides the transition reason", () => {
+    render(
+      <ProductOperationalSection
+        values={{ ...values, isInventoryable: false }}
+        errors={{}}
+        structuralConfigurationLocked
+        onOperationalChange={vi.fn()}
+      />,
+    );
+
+    const [typeControl] = screen.getAllByRole("combobox");
+    expect(typeControl).toHaveProperty("value", "SERVICE");
+    expect(typeControl).toHaveProperty("disabled", true);
+    expect(screen.queryByLabelText("Motivo del cambio a servicio")).toBeNull();
+  });
 });

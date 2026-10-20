@@ -41,6 +41,7 @@ export const ProductOperationalSection = ({
         <Select
           label="Tipo de producto"
           value={values.isInventoryable ? "INVENTORYABLE" : "SERVICE"}
+          disabled={structuralConfigurationLocked}
           onChange={(event) =>
             onOperationalChange(
               "isInventoryable",
@@ -58,7 +59,7 @@ export const ProductOperationalSection = ({
           </p>
         ) : null}
       </div>
-      {structuralConfigurationLocked && !values.isInventoryable ? (
+      {/*
         <div className="space-y-1">
           <Input
             label="Motivo del cambio a servicio"
@@ -77,11 +78,12 @@ export const ProductOperationalSection = ({
             </p>
           ) : null}
         </div>
-      ) : null}
+      */}
       {structuralConfigurationLocked ? (
         <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="note">
-          Perecibilidad, lote y vencimiento se definen al crear el producto y
-          no pueden cambiarse despues del primer guardado.
+          El tipo de producto y la configuracion de perecibilidad, lote y
+          vencimiento se definen al crear el producto y no pueden cambiarse
+          despues del primer guardado.
         </p>
       ) : null}
       <div className="grid gap-3 md:grid-cols-3">
