@@ -110,6 +110,45 @@ describe("POS sale submission recovery", () => {
     assert.equal(rehydrated.items.length, 1);
   });
 
+  it("keeps services sellable and defaults legacy cart items to physical", () => {
+    const contextState = posCartReducer(initialPosCartState, setPosCartContext(context));
+    const rehydrated = posCartReducer(
+      contextState,
+      hydratePosCart({
+        contextKey: contextState.contextKey!,
+        snapshot: {
+          items: [
+            {
+              productId: "physical-a",
+              name: "Producto físico",
+              sku: "P-1",
+              quantity: 1,
+              price: 100,
+              stock: 3,
+              taxId: null,
+              priceWithoutTax: 100,
+            },
+            {
+              productId: "service-a",
+              name: "Servicio",
+              sku: "S-1",
+              quantity: 4,
+              price: 25,
+              stock: 0,
+              isInventoryable: false,
+              taxId: null,
+              priceWithoutTax: 25,
+            },
+          ],
+        },
+      }),
+    );
+
+    assert.equal(rehydrated.items[0]?.isInventoryable, true);
+    assert.equal(rehydrated.items[1]?.isInventoryable, false);
+    assert.equal(rehydrated.items[1]?.quantity, 4);
+  });
+
   it("requires an explicit operator action before an unknown attempt can retry", () => {
     const submitting = posCartReducer(
       {

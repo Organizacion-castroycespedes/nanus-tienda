@@ -402,6 +402,15 @@
         "openspec/changes/evolucionar-gobernanza-openspec-ownership-windows/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "soportar-productos-no-inventariables",
+      "paths": [
+        "openspec/changes/soportar-productos-no-inventariables/**",
+        "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
+        "scripts/database/migrations/V110__inventory_create_sale_v2_non_inventoryable_products.sql"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
@@ -412,6 +421,8 @@
         "api/src/modules/inventory/services/sale.service.ts",
         "api/src/modules/inventory/services/sale-stock-rejection.spec.ts",
         "web/lib/http.ts",
+        "web/modules/pos/components/catalog/PosProductCard.tsx",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
         "web/modules/pos/components/PosScreen.integration.test.tsx",
         "web/modules/pos/components/PosScreen.tsx",
         "web/modules/pos/hooks/usePosCartStore.ts",
@@ -422,6 +433,38 @@
         "openspec/changes/corregir-stock-insuficiente-y-recuperacion-carrito-pos/**"
       ],
       "reason": "Current branch diff implements the P1 definitive stock rejection and safe POS cart recovery. Historical HU paths remain unchanged."
+    },
+    {
+      "change_id": "soportar-productos-no-inventariables",
+      "paths": [
+        "api/src/modules/inventory/controllers/purchase.controller.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts",
+        "api/src/modules/inventory/entities/purchase.entity.ts",
+        "api/src/modules/inventory/entities/purchase-item.entity.ts",
+        "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
+        "scripts/database/migrations/V110__inventory_create_sale_v2_non_inventoryable_products.sql"
+      ],
+      "reason": "Owner-authorized current ownership for purchase creation, reception, commercial states, purchase-line contracts, tests, V109 structural migration and the V110 sale-function migration; no other functional ownership is reassigned."
+    },
+    {
+      "change_id": "soportar-productos-no-inventariables",
+      "paths": [
+        "api/src/modules/inventory/controllers/product.controller.ts",
+        "api/src/modules/inventory/entities/product.entity.ts",
+        "api/src/modules/inventory/repositories/product.repository.ts",
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/product.service.spec.ts",
+        "web/domains/products/dtos.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/types.ts",
+        "web/modules/inventory/services/product.service.ts",
+        "web/modules/inventory/services/purchase.service.ts"
+      ],
+      "reason": "Owner-authorized additive ownership for the product classification contract and the purchase receipt client contract; historical associations remain intact and no active owner path is reassigned."
     },
     {
       "change_id": "evolucionar-gobernanza-openspec-ownership-windows",

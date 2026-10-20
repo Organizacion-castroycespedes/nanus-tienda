@@ -374,6 +374,12 @@ const arePaymentsEqual = (
 
 const isLowStock = (stock: number) => stock > 0 && stock <= 5;
 
+const isInventoryableProduct = (
+  product: Pick<ProductResponse, "isInventoryable">,
+) => product.isInventoryable !== false;
+
+const POS_SERVICE_CATALOG_STOCK_SENTINEL = 1_000_000;
+
 const isEditableShortcutTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -1285,16 +1291,32 @@ export const PosScreen = () => {
   const stockFilterCounts = useMemo(() => {
     return {
       all: products.length,
-      available: products.filter((product) => Number(product.stock ?? 0) > 0).length,
-      low: products.filter((product) => isLowStock(Number(product.stock ?? 0))).length,
-      out: products.filter((product) => Number(product.stock ?? 0) <= 0).length,
+      available: products.filter(
+        (product) =>
+          !isInventoryableProduct(product) || Number(product.stock ?? 0) > 0,
+      ).length,
+      low: products.filter(
+        (product) =>
+          isInventoryableProduct(product) &&
+          isLowStock(Number(product.stock ?? 0)),
+      ).length,
+      out: products.filter(
+        (product) =>
+          isInventoryableProduct(product) && Number(product.stock ?? 0) <= 0,
+      ).length,
     };
   }, [products]);
 
   const deferredQuery = useDeferredValue(query);
 
   const filteredProducts = useMemo(() => {
-    return filterPosProductsForCatalog(products, {
+    const catalogProducts = products.map((product) =>
+      isInventoryableProduct(product)
+        ? product
+        : { ...product, stock: POS_SERVICE_CATALOG_STOCK_SENTINEL },
+    );
+    const filteredProductIds = new Set(
+      filterPosProductsForCatalog(catalogProducts, {
       query: deferredQuery,
       stockFilter: activeStockFilter,
       categoryId: selectedProductCategoryId,
@@ -1304,7 +1326,10 @@ export const PosScreen = () => {
         `${product.name} ${product.description ?? ""} ${collectPosScannerProductCodes(
           product
         ).join(" ")}`,
-    });
+      }).map((product) => product.id),
+    );
+
+    return products.filter((product) => filteredProductIds.has(product.id));
   }, [
     activeStockFilter,
     deferredQuery,
@@ -1786,8 +1811,9 @@ export const PosScreen = () => {
       const currentCart = cartRef.current;
       const existing = currentCart.find((item) => item.productId === product.id);
       const stock = Number(product.stock ?? 0);
+      const isInventoryable = isInventoryableProduct(product);
 
-      if (stock <= 0) {
+      if (isInventoryable && stock <= 0) {
         showToast("El producto no tiene stock disponible.", "warning");
         return false;
       }
@@ -1797,7 +1823,7 @@ export const PosScreen = () => {
         return false;
       }
 
-      if (quantity > stock) {
+      if (isInventoryable && quantity > stock) {
         showToast("No puedes superar el stock disponible.", "warning");
         return false;
       }
@@ -1824,6 +1850,7 @@ export const PosScreen = () => {
         quantity,
         price: Number(product.priceWithTax ?? product.price),
         stock,
+        isInventoryable,
         taxId: product.taxId ?? null,
         priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
         baseUnitPrice: Number(product.priceWithTax ?? product.price),
@@ -2024,6 +2051,7 @@ export const PosScreen = () => {
           weightCapture: { captureId: capture.captureId, nonce: capture.nonce, expiresAt: capture.expiresAt },
           name: product.name, sku: product.sku, quantity,
           price: Number(product.priceWithTax ?? product.price), stock: Number(product.stock ?? 0),
+          isInventoryable: isInventoryableProduct(product),
           taxId: product.taxId ?? null, priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
           baseUnitPrice: Number(product.priceWithTax ?? product.price),
           basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
@@ -2189,7 +2217,9 @@ export const PosScreen = () => {
       return;
     }
 
-    const safeQuantity = Math.min(nextQuantity, target.stock);
+    const safeQuantity = target.isInventoryable === false
+      ? nextQuantity
+      : Math.min(nextQuantity, target.stock);
     if (safeQuantity === target.quantity && target.pricingStatus !== POS_CART_PRICING_STATUSES.ERROR) {
       return;
     }
@@ -2350,13 +2380,18 @@ export const PosScreen = () => {
       const refreshedCart = cartRef.current.map((item) => {
         const product = refreshedByProductId.get(item.productId);
         return product && typeof product.stock === "number"
-          ? { ...item, stock: product.stock }
+          ? {
+              ...item,
+              stock: product.stock,
+              isInventoryable: isInventoryableProduct(product),
+            }
           : item;
       });
       setCartItemsAndRef(refreshedCart);
 
       const exceeded = refreshedCart.find(
         (item) =>
+          item.isInventoryable !== false &&
           item.saleMode !== "WEIGHT" &&
           item.quantity > item.stock,
       );
@@ -2739,7 +2774,8 @@ export const PosScreen = () => {
     }
 
     const hasExceededStock = cartWithDerivedValues.some(
-      (item) => item.quantity > item.stock
+      (item) =>
+        item.isInventoryable !== false && item.quantity > item.stock,
     );
     if (hasExceededStock) {
       return "Hay items que superan el stock disponible.";
@@ -3131,6 +3167,7 @@ export const PosScreen = () => {
       saleTypeLabel: productSaleTypeLabels[productSaleType],
       unitLabel,
       isWeighable: Boolean(product && isWeighableProduct(product)),
+      isInventoryable: product ? isInventoryableProduct(product) : true,
     };
   };
 
@@ -3472,7 +3509,7 @@ export const PosScreen = () => {
                     const productSaleType = getProductSaleType(product);
                     const requiresScale = productSaleType === "WEIGHT";
                     const isProductActionDisabled =
-                      stock <= 0 ||
+                      (isInventoryableProduct(product) && stock <= 0) ||
                       !canCreate ||
                       (requiresScale && (!scaleCaptureControlsVisible || scaleReading));
                     const effectiveImage = resolveEffectivePosProductImage(product, {

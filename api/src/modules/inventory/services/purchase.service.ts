@@ -82,6 +82,42 @@ type ReceivePurchaseDocumentInput = {
   supplierInvoiceDate?: string | null;
 };
 
+type PurchaseReceiptIdempotencyRow = {
+  request_hash: string;
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  result: unknown;
+  operation_reference: string | null;
+};
+
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+};
+
+const normalizePurchaseIdempotencyKey = (value: string | string[] | undefined) => {
+  if (Array.isArray(value)) {
+    throw new BadRequestException("Idempotency-Key must be sent once");
+  }
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new BadRequestException("Idempotency-Key is required");
+  }
+  if (!/^[A-Za-z0-9._~-]{1,128}$/.test(normalized)) {
+    throw new BadRequestException("Idempotency-Key is invalid");
+  }
+  return normalized;
+};
+
 type CancelPurchaseInput = {
   motivoCancelacion?: string;
   context?: InventoryContext;
@@ -146,6 +182,7 @@ type PurchaseItemRow = {
   product_id: string;
   product_name?: string | null;
   product_sku?: string | null;
+  is_inventoryable?: boolean | null;
   is_perishable?: boolean | null;
   requires_lot?: boolean | null;
   requires_expiration?: boolean | null;
@@ -167,6 +204,7 @@ type ProductLotPolicyRow = {
   id: string;
   requires_lot: boolean;
   requires_expiration: boolean;
+  is_inventoryable: boolean;
 };
 
 type BranchRow = {
@@ -456,9 +494,10 @@ export class PurchaseService {
         const pendingQuantity = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
         return {
           ...item,
-          productName: row.product_name ?? null,
-          productSku: row.product_sku ?? null,
-          isPerishable: row.is_perishable ?? false,
+           productName: row.product_name ?? null,
+           productSku: row.product_sku ?? null,
+           isInventoryable: row.is_inventoryable ?? true,
+           isPerishable: row.is_perishable ?? false,
           requiresLot: row.requires_lot ?? false,
           requiresExpiration: row.requires_expiration ?? false,
           pendingQuantity:
@@ -1212,9 +1251,10 @@ export class PurchaseService {
           pi.id,
           pi.purchase_id,
           pi.product_id,
-          p.name AS product_name,
-          p.sku AS product_sku,
-          p.is_perishable,
+           p.name AS product_name,
+           p.sku AS product_sku,
+           p.is_inventoryable,
+           p.is_perishable,
           p.requires_lot,
           p.requires_expiration,
           pi.ordered_quantity,
@@ -1315,7 +1355,14 @@ export class PurchaseService {
 
     const result = await client.query<ProductLotPolicyRow>(
       `
-        SELECT id, requires_lot, requires_expiration
+        SELECT
+          id,
+          requires_lot,
+          requires_expiration,
+          -- Compatibility bridge: before the forward-only migration, the
+          -- absent JSON key resolves to TRUE for existing products.
+          COALESCE((to_jsonb(products)->>'is_inventoryable')::boolean, TRUE)
+            AS is_inventoryable
         FROM products
         WHERE tenant_id = $1
           AND id = ANY($2::uuid[])
@@ -1324,6 +1371,134 @@ export class PurchaseService {
     );
 
     return new Map(result.rows.map((row) => [row.id, row]));
+  }
+
+  private async lockReceiptProductScopes(
+    tenantId: string,
+    branchId: string,
+    productIds: string[],
+    client: PoolClient
+  ) {
+    const orderedProductIds = [...new Set(productIds)].sort();
+    for (const productId of orderedProductIds) {
+      await client.query(
+        `SELECT public.inventory_lock_stock_scope($1::uuid, $2::uuid, $3::uuid)`,
+        [tenantId, branchId, productId]
+      );
+    }
+  }
+
+  private buildPurchaseReceiptRequestHash(input: {
+    purchaseId: string;
+    tenantId: string;
+    items: ReceivePurchaseItemInput[];
+    context?: InventoryContext;
+    actor?: BranchScopedActor;
+    document?: ReceivePurchaseDocumentInput;
+  }) {
+    return crypto
+      .createHash("sha256")
+      .update(
+        stableSerialize({
+          purchaseId: input.purchaseId,
+          tenantId: input.tenantId,
+          items: input.items,
+          context: input.context ?? null,
+          actor: input.actor ?? null,
+          document: input.document ?? null,
+        })
+      )
+      .digest("hex");
+  }
+
+  private async claimPurchaseReceiptIdempotency(
+    client: PoolClient,
+    tenantId: string,
+    purchaseId: string,
+    idempotencyKey: string,
+    requestHash: string
+  ): Promise<{ replay: false } | { replay: true; result: unknown }> {
+    const inserted = await client.query<PurchaseReceiptIdempotencyRow>(
+      `
+        INSERT INTO purchase_receipt_idempotency (
+          tenant_id,
+          purchase_id,
+          idempotency_key,
+          request_hash,
+          status
+        ) VALUES ($1, $2, $3, $4, 'PENDING')
+        ON CONFLICT (tenant_id, purchase_id, idempotency_key) DO NOTHING
+        RETURNING request_hash, status, result, operation_reference
+      `,
+      [tenantId, purchaseId, idempotencyKey, requestHash]
+    );
+
+    if (inserted.rows[0]) {
+      return { replay: false };
+    }
+
+    const existing = await client.query<PurchaseReceiptIdempotencyRow>(
+      `
+        SELECT request_hash, status, result, operation_reference
+        FROM purchase_receipt_idempotency
+        WHERE tenant_id = $1
+          AND purchase_id = $2
+          AND idempotency_key = $3
+        FOR UPDATE
+      `,
+      [tenantId, purchaseId, idempotencyKey]
+    );
+    const row = existing.rows[0];
+    if (!row) {
+      throw new ConflictException("idempotency operation could not be recovered");
+    }
+    if (row.request_hash !== requestHash) {
+      throw new ConflictException(
+        "Idempotency-Key was already used with a different payload"
+      );
+    }
+    if (row.status === "COMPLETED" && row.result !== null) {
+      return { replay: true, result: row.result };
+    }
+    throw new ConflictException(
+      "Idempotency-Key is already being processed or has failed"
+    );
+  }
+
+  private async completePurchaseReceiptIdempotency(
+    client: PoolClient,
+    tenantId: string,
+    purchaseId: string,
+    idempotencyKey: string,
+    requestHash: string,
+    result: unknown
+  ) {
+    const completed = await client.query(
+      `
+        UPDATE purchase_receipt_idempotency
+        SET status = 'COMPLETED',
+            result = $4::jsonb,
+            operation_reference = $5,
+            completed_at = NOW(),
+            updated_at = NOW()
+        WHERE tenant_id = $1
+          AND purchase_id = $2
+          AND idempotency_key = $3
+          AND request_hash = $6
+          AND status = 'PENDING'
+      `,
+      [
+        tenantId,
+        purchaseId,
+        idempotencyKey,
+        JSON.stringify(result),
+        `purchase-receipt:${purchaseId}:${idempotencyKey}`,
+        requestHash,
+      ]
+    );
+    if (completed.rowCount !== 1) {
+      throw new ConflictException("purchase receipt idempotency completion failed");
+    }
   }
 
   private resolveReceiveItemProduct(
@@ -1392,7 +1567,8 @@ export class PurchaseService {
     itemsToReceive: ReceivePurchaseItemInput[],
     context?: InventoryContext,
     actor?: BranchScopedActor,
-    document?: ReceivePurchaseDocumentInput
+    document?: ReceivePurchaseDocumentInput,
+    idempotencyKey?: string | string[]
   ) {
     if (!Array.isArray(itemsToReceive) || itemsToReceive.length === 0) {
       throw new BadRequestException("receive items are required");
@@ -1434,6 +1610,34 @@ export class PurchaseService {
       if (!purchaseRow) {
         throw new NotFoundException("purchase not found");
       }
+
+      const normalizedIdempotencyKey = idempotencyKey
+        ? normalizePurchaseIdempotencyKey(idempotencyKey)
+        : undefined;
+      const requestHash = normalizedIdempotencyKey
+        ? this.buildPurchaseReceiptRequestHash({
+            purchaseId: id,
+            tenantId,
+            items: itemsToReceive,
+            context,
+            actor,
+            document,
+          })
+        : undefined;
+      if (normalizedIdempotencyKey && requestHash) {
+        const idempotency = await this.claimPurchaseReceiptIdempotency(
+          client,
+          tenantId,
+          id,
+          normalizedIdempotencyKey,
+          requestHash
+        );
+        if (idempotency.replay) {
+          await client.query("COMMIT");
+          return idempotency.result;
+        }
+      }
+
       if (purchaseRow.status === "RECEIVED") {
         throw new BadRequestException("purchase already received");
       }
@@ -1480,6 +1684,14 @@ export class PurchaseService {
         throw new BadRequestException("purchase items are required");
       }
 
+      const receiptBranchId =
+        purchaseAuditContext.branch_id ?? context?.branchId ?? null;
+      if (!receiptBranchId) {
+        throw new BadRequestException(
+          "branchId is required for purchase receipt"
+        );
+      }
+
       const itemsByProductId = new Map<string, PurchaseItemEntity[]>();
       const itemsById = new Map<string, PurchaseItemEntity>();
       for (const item of items) {
@@ -1488,6 +1700,38 @@ export class PurchaseService {
         itemsByProductId.set(item.productId, currentItems);
         itemsById.set(item.id, item);
       }
+
+      const resolvedReceiveItems = itemsToReceive.map((receiveItem) => {
+        const resolved = this.resolveReceiveItemProduct(receiveItem, itemsById);
+        const productItems = resolved.purchaseItem
+          ? [resolved.purchaseItem]
+          : itemsByProductId.get(resolved.productId) ?? [];
+
+        if (productItems.length === 0) {
+          throw new BadRequestException("purchase item not found for product");
+        }
+        if (!resolved.purchaseItemId && productItems.length > 1) {
+          throw new BadRequestException(
+            "purchaseItemId is required when a purchase repeats a product"
+          );
+        }
+
+        return { receiveItem, ...resolved, productItems };
+      });
+      resolvedReceiveItems.sort((left, right) =>
+        left.productId < right.productId
+          ? -1
+          : left.productId > right.productId
+            ? 1
+            : 0
+      );
+
+      await this.lockReceiptProductScopes(
+        tenantId,
+        receiptBranchId,
+        resolvedReceiveItems.map((item) => item.productId),
+        client
+      );
 
       const productPolicies = await this.loadProductLotPolicies(
         tenantId,
@@ -1498,32 +1742,33 @@ export class PurchaseService {
         items.map((item) => [item.id, item.orderedQuantity - item.receivedQuantity])
       );
       const createdMovements: StockMovementEntity[] = [];
-      const receiptBranchId = purchaseAuditContext.branch_id ?? context?.branchId ?? null;
 
-      for (const receiveItem of itemsToReceive) {
-        const { productId, purchaseItemId, purchaseItem } =
-          this.resolveReceiveItemProduct(receiveItem, itemsById);
+      for (const {
+        receiveItem,
+        productId,
+        purchaseItemId,
+        productItems,
+      } of resolvedReceiveItems) {
         const productPolicy = productPolicies.get(productId);
         if (!productPolicy) {
           throw new BadRequestException("product not found for tenant");
         }
-        const lotPayload = this.validateReceiveLotPayload(
-          receiveItem,
-          productPolicy
-        );
+        const isInventoryable = productPolicy.is_inventoryable !== false;
+        const lotPayload = isInventoryable
+          ? this.validateReceiveLotPayload(receiveItem, productPolicy)
+          : this.hasLotReceiptData(receiveItem)
+            ? (() => {
+                throw new BadRequestException(
+                  "lot data is not allowed for non-inventory products"
+                );
+              })()
+            : null;
 
         const quantity = Number(
           receiveItem.receivedQuantity ?? receiveItem.quantity
         );
         if (!Number.isFinite(quantity) || quantity <= 0) {
           throw new BadRequestException("received quantity must be a positive number");
-        }
-
-        const productItems = purchaseItem
-          ? [purchaseItem]
-          : itemsByProductId.get(productId) ?? [];
-        if (productItems.length === 0) {
-          throw new BadRequestException("purchase item not found for product");
         }
 
         const totalPendingQuantity = productItems.reduce(
@@ -1536,35 +1781,38 @@ export class PurchaseService {
           );
         }
 
-        const movement = await this.stockMovementService.createMovement(
-          {
-            id: crypto.randomUUID(),
-            tenantId,
-            productId,
-            type: "IN",
-            quantity,
-            referenceType: "PURCHASE",
-            referenceId: id,
-            branchId: receiptBranchId,
-            terminalId:
-              purchaseAuditContext.branch_id &&
-              context?.branchId &&
-              purchaseAuditContext.branch_id !== context.branchId
-                ? null
-                : context?.terminalId ?? null,
-            posSessionCode:
-              purchaseAuditContext.branch_id &&
-              context?.branchId &&
-              purchaseAuditContext.branch_id !== context.branchId
-                ? null
-                : context?.posSessionId ?? null,
-            userId: context?.userId ?? null,
-            referenceTable: "purchases",
-            createdAt: new Date(),
-          },
-          client
-        );
-        createdMovements.push(movement);
+        let movement: StockMovementEntity | null = null;
+        if (isInventoryable) {
+          movement = await this.stockMovementService.createMovement(
+            {
+              id: crypto.randomUUID(),
+              tenantId,
+              productId,
+              type: "IN",
+              quantity,
+              referenceType: "PURCHASE",
+              referenceId: id,
+              branchId: receiptBranchId,
+              terminalId:
+                purchaseAuditContext.branch_id &&
+                context?.branchId &&
+                purchaseAuditContext.branch_id !== context.branchId
+                  ? null
+                  : context?.terminalId ?? null,
+              posSessionCode:
+                purchaseAuditContext.branch_id &&
+                context?.branchId &&
+                purchaseAuditContext.branch_id !== context.branchId
+                  ? null
+                  : context?.posSessionId ?? null,
+              userId: context?.userId ?? null,
+              referenceTable: "purchases",
+              createdAt: new Date(),
+            },
+            client
+          );
+          createdMovements.push(movement);
+        }
 
         let remainingQuantity = quantity;
         const allocations: Array<{
@@ -1596,13 +1844,8 @@ export class PurchaseService {
           );
         }
 
-        if (lotPayload) {
+        if (lotPayload && movement) {
           const branchId = movement.branchId ?? receiptBranchId;
-          if (!branchId) {
-            throw new BadRequestException(
-              "branchId is required for lot receipt"
-            );
-          }
           const firstAllocation = allocations[0];
           const lot = await this.inventoryLotService.findOrCreateForPurchase(
             {
@@ -1695,15 +1938,27 @@ export class PurchaseService {
         [id, tenantId, nextStatus, supplierInvoiceNumber, document?.supplierInvoiceDate ?? null]
       );
 
+      const receiptResult = {
+        ...this.mapPurchase(updatedPurchaseResult.rows[0]),
+        items: updatedItems,
+      };
+      if (normalizedIdempotencyKey && requestHash) {
+        await this.completePurchaseReceiptIdempotency(
+          client,
+          tenantId,
+          id,
+          normalizedIdempotencyKey,
+          requestHash,
+          receiptResult
+        );
+      }
+
       await client.query("COMMIT");
       createdMovements.forEach((movement) =>
         this.stockMovementService.logMovementAuditEvent(movement)
       );
 
-      return {
-        ...this.mapPurchase(updatedPurchaseResult.rows[0]),
-        items: updatedItems,
-      };
+      return receiptResult;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

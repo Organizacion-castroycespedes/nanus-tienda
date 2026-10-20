@@ -23,6 +23,7 @@ type ProductRow = QueryResultRow & {
   price_with_tax: string | number;
   price_without_tax: string | number;
   is_active: boolean;
+  is_inventoryable: boolean | null;
   is_perishable: boolean;
   requires_lot: boolean;
   requires_expiration: boolean;
@@ -76,6 +77,7 @@ type UpdateProductData = Partial<
     | "priceWithTax"
     | "priceWithoutTax"
     | "isActive"
+    | "isInventoryable"
     | "isPerishable"
     | "requiresLot"
     | "requiresExpiration"
@@ -154,6 +156,7 @@ export class ProductRepository {
     price_with_tax,
     price_without_tax,
     is_active,
+    is_inventoryable,
     is_perishable,
     requires_lot,
     requires_expiration,
@@ -198,6 +201,7 @@ export class ProductRepository {
       priceWithTax: Number(row.price_with_tax),
       priceWithoutTax: Number(row.price_without_tax),
       isActive: row.is_active,
+      isInventoryable: row.is_inventoryable ?? true,
       isPerishable: row.is_perishable,
       requiresLot: row.requires_lot,
       requiresExpiration: row.requires_expiration,
@@ -263,6 +267,7 @@ export class ProductRepository {
         price_with_tax,
         price_without_tax,
         is_active,
+        is_inventoryable,
         is_perishable,
         requires_lot,
         requires_expiration,
@@ -285,8 +290,8 @@ export class ProductRepository {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19,
-        $20, $21, $22, $23, $24, $25, $26, $27, $28,
-        $29, $30, $31, $32, $33
+        $20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
+        $30, $31, $32, $33, $34
       )
       RETURNING
         ${this.selectColumns}
@@ -306,6 +311,7 @@ export class ProductRepository {
         product.priceWithTax,
         product.priceWithoutTax,
         product.isActive ?? true,
+        product.isInventoryable ?? true,
         product.isPerishable ?? false,
         product.requiresLot ?? false,
         product.requiresExpiration ?? false,
@@ -464,6 +470,9 @@ export class ProductRepository {
     }
     if (data.isActive !== undefined && data.isActive !== null) {
       addUpdate("is_active", data.isActive);
+    }
+    if (data.isInventoryable !== undefined && data.isInventoryable !== null) {
+      addUpdate("is_inventoryable", data.isInventoryable);
     }
     if (data.isPerishable !== undefined && data.isPerishable !== null) {
       addUpdate("is_perishable", data.isPerishable);

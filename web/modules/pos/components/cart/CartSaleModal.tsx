@@ -41,6 +41,7 @@ export type CartSaleItemPresentation = {
   saleTypeLabel: string;
   unitLabel: string;
   isWeighable: boolean;
+  isInventoryable: boolean;
 };
 
 type CartSaleModalProps = {
@@ -287,7 +288,9 @@ export const CartSaleModal = ({
                               ) : null}
 
                               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                Stock disponible: {item.stock}
+                                {presentation.isInventoryable
+                                  ? `Stock disponible: ${item.stock}`
+                                  : "Servicio · sin control de stock"}
                               </p>
                             </div>
 

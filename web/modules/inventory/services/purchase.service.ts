@@ -51,6 +51,7 @@ export type PurchaseItemResponse = {
   productId: string;
   productName?: string | null;
   productSku?: string | null;
+  isInventoryable?: boolean;
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
