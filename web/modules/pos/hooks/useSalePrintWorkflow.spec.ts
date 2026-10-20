@@ -249,8 +249,8 @@ test("POS billing wait dialog cannot be dismissed while the invoice is being sen
     "utf8",
   );
 
-  assert.match(source, /isSendingElectronicInvoice \|\| isBillingProcessing/);
+  assert.match(source, /\{isBillingProcessing \? \(/);
   assert.match(source, /<Modal title="Facturación electrónica" size="md">/);
   assert.doesNotMatch(source, /onClose=\{cancelBillingProcessing\}/);
-  assert.match(source, /Enviando factura a la DIAN…/);
+  assert.match(source, /Preparando la factura…/);
 });
