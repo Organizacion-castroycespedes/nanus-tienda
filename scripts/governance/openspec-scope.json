@@ -413,6 +413,18 @@
         "scripts/database/migrations/V110__inventory_create_sale_v2_non_inventoryable_products.sql"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "bloquear-tipo-producto-edicion",
+      "paths": [
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/payload.spec.ts",
+        "openspec/changes/bloquear-tipo-producto-edicion/**"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
@@ -460,15 +472,24 @@
         "api/src/modules/inventory/services/product.service.ts",
         "api/src/modules/inventory/services/product.service.spec.ts",
         "web/domains/products/dtos.ts",
-        "web/modules/inventory/components/ProductForm.tsx",
         "web/modules/inventory/components/PurchaseReceiveForm.tsx",
-        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
-        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
         "web/modules/inventory/components/product-form/types.ts",
         "web/modules/inventory/services/product.service.ts",
         "web/modules/inventory/services/purchase.service.ts"
       ],
       "reason": "Owner-authorized additive ownership for the product classification contract and the purchase receipt client contract; historical associations remain intact and no active owner path is reassigned."
+    },
+    {
+      "change_id": "bloquear-tipo-producto-edicion",
+      "paths": [
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/payload.spec.ts",
+        "openspec/changes/bloquear-tipo-producto-edicion/**"
+      ],
+      "reason": "Follow-up frontend ownership for immutable product type during edit; creation and backend transition contracts remain owned by suportar-productos-no-inventariables."
     },
     {
       "change_id": "evolucionar-gobernanza-openspec-ownership-windows",
