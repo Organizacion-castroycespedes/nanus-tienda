@@ -9,6 +9,10 @@ aunque no exista venta ni pago persistido.
 
 ## What Changes
 
+- Corregir el feedback omitido al borrar `saleAttempt`: validar pertenencia
+  antes de la transición y mostrar mensaje y toast con producto y cantidades.
+- Separar el registro comercial pendiente del indicador fiscal del workflow
+  existente. El POST pendiente no autoriza mostrar un envío a DIAN.
 - Convertir los rechazos definitivos de stock agregado y FEFO en un contrato de
   negocio seguro con disponibilidad autoritativa y alcance tenant/sucursal.
 - Refrescar disponibilidad antes de abrir el cobro y conservar el carrito con
@@ -42,6 +46,11 @@ aunque no exista venta ni pago persistido.
 - Backend: contrato de error de `SaleService`/`SaleRepository`.
 - Frontend: cliente HTTP, recuperación POS, store del carrito y `PosScreen`.
 - Tests: regresiones dirigidas de API y POS.
+- Corrección de feedback/fase fiscal: solo `PosScreen`, pruebas de integración
+  con `PaymentDialog` y hook fiscal reales, etiqueta comercial del botón de
+  cobro y ajuste de la prueba fiscal existente. El manifest añade únicamente
+  ese componente de cobro y esa prueba al alcance de este change.
+  No cambia backend, BD, configuración ni el contrato UNKNOWN.
 - Sin migraciones dentro de este change, ajustes directos de BD, cambios en
   V108, FactuCore, pagos, caja o lógica de anulaciones. La redefinición
   forward-only de `inventory_create_sale_v2` pertenece a la coordinación

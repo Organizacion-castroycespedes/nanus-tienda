@@ -710,7 +710,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                 className="min-h-[48px] w-full rounded-xl bg-blue-600 px-5 text-sm font-semibold shadow-md shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50 sm:min-h-[44px] sm:w-auto sm:text-xs"
               >
                 <Check className="mr-1.5 h-4 w-4" />
-                Confirmar venta
+                {isSubmitting ? "Registrando venta…" : "Confirmar venta"}
               </Button>
             </div>
           </div>

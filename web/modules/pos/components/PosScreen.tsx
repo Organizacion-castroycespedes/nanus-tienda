@@ -805,19 +805,13 @@ export const PosScreen = () => {
     }
   }, [cart.length, cartSheetOpen, setCartSheetOpen]);
 
-  const isSendingElectronicInvoice =
-    processingSale &&
-    branding.electronicBillingEnabled !== false &&
-    branding.electronicBillingMode !== PARAMETER_MODES.ON_DEMAND;
-
   const isSearchFocusReleased =
     productToolsOpen ||
     paymentModalOpen ||
     quickFiscalCustomerOpen ||
     cartSheetOpen ||
     Boolean(pdfConfig) ||
-    isBillingProcessing ||
-    isSendingElectronicInvoice;
+    isBillingProcessing;
 
   useEffect(() => {
     if (isSearchFocusReleased) {
@@ -2978,8 +2972,15 @@ export const PosScreen = () => {
         { "Idempotency-Key": attempt.attemptId },
       );
     } catch (error) {
+      if (!isSaleTargetCurrent(target)) {
+        releaseSaleSubmission(saleGate);
+        setAccountProcessing(target.accountId, false);
+        return;
+      }
       const definitiveStockRejection = readDefinitiveStockRejection(error);
       if (definitiveStockRejection) {
+        // The reducer clears saleAttempt synchronously. Authorize feedback first.
+        const shouldNotifyOrigin = isSaleTargetActive(target);
         applyDefinitiveStockRejection({
           ...target,
           productId: definitiveStockRejection.productId,
@@ -2990,15 +2991,14 @@ export const PosScreen = () => {
           delete next[target.accountId];
           return next;
         });
-        if (isSaleTargetActive(target)) {
+        if (shouldNotifyOrigin && isSaleOriginActive(target)) {
           const failedItem = cartWithDerivedValues.find(
             (item) => item.productId === definitiveStockRejection.productId,
           );
           const productName = failedItem?.name ?? definitiveStockRejection.productId;
-          setSubmitError(
-            `${productName}: solicitaste ${definitiveStockRejection.requestedQuantity} y hay ${definitiveStockRejection.availableQuantity} disponibles. Ajusta el carrito y vuelve a cobrar.`,
-          );
-          notifyOrigin("Stock insuficiente. El carrito quedó editable.", "warning");
+          const message = `${productName}: solicitaste ${definitiveStockRejection.requestedQuantity} y hay ${definitiveStockRejection.availableQuantity} disponibles. Ajusta el carrito y vuelve a cobrar.`;
+          setSubmitError(message);
+          notifyOrigin(message, "warning");
         }
         releaseSaleSubmission(saleGate);
         setAccountProcessing(target.accountId, false);
@@ -3723,12 +3723,12 @@ export const PosScreen = () => {
         />
       ) : null}
 
-      {isSendingElectronicInvoice || isBillingProcessing ? (
+      {isBillingProcessing ? (
         <Modal title="Facturación electrónica" size="md">
           <div className="flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
             <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
-              {isBillingProcessing ? "Preparando la factura…" : "Enviando factura a la DIAN…"}
+              Preparando la factura…
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Esto toma unos segundos.
