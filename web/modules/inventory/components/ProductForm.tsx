@@ -42,6 +42,7 @@ import { ProductOperationalSection } from "./product-form/ProductOperationalSect
 import { ProductPriceCostSection } from "./product-form/ProductPriceCostSection";
 import { ProductSummaryCard } from "./product-form/ProductSummaryCard";
 import { ProductTraitsSection } from "./product-form/ProductTraitsSection";
+import { buildProductUpdatePayload } from "./product-form/payload";
 import type {
   AssignedTaxRow,
   ProductFormErrors,
@@ -470,6 +471,10 @@ export const ProductForm = ({
     field: K,
     value: ProductFormValues[K],
   ) => {
+    if (mode === "edit" && field === "isInventoryable") {
+      return;
+    }
+
     setValues((prev) => {
       const next = { ...prev, [field]: value };
 
@@ -644,15 +649,6 @@ export const ProductForm = ({
     ) {
       nextErrors.isPerishable =
         "Marca lote o vencimiento para productos perecederos.";
-    }
-    if (
-      mode === "edit" &&
-      (product?.isInventoryable ?? true) &&
-      !values.isInventoryable &&
-      !values.inventoryabilityChangeReason.trim()
-    ) {
-      nextErrors.inventoryabilityChangeReason =
-        "Indica el motivo del cambio a servicio.";
     }
     if (!values.saleType) {
       nextErrors.saleType = "Debes seleccionar el modelo de venta.";
@@ -852,20 +848,8 @@ export const ProductForm = ({
     setErrors({});
 
     try {
-      const editablePayload: UpdateProductPayload = { ...payload };
-      delete editablePayload.unitId;
-      delete editablePayload.saleType;
-      delete editablePayload.measurementUnit;
-      delete editablePayload.isPerishable;
-      delete editablePayload.requiresLot;
-      delete editablePayload.requiresExpiration;
-      if (
-        mode === "edit" &&
-        (product?.isInventoryable ?? true) !== values.isInventoryable
-      ) {
-        editablePayload.inventoryabilityChangeReason =
-          values.inventoryabilityChangeReason.trim();
-      }
+      const editablePayload: UpdateProductPayload =
+        buildProductUpdatePayload(payload);
       const savedProduct =
         mode === "create"
           ? await createProduct(payload)
