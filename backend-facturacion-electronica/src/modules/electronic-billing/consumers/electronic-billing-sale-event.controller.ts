@@ -1,18 +1,26 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Inject,
   Headers,
   ForbiddenException,
+  NotFoundException,
+  Optional,
   Param,
   Post,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { SaleCompletedForElectronicBillingConsumerService } from "./electronic-billing-sale-event.consumer";
 import type { ElectronicBillingConsumptionResult } from "./electronic-billing-consumer.types";
 import type { SaleCompletedForElectronicBillingEventEnvelope } from "../contracts/electronic-billing-integration-events";
 import {
+  ElectronicBillingCreditNoteService,
+  ElectronicBillingFailureService,
   ElectronicBillingProcessingService,
+  ElectronicCreditNoteInvoiceNotAcceptedError,
+  ElectronicCreditNoteInvoiceNotFoundError,
   type ElectronicBillingRetryability,
   type ProcessingResult,
   type SafeStatusReconciliationResult,
@@ -20,6 +28,12 @@ import {
 
 type StatusRefreshBody = { tenantId?: unknown };
 type RetryBody = { tenantId?: unknown };
+type CreditNoteIssueBody = {
+  tenantId?: unknown;
+  discrepancyResponseCode?: unknown;
+  discrepancyResponseDescription?: unknown;
+  noteReason?: unknown;
+};
 
 const stringValue = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
 
@@ -90,6 +104,12 @@ export class ElectronicBillingSaleEventController {
     private readonly consumer: SaleCompletedForElectronicBillingConsumerService,
     @Inject(ElectronicBillingProcessingService)
     private readonly processingService: ElectronicBillingProcessingService,
+    @Optional()
+    @Inject(ElectronicBillingFailureService)
+    private readonly failureService?: ElectronicBillingFailureService,
+    @Optional()
+    @Inject(ElectronicBillingCreditNoteService)
+    private readonly creditNoteService?: ElectronicBillingCreditNoteService,
   ) {}
 
   @Post("events/sale-completed")
@@ -107,7 +127,85 @@ export class ElectronicBillingSaleEventController {
       payloadKeys: Object.keys(body?.payload ?? {}),
     });
     this.assertInternalToken(authorization);
-    return this.consumer.consume(body);
+    const result = await this.consumer.consume(body);
+    return {
+      ...result,
+      electronicDocument: await this.describeConsumedDocument(result),
+    };
+  }
+
+  @Post("documents/:documentId/credit-note/issue")
+  async issueCreditNote(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("documentId") documentId: string,
+    @Body() body: CreditNoteIssueBody,
+  ) {
+    this.assertInternalToken(authorization);
+    const tenantId = stringValue(body?.tenantId);
+    if (!tenantId || !stringValue(documentId)) {
+      throw new ForbiddenException("Credit note identity is required");
+    }
+    if (!this.creditNoteService) {
+      throw new ServiceUnavailableException("Credit note issuing is not available");
+    }
+
+    try {
+      const electronicDocument = await this.creditNoteService.issueForInvoice(documentId, {
+        tenantId,
+        discrepancyResponseCode: stringValue(body?.discrepancyResponseCode),
+        discrepancyResponseDescription: stringValue(body?.discrepancyResponseDescription),
+        noteReason: stringValue(body?.noteReason),
+      });
+      return { electronicDocument };
+    } catch (error) {
+      if (error instanceof ElectronicCreditNoteInvoiceNotFoundError) {
+        throw new NotFoundException(error.message);
+      }
+      if (error instanceof ElectronicCreditNoteInvoiceNotAcceptedError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Post("documents/:documentId/outcome")
+  async describeDocument(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("documentId") documentId: string,
+    @Body() body: StatusRefreshBody,
+  ) {
+    this.assertInternalToken(authorization);
+    const tenantId = stringValue(body?.tenantId);
+    if (!tenantId || !stringValue(documentId) || !this.failureService) {
+      throw new ForbiddenException("Outcome identity is required");
+    }
+    const electronicDocument = await this.failureService.describe(tenantId, documentId);
+    if (!electronicDocument) {
+      throw new NotFoundException("Electronic document not found");
+    }
+    return { electronicDocument };
+  }
+
+  private async describeConsumedDocument(result: ElectronicBillingConsumptionResult) {
+    if (!result.electronicDocumentId || !this.failureService) {
+      return null;
+    }
+
+    try {
+      let outcome = await this.failureService.describe(result.tenantId, result.electronicDocumentId);
+      if (outcome?.status === "PENDING" && result.status === "ALREADY_PROCESSED") {
+        await this.processingService.processDocument(result.tenantId, result.electronicDocumentId).catch(() => null);
+        outcome = await this.failureService.describe(result.tenantId, result.electronicDocumentId);
+      }
+      return outcome;
+    } catch (error) {
+      console.warn("electronic_billing.sale_completed.describe_failed", {
+        tenantId: result.tenantId,
+        electronicDocumentId: result.electronicDocumentId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   @Post("documents/:documentId/status-refresh")

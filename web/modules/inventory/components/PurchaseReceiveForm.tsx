@@ -63,6 +63,13 @@ const getTodayInputValue = () => {
 
 const today = getTodayInputValue();
 
+const createReceiptIdempotencyKey = () => {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `purchase-receipt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (
     error &&
@@ -94,6 +101,7 @@ export const PurchaseReceiveForm = ({
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
   const [supplierInvoiceDate, setSupplierInvoiceDate] = useState(today);
   const [receiveStep, setReceiveStep] = useState<ReceiveStep>("information");
+  const [idempotencyKey] = useState(createReceiptIdempotencyKey);
 
   useEffect(() => {
     let mounted = true;
@@ -218,10 +226,12 @@ export const PurchaseReceiveForm = ({
       }
 
       const product = productById.get(item.productId);
-      const requiresLot = Boolean(product?.requiresLot ?? item.requiresLot);
-      const requiresExpiration = Boolean(
-        product?.requiresExpiration ?? item.requiresExpiration
-      );
+      const isInventoryable = product?.isInventoryable ?? true;
+      const requiresLot =
+        isInventoryable && Boolean(product?.requiresLot ?? item.requiresLot);
+      const requiresExpiration =
+        isInventoryable &&
+        Boolean(product?.requiresExpiration ?? item.requiresExpiration);
       const value = values[index];
 
       if (requiresLot && quantity > 0) {
@@ -297,7 +307,9 @@ export const PurchaseReceiveForm = ({
         items: getRowsWithReceivableQuantity(rows, values).map(({ item, index }) => {
           const quantity = getReceiveQuantity(values[index]);
           const product = productById.get(item.productId);
-          const requiresLot = Boolean(product?.requiresLot ?? item.requiresLot);
+          const isInventoryable = product?.isInventoryable ?? true;
+          const requiresLot =
+            isInventoryable && Boolean(product?.requiresLot ?? item.requiresLot);
           const value = values[index];
           const payloadItem: ReceivePurchasePayload["items"][number] = {
             product_id: item.productId,
@@ -321,7 +333,9 @@ export const PurchaseReceiveForm = ({
         }),
       };
 
-      const response = await receivePurchase(purchaseId, payload);
+      const response = await receivePurchase(purchaseId, payload, {
+        "Idempotency-Key": idempotencyKey,
+      });
       onSuccess(response);
     } catch (error) {
       onError?.(error);
@@ -453,11 +467,16 @@ export const PurchaseReceiveForm = ({
                 <tbody className="divide-y divide-slate-100">
                   {rows.map(({ item, index, pending }) => {
                     const product = productById.get(item.productId);
-                    const requiresLot = Boolean(product?.requiresLot ?? item.requiresLot);
-                    const requiresExpiration = Boolean(
-                      product?.requiresExpiration ?? item.requiresExpiration
-                    );
-                    const isPerishable = Boolean(product?.isPerishable ?? item.isPerishable);
+                    const isInventoryable = product?.isInventoryable ?? true;
+                    const requiresLot =
+                      isInventoryable &&
+                      Boolean(product?.requiresLot ?? item.requiresLot);
+                    const requiresExpiration =
+                      isInventoryable &&
+                      Boolean(product?.requiresExpiration ?? item.requiresExpiration);
+                    const isPerishable =
+                      isInventoryable &&
+                      Boolean(product?.isPerishable ?? item.isPerishable);
                     const value = values[index];
                     const quantity = getReceiveQuantity(value);
                     const showLotFields = requiresLot && quantity > 0;
@@ -487,6 +506,11 @@ export const PurchaseReceiveForm = ({
                                 {requiresExpiration ? (
                                   <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                                     Requiere vencimiento
+                                  </span>
+                                ) : null}
+                                {!isInventoryable ? (
+                                  <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+                                    Servicio, sin inventario
                                   </span>
                                 ) : null}
                               </div>

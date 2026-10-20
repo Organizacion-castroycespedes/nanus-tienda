@@ -6,12 +6,14 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import type { Response } from "express";
+import { PrintDiagnosticError } from "../printing/print-diagnostic";
 
 type SanitizedErrorResponse = {
   statusCode: number;
   error: string;
   message: string;
   timestamp: string;
+  code?: string;
 };
 
 @Catch()
@@ -29,6 +31,14 @@ export class SanitizedHttpExceptionFilter implements ExceptionFilter {
       message: this.getMessage(exception),
       timestamp: new Date().toISOString(),
     };
+
+    const request = host.switchToHttp().getRequest<{ url?: string }>();
+    if (exception instanceof PrintDiagnosticError || /^\/(printer|cash-drawer)(\/|\?|$)/.test(request?.url ?? "")) {
+      const code = exception instanceof PrintDiagnosticError ? exception.code : "PRINT_FAILED";
+      payload.code = code;
+      payload.message = code;
+      payload.error = "Peripheral operation failed";
+    }
 
     response.status(status).json(payload);
   }

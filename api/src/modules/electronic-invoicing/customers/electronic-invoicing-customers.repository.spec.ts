@@ -24,6 +24,8 @@ const buildCustomerRow = (overrides: Record<string, unknown> = {}) => ({
   country_code: null,
   department_code: null,
   municipality_code: null,
+  department_name: "Antioquia",
+  city_name: "Medellín",
   person_type: null,
   tax_regime: null,
   tax_responsibilities: ["R-99-PN"],
@@ -64,6 +66,8 @@ describe("ElectronicInvoicingCustomersRepository", () => {
 
     assert.equal(calls[0][22], "[\"R-99-PN\"]");
     assert.deepEqual(customer.taxResponsibilities, ["R-99-PN"]);
+    assert.equal(customer.departmentName, "Antioquia");
+    assert.equal(customer.cityName, "Medellín");
   });
 
   it("serializes taxResponsibilities as JSONB array on update", async () => {

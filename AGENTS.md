@@ -1,7 +1,15 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repo has three active apps plus docs and ops scripts. `web/` is the Next.js 14 frontend with `app/`, `components/`, `domains/`, `store/`, and `styles/`. `api/` is the main NestJS backend; shared helpers live in `src/common/`, feature code in `src/modules/`, and manual SQL in `api/database/`. `backend-reporteria/` is a second NestJS service for PDF and report output. Reference material lives in `docs/`, and utility scripts live in `scripts/`.
+This repo has three active apps plus docs and ops scripts. `web/` is the Next.js 14 frontend with `app/`, `components/`, `domains/`, `store/`, and `styles/`. `api/` is the main NestJS backend; shared helpers live in `src/common/`, feature code in `src/modules/`, and database utilities live in `scripts/database/`. `backend-reporteria/` is a second NestJS service for PDF and report output. Reference material lives in `docs/`, and utility scripts live in `scripts/`.
+
+## Manus Governance Authority
+
+- Any change to code, executable behavior, contracts, database behavior, migrations, functional seeds, security/RBAC, Electron, Peripheral Agent, electronic billing, executable runtime configuration, integrations, executable infrastructure, or code refactoring requires an active, apply-ready and strict-valid OpenSpec before implementation.
+- Narrow exemptions are allowed only for verified typo-only changes, non-executable documentation, QA evidence, non-executable artifacts, or administrative actions with no technical impact. An exemption must state its reason and must not hide executable behavior.
+- Branch names alone do not associate a diff with an OpenSpec. The future repository-only association checker will use an explicit Manus-owned scope manifest outside generated OpenSpec metadata. Its implementation is tracked by the governance OpenSpec and is not enabled in blocking mode yet.
+- OpenSpec-generated skills under `.codex/skills/openspec-*` are owned by OpenSpec and must not be edited. Manus-owned orchestration and diagnostic tooling lives under `scripts/governance/` until a later approved policy changes that location.
+- Current rollout mode is `WARNING`. Findings are owner-visible and do not block commits or pull requests. Set `MANUS_GOVERNANCE_MODE=DIAGNOSTIC_ONLY` for explicit rollback. Database access, migration execution, historical SQL replay, and `NEXT_SAFE_VERSION` assignment remain outside warning mode.
 
 ## Build, Test, and Development Commands
 Run commands inside the target folder.
@@ -45,7 +53,9 @@ Recent history mixes short imperative summaries like `Expose system version in b
 - Do not make the answer vague just to sound caveman.
 - For code explanations, be funny but still precise.
 
-## 1. Resumen del Proyecto
+## 1. Resumen histórico del Proyecto
+
+The following `apps/*` paths are retained as historical documentation only. They are not current repository authority. Current paths are documented above.
 Proyecto SaaS multi-tenant con backend en NestJS (`apps/api`) y frontend en Next.js (`apps/web`). El core incluye autenticacion JWT, RBAC por roles y permisos de menu, y catalogo de menu por tenant.
 
 Ejemplos reales:
@@ -142,9 +152,11 @@ Esquema principal (ejemplos reales):
 - Menu y permisos: `menu_items`, `role_menu_permissions` (migracion `2025_03_07_menu_management.sql`).
 - Auditoria: `security_audit_logs`.
 
-Migraciones:
-- SQL legado en `apps/api/database/*.sql`.
-- Nuevo flujo automatizado en `apps/scripts/database`:
+Migraciones actuales:
+- SQL nuevo en `scripts/database/migrations/`.
+- Formato moderno: `V###__description.sql`.
+- Compatibilidad legacy: archivos fechados existentes permanecen clasificados como legacy.
+- Flujo automatizado en `scripts/database`:
   - `migrate.sh` (crea DB si no existe + migraciones idempotentes + `migrations_history`).
   - `seed.sh` (datos generales, roles/permisos y SUPER_ADMIN).
   - `backup.sh` / `rollback.sh`.
@@ -154,7 +166,7 @@ Indices recomendados ya presentes:
 - `menu_items_tenant_key_unique`, `role_menu_permissions_unique`.
 - Indices en `tenant_branches`, `personas` y geografia.
 
-## 8. Estructura Recomendada del Proyecto
+## 8. Estructura Histórica/Recomendada del Proyecto
 Estructura actual:
 - `apps/api` (NestJS)
 - `apps/web` (Next.js)
@@ -208,7 +220,8 @@ Frontend (`apps/web`):
 
 Migraciones:
 - Script disponible: `scripts/database/migrate.sh`.
-- Ejecuta SQL versionados en `scripts/database/00x_*.sql`.
+- Nuevas migraciones versionadas viven en `scripts/database/migrations/V###__description.sql`.
+- Archivos legacy fechados siguen separados y no se renumeran ni reejecutan automáticamente.
 - Crea base automaticamente si no existe (requiere `DB_ADMIN_USER`/`DB_ADMIN_PASSWORD` o usuario con `CREATEDB`).
 
 Seeds:

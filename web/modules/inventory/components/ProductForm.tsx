@@ -42,6 +42,7 @@ import { ProductOperationalSection } from "./product-form/ProductOperationalSect
 import { ProductPriceCostSection } from "./product-form/ProductPriceCostSection";
 import { ProductSummaryCard } from "./product-form/ProductSummaryCard";
 import { ProductTraitsSection } from "./product-form/ProductTraitsSection";
+import { buildProductUpdatePayload } from "./product-form/payload";
 import type {
   AssignedTaxRow,
   ProductFormErrors,
@@ -105,6 +106,8 @@ const createInitialValues = (
     danePriceEffectiveFrom: product?.taxProfile?.danePriceEffectiveFrom ?? "",
     danePriceEffectiveTo: product?.taxProfile?.danePriceEffectiveTo ?? "",
     isActive: product?.isActive ?? true,
+    isInventoryable: product?.isInventoryable ?? true,
+    inventoryabilityChangeReason: "",
     isPerishable: product?.isPerishable ?? false,
     requiresLot: product?.requiresLot ?? false,
     requiresExpiration: product?.requiresExpiration ?? false,
@@ -468,6 +471,10 @@ export const ProductForm = ({
     field: K,
     value: ProductFormValues[K],
   ) => {
+    if (mode === "edit" && field === "isInventoryable") {
+      return;
+    }
+
     setValues((prev) => {
       const next = { ...prev, [field]: value };
 
@@ -630,11 +637,12 @@ export const ProductForm = ({
     if (!values.unitId) {
       nextErrors.unitId = "Debes seleccionar una unidad.";
     }
-    if (values.requiresExpiration && !values.requiresLot) {
+    if (values.isInventoryable && values.requiresExpiration && !values.requiresLot) {
       nextErrors.requiresLot =
         "Requiere lote cuando el producto exige vencimiento.";
     }
     if (
+      values.isInventoryable &&
       values.isPerishable &&
       !values.requiresLot &&
       !values.requiresExpiration
@@ -802,6 +810,7 @@ export const ProductForm = ({
       cost: Number(values.cost),
       unitId: values.unitId,
       isActive: values.isActive,
+      isInventoryable: values.isInventoryable,
       isPerishable: values.isPerishable,
       requiresLot: values.requiresLot,
       requiresExpiration: values.requiresExpiration,
@@ -839,11 +848,13 @@ export const ProductForm = ({
     setErrors({});
 
     try {
+      const editablePayload: UpdateProductPayload =
+        buildProductUpdatePayload(payload);
       const savedProduct =
         mode === "create"
           ? await createProduct(payload)
           : await updateProduct(product!.id, {
-              ...payload,
+              ...editablePayload,
               price: undefined,
               priceWithTax: undefined,
               priceWithoutTax: undefined,
@@ -888,6 +899,7 @@ export const ProductForm = ({
           errors={errors}
           unitOptions={unitOptions}
           catalogLoading={catalogLoading}
+          structuralConfigurationLocked={mode === "edit"}
           onFieldChange={setFieldValue}
           onSaleModelChange={setSaleModelValue}
         />
@@ -938,6 +950,7 @@ export const ProductForm = ({
         <ProductOperationalSection
           values={values}
           errors={errors}
+          structuralConfigurationLocked={mode === "edit"}
           onOperationalChange={setOperationalValue}
         />
 

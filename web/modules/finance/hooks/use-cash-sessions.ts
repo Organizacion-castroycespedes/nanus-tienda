@@ -16,6 +16,7 @@ import type {
   OpenCashSessionPayload,
 } from "../types";
 import { getApiErrorMessage } from "../../reporteria/utils";
+import { createLatestRequestSequence } from "./latest-request-sequence";
 
 export const useCashSessions = () => {
   const [currentSession, setCurrentSession] = useState<CashSession | null>(null);
@@ -28,11 +29,13 @@ export const useCashSessions = () => {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const openSessionsRequestId = useRef(0);
+  const historyRequests = useRef(createLatestRequestSequence());
+  const openSessionRequests = useRef(createLatestRequestSequence());
 
   useEffect(() => {
     return () => {
-      openSessionsRequestId.current += 1;
+      historyRequests.current.invalidate();
+      openSessionRequests.current.invalidate();
     };
   }, []);
 
@@ -69,13 +72,13 @@ export const useCashSessions = () => {
   }, []);
 
   const loadHistory = useCallback(async (filters: CashSessionHistoryFilters = {}) => {
+    const requestId = historyRequests.current.next();
     const isOpenRequest = filters.status === "OPEN";
-    const requestId = isOpenRequest ? ++openSessionsRequestId.current : 0;
     setLoadingHistory(true);
     setErrorMessage(null);
     try {
       const items = await listCashSessionHistory(filters);
-      if (isOpenRequest && requestId !== openSessionsRequestId.current) {
+      if (!historyRequests.current.isCurrent(requestId)) {
         return [];
       }
       setHistory(items);
@@ -85,7 +88,7 @@ export const useCashSessions = () => {
       setHistoryLoaded(true);
       return items;
     } catch (error) {
-      if (isOpenRequest && requestId !== openSessionsRequestId.current) {
+      if (!historyRequests.current.isCurrent(requestId)) {
         return [];
       }
       setErrorMessage(
@@ -94,7 +97,7 @@ export const useCashSessions = () => {
       setHistoryLoaded(true);
       return [];
     } finally {
-      if (!isOpenRequest || requestId === openSessionsRequestId.current) {
+      if (historyRequests.current.isCurrent(requestId)) {
         setLoadingHistory(false);
       }
     }
@@ -102,7 +105,7 @@ export const useCashSessions = () => {
 
   const loadAvailableOpenSessions = useCallback(
     async (filters: CashSessionHistoryFilters = {}) => {
-      const requestId = ++openSessionsRequestId.current;
+      const requestId = openSessionRequests.current.next();
       setAvailableOpenSessions([]);
       setErrorMessage(null);
       try {
@@ -112,13 +115,13 @@ export const useCashSessions = () => {
           limit: 100,
           offset: 0,
         });
-        if (requestId !== openSessionsRequestId.current) {
+        if (!openSessionRequests.current.isCurrent(requestId)) {
           return [];
         }
         setAvailableOpenSessions(items);
         return items;
       } catch (error) {
-        if (requestId !== openSessionsRequestId.current) {
+        if (!openSessionRequests.current.isCurrent(requestId)) {
           return [];
         }
         setErrorMessage(

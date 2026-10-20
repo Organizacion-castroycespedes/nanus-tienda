@@ -10,7 +10,7 @@ const MAX_DETAIL_COUNT = 20;
 const MAX_DETAIL_MESSAGE_LENGTH = 300;
 
 const sanitizeText = (value: string) => value
-  .replace(/(clientSecret|clientKey|authorization|token|password|secret|apiKey)\s*[:=]\s*[^,\s}\]]+/gi, "$1=[redacted]")
+  .replace(/(["']?)(clientSecret|clientKey|authorization|token|password|secret|apiKey)\1\s*[:=]\s*(["']?)([^,\s}\]"']+)\3/gi, "$1$2$1=[redacted]")
   .slice(0, MAX_DETAIL_MESSAGE_LENGTH);
 
 const readPath = (value: Record<string, unknown>, inheritedPath: string | null) => {
@@ -80,6 +80,8 @@ export const extractFactuCoreValidationDetails = (payload: unknown): FactuCoreVa
 };
 
 export class FactuCoreError extends ElectronicBillingProviderError {
+  public responseBodyPresent: boolean | null = null;
+
   constructor(
     message: string,
     code: string,

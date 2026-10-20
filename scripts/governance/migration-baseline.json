@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "baseline_type": "PRE-GOVERNANCE EXECUTION BASELINE",
+  "execution_status": "EXECUTED_LEGACY_REPORTED",
+  "history_certification_status": "PARTIAL",
+  "scope": "SQL files existing at the governance baseline declaration",
+  "owner_statement": {
+    "execution_evidence": "OWNER_REPORTED_OPERATIONAL_BASELINE",
+    "some_files_used_runners_and_some_files_used_manual_execution": true,
+    "per_file_certification": false,
+    "environment_specific_execution_assertions": false
+  },
+  "enforcement_state": {
+    "mode": "STRICT",
+    "status": "ACTIVE",
+    "owner_activation": "EXPLICIT_OWNER_ACTIVATION",
+    "rollback": "NOT_REQUESTED"
+  },
+  "cutover_boundary": {
+    "version": "V095",
+    "semantics": "NUMERIC_HISTORICAL_BOUNDARY_NOT_CANONICAL_FILE",
+    "decision_source": "RESPONSIBLE_PROJECT_OWNER_CURRENT_INSTRUCTION",
+    "status": "ACTIVE",
+    "approved": true,
+    "activated": true,
+    "owner_approval": {
+      "status": "EXPLICIT_OWNER_APPROVAL",
+      "statement": "APRUEBO EL CUTOVER V095",
+      "scope": "CUTOVER_BOUNDARY_ONLY",
+      "activation": "EXPLICIT_OWNER_ACTIVATION"
+    },
+    "drift_disposition": "PREEXISTING_BASELINE_RETAINED",
+    "evidence": {
+      "repository": "READ_ONLY_RECONCILIATION",
+      "target_branch": "READ_ONLY_VERIFIED",
+      "qa": "READ_ONLY_RECONCILIATION",
+      "prd": "OPERATOR_ACCEPTED_SNAPSHOT_NOT_LIVE"
+    },
+    "required_environments": [
+      "QA",
+      "PRD_SNAPSHOT"
+    ],
+    "local": {
+      "cutover_requirement": "NOT_REQUIRED",
+      "reason": "NO_PERSISTENT_LOCAL_CONFIGURATION_OR_AUTHORIZED_LOCAL_INSTANCE_IN_REPOSITORY"
+    },
+    "historical_disposition": {
+      "repository": "PREEXISTING_HISTORICAL_BASELINE",
+      "qa": "PREEXISTING_HISTORICAL_BASELINE",
+      "prd_snapshot": "PREEXISTING_HISTORICAL_BASELINE",
+      "history_certification_status": "PARTIAL",
+      "remediation": "SEPARATE_OPENSPEC_HISTORICAL_DRIFT"
+    }
+  },
+  "prohibitions": [
+    "MISSING_HISTORY_DOES_NOT_MEAN_NOT_EXECUTED",
+    "NO_HISTORICAL_SQL_REPLAY",
+    "NO_ARTIFICIAL_HISTORY_BACKFILL",
+    "NO_HISTORICAL_RENAME_RENUMBER_OR_OVERWRITE",
+    "NO_RETROACTIVE_HISTORY_CERTIFICATION"
+  ]
+}

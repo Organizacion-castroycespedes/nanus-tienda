@@ -22,6 +22,11 @@ import {
 } from "../../finance/payments/payments.repository";
 import { PaymentsService } from "../../finance/payments/payments.service";
 import { PricingService } from "../../pricing/pricing.service";
+import { WeightCapturePersistence, type CaptureScope } from "../../scale-authorization/persistence/scale-authorization.repositories";
+import {
+  calculatePercentageTaxAmount,
+  resolveLineTaxBase,
+} from "../../pricing/pricing-tax-rounding";
 import type { LinePricePreview } from "../../pricing/pricing.types";
 import { AuditService } from "../../../common/services/audit.service";
 import { CustomerRepository } from "../repositories/customer.repository";
@@ -41,8 +46,10 @@ import {
   SaleRepository,
   type CreateSalePaymentInput,
   type CreateSaleInput,
+  type SaleLineRequest,
   type SaleRow,
 } from "../repositories/sale.repository";
+import { roundCommercialWeightKg } from "../weighted-sale-quantity";
 import {
   buildSaleIdempotencyHash,
   normalizeSaleIdempotencyKey,
@@ -67,6 +74,10 @@ import type {
 import {
   evaluateElectronicBillingEligibility,
 } from "../../integration-outbox/contracts/electronic-billing-eligibility";
+import {
+  buildOnlineResultFromDelivery,
+  type ElectronicBillingOnlineResult,
+} from "../../integration-outbox/contracts/electronic-billing-outcome";
 import {
   assertIssuerCanBillVat,
   hasPositiveTaxLines,
@@ -103,6 +114,7 @@ type SaleItemRow = {
   sale_id: string;
   product_id: string;
   order_item_id: string | null;
+  sale_mode?: "UNIT" | "WEIGHT" | null;
   quantity: string | number;
   price: string | number;
   price_without_tax: string | number;
@@ -168,6 +180,36 @@ type SalePaymentMethodRow = {
   created_at: Date;
 };
 
+type DefinitiveStockFailureKind =
+  | "INSUFFICIENT_STOCK"
+  | "INSUFFICIENT_FEFO_STOCK";
+
+type PostgresSaleError = {
+  code?: unknown;
+  message?: unknown;
+};
+
+export const readDefinitiveStockFailureKind = (
+  error: unknown,
+): DefinitiveStockFailureKind | null => {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const candidate = error as PostgresSaleError;
+  if (candidate.code !== "P0001" || typeof candidate.message !== "string") {
+    return null;
+  }
+
+  if (candidate.message.startsWith("insufficient FEFO lot stock for product ")) {
+    return "INSUFFICIENT_FEFO_STOCK";
+  }
+  if (candidate.message.startsWith("insufficient stock for product ")) {
+    return "INSUFFICIENT_STOCK";
+  }
+  return null;
+};
+
 type InvoiceableOrderRow = {
   id: string;
   customer_id: string;
@@ -226,6 +268,7 @@ type ProductLotRequirementRow = {
 type PricedSaleItem = {
   saleItemId: string;
   productId: string;
+  saleMode: "UNIT" | "WEIGHT";
   quantity: number;
   price: number;
   orderItemId?: string | null;
@@ -259,6 +302,20 @@ type PricedSaleItem = {
     isIncluded: boolean;
   }>;
 };
+
+type PreparedWeightCapture = {
+  saleItemId: string;
+  captureId: string;
+  nonce: string;
+  rawWeightKg: string;
+  commercialQuantityKg: string;
+  scope: CaptureScope;
+};
+
+type CreateSaleRequestData = Omit<
+  CreateSaleInput,
+  "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId" | "items"
+> & { items: SaleLineRequest[] };
 
 type InheritableOrderPayment = {
   payment: PaymentRecord;
@@ -312,6 +369,7 @@ const roundElectronicBillingMoney = (value: number) => Math.round((value + Numbe
 export const normalizeElectronicBillingTaxForQuantity = (input: {
   quantity: number;
   lineBase: number;
+  expectedLineBase?: number | null;
   tax: {
     dianCode?: string | null;
     taxRate: number;
@@ -319,11 +377,67 @@ export const normalizeElectronicBillingTaxForQuantity = (input: {
     taxAmount: number;
   };
 }) => {
-  if (input.quantity <= 1 || !["01", "03", "04"].includes(input.tax.dianCode ?? "")) {
+  const dianCode = input.tax.dianCode ?? "";
+  const rawRate = Number(input.tax.taxRate ?? 0);
+  const rate = rawRate > 1 ? rawRate / 100 : rawRate;
+
+  const isStandardPercentageScheme = ["01", "03", "04", "30"].includes(dianCode);
+  if (isStandardPercentageScheme) {
+    if (rate === 0) {
+      return { taxableBase: roundElectronicBillingMoney(input.lineBase), amount: 0 };
+    }
+    const taxableBase = roundElectronicBillingMoney(
+      input.quantity > 1 ? input.lineBase : input.tax.taxBase || input.lineBase
+    );
+    return {
+      taxableBase,
+      amount: roundElectronicBillingMoney(taxableBase * rate),
+    };
+  }
+
+  const isAdValorem = dianCode === "36";
+  const isSpecificTax = ["32", "22", "33", "34", "35"].includes(dianCode);
+  if (isAdValorem || isSpecificTax) {
+    const rawBase = Number(input.tax.taxBase || 0);
+    const rawAmount = Number(input.tax.taxAmount || 0);
+    // base * rate == amount holds for both unit and line snapshots, so only the
+    // product profile (degree/volume or DANE price) can prove a unit snapshot.
+    const expectedLineBase = input.expectedLineBase ?? null;
+    const isUnitSnapshot =
+      input.quantity > 1 &&
+      expectedLineBase !== null &&
+      expectedLineBase > 0 &&
+      rawBase > 0 &&
+      Math.abs(rawBase - expectedLineBase) > 0.01 &&
+      Math.abs(rawBase * input.quantity - expectedLineBase) <= 0.01 * input.quantity;
+
+    if (isAdValorem) {
+      const taxableBase = roundElectronicBillingMoney(
+        isUnitSnapshot ? expectedLineBase! : rawBase || input.lineBase
+      );
+      return {
+        taxableBase,
+        amount: roundElectronicBillingMoney(taxableBase * rate),
+      };
+    }
+
+    if (isUnitSnapshot) {
+      return {
+        taxableBase: roundElectronicBillingMoney(expectedLineBase!),
+        amount: roundElectronicBillingMoney(expectedLineBase! * rawRate),
+      };
+    }
+
+    return {
+      taxableBase: roundElectronicBillingMoney(rawBase),
+      amount: roundElectronicBillingMoney(rawAmount),
+    };
+  }
+
+  if (input.quantity <= 1) {
     return { taxableBase: input.tax.taxBase, amount: input.tax.taxAmount };
   }
 
-  const rate = input.tax.taxRate > 1 ? input.tax.taxRate / 100 : input.tax.taxRate;
   const taxableBase = roundElectronicBillingMoney(input.lineBase);
   return {
     taxableBase,
@@ -370,6 +484,9 @@ export class SaleService {
     @Optional()
     @Inject(IntegrationOutboxDispatcher)
     private readonly integrationOutboxDispatcher?: IntegrationOutboxDispatcher,
+    @Optional()
+    @Inject(WeightCapturePersistence)
+    private readonly weightCapturePersistence?: WeightCapturePersistence,
   ) {}
 
   private toNumber(value: string | number) {
@@ -378,6 +495,79 @@ export class SaleService {
 
   private roundCurrency(value: number) {
     return Math.round(value * 100) / 100;
+  }
+
+  private roundStockQuantity(value: number) {
+    return Math.round(value * 1000) / 1000;
+  }
+
+  private async translateDefinitiveStockFailure(
+    error: unknown,
+    data: CreateSaleRequestData,
+    saleContext: Awaited<ReturnType<SaleService["normalizeSaleContext"]>>,
+    client: PoolClient,
+  ) {
+    const failureKind = readDefinitiveStockFailureKind(error);
+    if (!failureKind) {
+      return null;
+    }
+
+    const errorMessage = (error as PostgresSaleError).message;
+    const failedItem = data.items.find(
+      (item) => typeof errorMessage === "string" && errorMessage.includes(item.productId),
+    );
+    if (!failedItem) {
+      return null;
+    }
+
+    const requestedQuantity = data.items
+      .filter((item) => item.productId === failedItem.productId)
+      .reduce(
+        (sum, item) =>
+          sum + (typeof item.quantity === "number" ? item.quantity : 0),
+        0,
+      );
+    if (requestedQuantity <= 0) {
+      return null;
+    }
+
+    let availability;
+    try {
+      availability = await this.repository.getStockAvailability(
+        saleContext.tenantId,
+        saleContext.branchId,
+        failedItem.productId,
+        client,
+      );
+    } catch {
+      return null;
+    }
+    if (!availability) {
+      return null;
+    }
+
+    const availableQuantity =
+      failureKind === "INSUFFICIENT_FEFO_STOCK"
+        ? availability.eligibleLotQuantity ?? 0
+        : availability.aggregateAvailableQuantity;
+
+    return new ConflictException({
+      code: failureKind,
+      message:
+        failureKind === "INSUFFICIENT_FEFO_STOCK"
+          ? "La disponibilidad de lotes FEFO no alcanza para esta venta."
+          : "La disponibilidad actual no alcanza para esta venta.",
+      productId: failedItem.productId,
+      requestedQuantity: this.roundStockQuantity(requestedQuantity),
+      availableQuantity: this.roundStockQuantity(availableQuantity),
+      aggregateAvailableQuantity: this.roundStockQuantity(
+        availability.aggregateAvailableQuantity,
+      ),
+      eligibleLotQuantity:
+        availability.eligibleLotQuantity === null
+          ? null
+          : this.roundStockQuantity(availability.eligibleLotQuantity),
+    });
   }
 
   private toDecimalWireValue(value: number | string | null | undefined) {
@@ -391,6 +581,17 @@ export class SaleService {
     }
 
     return this.roundCurrency(numericValue).toFixed(2);
+  }
+
+  // DIAN PriceAmount allows six decimals; with two, unitPrice x quantity
+  // cannot rebuild a line base that is not a multiple of the quantity.
+  private toUnitPriceWireValue(value: number | string | null | undefined) {
+    const numericValue = Number(value ?? 0);
+    if (!Number.isFinite(numericValue)) {
+      return "0.000000";
+    }
+
+    return (Math.round(numericValue * 1_000_000) / 1_000_000).toFixed(6);
   }
 
   private mapSale(row: SaleRow) {
@@ -428,6 +629,8 @@ export class SaleService {
       tenantId: row.tenant_id,
       saleId: row.sale_id,
       productId: row.product_id,
+      saleMode: row.sale_mode ?? "UNIT",
+      measurementUnit: row.sale_mode === "WEIGHT" ? "KG" : "UND",
       orderItemId: row.order_item_id,
       quantity: this.toNumber(row.quantity),
       price: this.toNumber(row.price),
@@ -512,7 +715,7 @@ export class SaleService {
     };
   }
 
-  private ensureSaleInput(data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">) {
+  private ensureSaleInput(data: CreateSaleRequestData) {
     if (!data.customerId) {
       throw new BadRequestException("customerId is required");
     }
@@ -522,6 +725,208 @@ export class SaleService {
     if (!["CASH", "CREDIT"].includes(data.type)) {
       throw new BadRequestException("type is invalid");
     }
+    for (const item of data.items) {
+      if (!item || typeof item !== "object" || typeof item.productId !== "string") {
+        throw new BadRequestException("sale item is invalid");
+      }
+      const line = item as unknown as Record<string, unknown>;
+      if (item.saleMode === "WEIGHT") {
+        if (["quantity", "weight", "unit", "source", "price"].some((key) =>
+          Object.prototype.hasOwnProperty.call(line, key)
+        )) {
+          throw new BadRequestException("WEIGHT sale line cannot provide measurement or price authority");
+        }
+        if (
+          typeof item.weightCapture?.captureId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.weightCapture.captureId) ||
+          typeof item.weightCapture?.nonce !== "string" ||
+          !/^[A-Za-z0-9_-]{43}$/.test(item.weightCapture.nonce)
+        ) {
+          throw new BadRequestException("weightCapture captureId and nonce are required");
+        }
+      } else {
+        if (item.saleMode !== undefined && item.saleMode !== "UNIT") {
+          throw new BadRequestException("saleMode must be UNIT or WEIGHT");
+        }
+        if (Object.prototype.hasOwnProperty.call(line, "weightCapture")) {
+          throw new BadRequestException("UNIT sale line cannot include weightCapture");
+        }
+        if (typeof item.quantity !== "number" || typeof item.price !== "number") {
+          throw new BadRequestException("UNIT sale line quantity and price are required");
+        }
+      }
+    }
+  }
+
+  async startWeightCapture(productId: string, actor?: SaleContext) {
+    if (!productId || !this.weightCapturePersistence || !this.productRepository) {
+      throw new BadRequestException("WEIGHT_CAPTURE_UNAVAILABLE");
+    }
+    const context = await this.normalizeSaleContext(actor);
+    if (!context.branchId || !context.terminalId || !context.posSessionId) {
+      throw new UnauthorizedException("WEIGHT sale requires complete POS context");
+    }
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+      const activeSession = await this.repository.validateActivePosSession({
+        tenantId: context.tenantId, branchId: context.branchId, terminalId: context.terminalId,
+        userId: context.userId, posSessionId: context.posSessionId,
+      }, client);
+      if (!activeSession) throw new UnauthorizedException("POS session is required");
+      const product = await this.productRepository.findById(productId, context.tenantId, client);
+      if (!product?.isActive || !["WEIGHT", "BOTH"].includes(product.saleType) || product.measurementUnit !== "KG") {
+        throw new BadRequestException("WEIGHT_CAPTURE_PRODUCT_INVALID");
+      }
+      const scopeResult = await client.query<{ id: string; logical_scale_id: string; terminal_device_id: string; binding_id: string }>(
+        `SELECT b.id AS binding_id, b.logical_scale_id, b.terminal_device_id
+         FROM pos_terminals p
+         JOIN terminal_scale_bindings b ON b.tenant_id = p.tenant_id AND b.branch_id = p.branch_id
+           AND b.pos_terminal_id = p.id AND b.operational_terminal_id = p.operational_terminal_id
+         JOIN pos_terminal_peripheral_settings ps ON ps.terminal_id = p.id
+           AND ps.enable_scale IS TRUE AND ps.scale_device_id = b.logical_scale_id
+         JOIN terminal_device_bindings td ON td.tenant_id = b.tenant_id
+           AND td.terminal_id = b.operational_terminal_id AND td.device_id = b.terminal_device_id
+           AND td.status = 'ACTIVE'
+         JOIN terminal_devices d ON d.id = b.terminal_device_id AND d.tenant_id = b.tenant_id
+           AND d.registration_status <> 'REVOKED'
+         JOIN terminal_device_credentials c ON c.tenant_id = d.tenant_id AND c.terminal_device_id = d.id
+           AND c.status = 'ACTIVE' AND c.expires_at > now() AND c.revoked_at IS NULL
+         WHERE p.tenant_id = $1 AND p.branch_id = $2 AND p.operational_terminal_id = $3
+           AND p.active IS TRUE AND b.status = 'AUTHORIZED' AND b.unit_state = 'KG_VERIFIED'
+         LIMIT 2 FOR SHARE OF p, b, td, d`,
+        [context.tenantId, context.branchId, context.terminalId],
+      );
+      if (scopeResult.rowCount !== 1) throw new ConflictException("AUTHORIZED_SCALE_BINDING_UNAVAILABLE");
+      const posTerminalId = await this.repository.findActivePosTerminalId(
+        context.tenantId, context.branchId, context.terminalId, client,
+      );
+      if (!posTerminalId) throw new UnauthorizedException("active POS terminal is required for WEIGHT sale");
+      const binding = scopeResult.rows[0];
+      const capture = await this.weightCapturePersistence.createPending(client, {
+        tenantId: context.tenantId, branchId: context.branchId, posTerminalId,
+        operationalTerminalId: context.terminalId, posSessionId: context.posSessionId,
+        productId, logicalScaleId: binding.logical_scale_id, bindingId: binding.binding_id,
+        terminalDeviceId: binding.terminal_device_id,
+      }, 60_000);
+      await client.query("COMMIT");
+      return { captureId: capture.captureId, nonce: capture.nonce, expiresAt: new Date(capture.expiresAt).toISOString() };
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
+  }
+
+  private async prepareSaleItemsForPricing(
+    items: SaleLineRequest[],
+    context: Awaited<ReturnType<SaleService["normalizeSaleContext"]>>,
+    client: PoolClient,
+  ) {
+    if (!this.productRepository) {
+      throw new BadRequestException("product repository is not configured");
+    }
+
+    const preparedItems: CreateSaleInput["items"] = [];
+    const captures: PreparedWeightCapture[] = [];
+    let posTerminalId: string | null = null;
+
+    for (const item of items) {
+      const product = await this.productRepository.findById(item.productId, context.tenantId, client);
+      if (!product || !product.isActive) {
+        throw new BadRequestException("product not found or inactive for tenant");
+      }
+
+      const saleMode = item.saleMode ?? (product.saleType === "UNIT" ? "UNIT" : null);
+      if (!saleMode) {
+        throw new BadRequestException("saleMode is required for WEIGHT and BOTH products");
+      }
+      const modeAllowed = saleMode === "UNIT"
+        ? product.saleType === "UNIT" || product.saleType === "BOTH"
+        : product.saleType === "WEIGHT" || product.saleType === "BOTH";
+      if (!modeAllowed) {
+        throw new BadRequestException("saleMode is not supported by product");
+      }
+
+      const saleItemId = crypto.randomUUID();
+      if (saleMode === "UNIT") {
+        const unitItem = item as Extract<SaleLineRequest, { saleMode?: "UNIT" }>;
+        preparedItems.push({
+          saleItemId,
+          saleMode,
+          productId: item.productId,
+          quantity: unitItem.quantity,
+          price: unitItem.price,
+          orderItemId: unitItem.orderItemId ?? null,
+        });
+        continue;
+      }
+
+      if (product.measurementUnit !== "KG") {
+        throw new BadRequestException("WEIGHT sale requires product measurementUnit KG");
+      }
+      if (!this.weightCapturePersistence) {
+        throw new BadRequestException("weight capture persistence is not configured");
+      }
+      const weightCapture = (item as Extract<SaleLineRequest, { saleMode: "WEIGHT" }>).weightCapture;
+      if (!weightCapture) {
+        throw new BadRequestException("weightCapture captureId and nonce are required");
+      }
+      if (!context.branchId || !context.terminalId || !context.posSessionId) {
+        throw new UnauthorizedException("WEIGHT sale requires complete POS context");
+      }
+      if (!posTerminalId) {
+        posTerminalId = await this.repository.findActivePosTerminalId(
+          context.tenantId,
+          context.branchId,
+          context.terminalId,
+          client,
+        );
+      }
+      if (!posTerminalId) {
+        throw new UnauthorizedException("active POS terminal is required for WEIGHT sale");
+      }
+
+      let capture: Awaited<ReturnType<WeightCapturePersistence["lockReadyForSale"]>>;
+      try {
+        capture = await this.weightCapturePersistence.lockReadyForSale(client, {
+          captureId: weightCapture.captureId,
+          nonce: weightCapture.nonce,
+          expected: {
+            tenantId: context.tenantId,
+            branchId: context.branchId,
+            posTerminalId,
+            operationalTerminalId: context.terminalId,
+            posSessionId: context.posSessionId,
+            productId: item.productId,
+          },
+        });
+      } catch (error) {
+        if (error instanceof Error && /^(CAPTURE_|AUTHORIZED_SCALE_BINDING_REQUIRED)/.test(error.message)) {
+          throw new ConflictException("weight capture is expired, unavailable, or does not match this POS sale");
+        }
+        throw error;
+      }
+      const commercialQuantityKg = roundCommercialWeightKg(capture.weightKg);
+      if (commercialQuantityKg === "0.000") {
+        throw new BadRequestException("captured weight rounds to zero commercial kg");
+      }
+      preparedItems.push({
+        saleItemId,
+        saleMode,
+        productId: item.productId,
+        quantity: Number(commercialQuantityKg),
+        price: 0,
+        orderItemId: item.orderItemId ?? null,
+      });
+      captures.push({
+        saleItemId,
+        captureId: capture.captureId,
+        nonce: weightCapture.nonce,
+        rawWeightKg: capture.weightKg,
+        commercialQuantityKg,
+        scope: capture.scope,
+      });
+    }
+
+    return { items: preparedItems, captures };
   }
 
   private normalizePayments(payments: CreateSalePaymentInput[] | undefined) {
@@ -750,7 +1155,10 @@ export class SaleService {
     const items: CreateSaleInput["items"] = [];
 
     for (const item of input.items) {
-      const preview = await this.pricingService.calculateLinePrice({
+      const calculatePrice = item.saleMode === "WEIGHT"
+        ? this.pricingService.calculateWeightedLinePrice.bind(this.pricingService)
+        : this.pricingService.calculateLinePrice.bind(this.pricingService);
+      const preview = await calculatePrice({
         tenantId: input.tenantId,
         branchId: input.branchId,
         customerId: input.customerId,
@@ -768,7 +1176,9 @@ export class SaleService {
           : 0;
 
       items.push({
+        saleItemId: item.saleItemId ?? crypto.randomUUID(),
         productId: item.productId,
+        saleMode: item.saleMode ?? "UNIT",
         quantity: preview.quantity,
         price: preview.finalUnitPrice,
         orderItemId: item.orderItemId ?? null,
@@ -903,10 +1313,34 @@ export class SaleService {
       resolvedCustomer?.tradeName ??
       customer.name;
     const personNameParts = legalName.trim().split(/\s+/).filter(Boolean);
-    const firstName = personNameParts[0] ?? null;
+    const firstName = personNameParts[0] ?? legalName;
     const familyName = personNameParts.length > 1
       ? personNameParts.slice(1).join(" ")
-      : null;
+      : firstName;
+
+    let departmentCode = resolvedCustomer?.departmentCode ?? (customer as any).department_code ?? (customer as any).departamento_code ?? null;
+    let municipalityCode = resolvedCustomer?.municipalityCode ?? (customer as any).municipality_code ?? (customer as any).municipio_code ?? null;
+
+    if (!departmentCode && customer.departamentoId) {
+      const depRes = await client.query<{ codigo_dane: string }>(
+        `SELECT codigo_dane FROM departamentos WHERE id = $1 LIMIT 1`,
+        [customer.departamentoId]
+      );
+      if (depRes.rows[0]?.codigo_dane) {
+        departmentCode = depRes.rows[0].codigo_dane;
+      }
+    }
+    if (!municipalityCode && customer.municipioId) {
+      const munRes = await client.query<{ codigo_dane: string }>(
+        `SELECT codigo_dane FROM municipios WHERE id = $1 LIMIT 1`,
+        [customer.municipioId]
+      );
+      if (munRes.rows[0]?.codigo_dane) {
+        municipalityCode = munRes.rows[0].codigo_dane;
+      }
+    }
+    if (!departmentCode) departmentCode = "08";
+    if (!municipalityCode) municipalityCode = "08001";
 
     return {
       isFinalConsumer: customer.isFinalConsumer,
@@ -942,19 +1376,24 @@ export class SaleService {
       familyName,
       email: resolvedCustomer?.invoiceEmail ?? resolvedCustomer?.fiscalEmail ?? customer.email,
       phone: resolvedCustomer?.phone ?? customer.phone,
-      addressLine1: resolvedCustomer?.address ?? customer.address,
-      countryCode: "CO",
-      departmentCode: resolvedCustomer?.departmentCode ?? null,
-      municipalityCode: resolvedCustomer?.municipalityCode ?? null,
-      cityName: customer.ciudad ?? null,
-      departmentName: customer.departamento ?? null,
+      addressLine1: resolvedCustomer?.address ?? customer.address ?? "Calle Principal",
+      countryCode: resolvedCustomer?.countryCode ?? "CO",
+      departmentCode,
+      municipalityCode,
+      cityName: customer.ciudad ?? resolvedCustomer?.cityName ?? "Barranquilla",
+      departmentName: customer.departamento ?? resolvedCustomer?.departmentName ?? "Atlántico",
       countryName: "Colombia",
-      taxLevelCode: resolvedCustomer?.personType ?? null,
+      taxLevelCode: resolvedCustomer?.personType ?? (customer as any).person_type ?? (customer.isFinalConsumer ? "NATURAL" : "NATURAL"),
       taxSchemeId:
-        resolvedCustomer?.taxRegime ?? resolvedCustomer?.documentTypeCode ?? null,
+        resolvedCustomer?.taxRegime ?? (customer as any).tax_regime ?? "NO_RESPONSABLE",
       taxSchemeName:
-        resolvedCustomer?.taxRegime ?? resolvedCustomer?.documentTypeCode ?? null,
-      fiscalResponsibilityCodes: resolvedCustomer?.taxResponsibilities ?? null,
+        resolvedCustomer?.taxRegime ?? (customer as any).tax_regime ?? "NO_RESPONSABLE",
+      fiscalResponsibilityCodes:
+        resolvedCustomer?.taxResponsibilities?.length
+          ? resolvedCustomer.taxResponsibilities
+          : Array.isArray((customer as any).tax_responsibilities) && (customer as any).tax_responsibilities.length > 0
+            ? (customer as any).tax_responsibilities
+            : ((resolvedCustomer?.personType ?? (customer as any).person_type) === "JURIDICA" ? [] : ["R-99-PN"]),
       metadata: {
         source: "sales.customer",
         customerId: customer.id,
@@ -1015,7 +1454,12 @@ export class SaleService {
                   },
                 ]
               : [];
-        const taxes = await Promise.all(
+        const productTax =
+          product.taxId && taxRepository
+            ? await taxRepository.findById(product.taxId, tenantId)
+            : null;
+
+        const rawTaxes = await Promise.all(
           snapshotTaxes.map(async (snapshotTax) => {
             const tax =
               snapshotTax.taxId !== undefined && snapshotTax.taxId !== null && taxRepository
@@ -1023,9 +1467,19 @@ export class SaleService {
                 : null;
             const dianCode = snapshotTax.dianCode ?? tax?.taxTypeDianCode ?? null;
 
+            const expectedLineBase =
+              dianCode === "32" &&
+              taxProfile?.alcoholDegree != null &&
+              taxProfile.netVolumeMl != null
+                ? (item.quantity * taxProfile.alcoholDegree * taxProfile.netVolumeMl) / 750
+                : dianCode === "36" && taxProfile?.daneCertifiedRetailPrice != null
+                  ? item.quantity * taxProfile.daneCertifiedRetailPrice
+                  : null;
+
             const normalizedTax = normalizeElectronicBillingTaxForQuantity({
               quantity: item.quantity,
               lineBase: subtotalAmount,
+              expectedLineBase,
               tax: {
                 dianCode,
                 taxRate: Number(snapshotTax.taxRate ?? tax?.rate ?? 0),
@@ -1054,14 +1508,58 @@ export class SaleService {
             };
           })
         );
+
+        let taxes = rawTaxes;
+        let lineSubtotal = subtotalAmount;
+
+        const totalRawTaxAmount = rawTaxes.reduce(
+          (sum, tax) => sum + Number(tax.amount ?? 0),
+          0
+        );
+
+        if (
+          (rawTaxes.length === 0 || (rawTaxes.length === 1 && totalRawTaxAmount === 0)) &&
+          productTax &&
+          Number(productTax.rate) > 0
+        ) {
+          const taxRate = Number(productTax.rate);
+          const lineFinal = this.roundCurrency(
+            item.lineTotal ?? item.subtotal ?? item.price * item.quantity
+          );
+          const fractionalRate = taxRate > 1 ? taxRate / 100 : taxRate;
+          lineSubtotal = resolveLineTaxBase(lineFinal, fractionalRate);
+          const calcTaxAmount = calculatePercentageTaxAmount(
+            lineSubtotal,
+            fractionalRate
+          );
+          const dianCode = productTax.taxTypeDianCode ?? "01";
+
+          taxes = [
+            {
+              type: productTax.taxTypeCode ?? "VAT",
+              code: dianCode,
+              schemeId: dianCode,
+              schemeName: productTax.name ?? "IVA",
+              rate: this.toDecimalWireValue(taxRate),
+              taxableBase: this.toDecimalWireValue(lineSubtotal),
+              amount: this.toDecimalWireValue(calcTaxAmount),
+              metadata: {
+                productId: product.id,
+                taxId: productTax.id,
+                dianCode,
+                taxTypeCode: productTax.taxTypeCode ?? "VAT",
+                calculationMethodCode: productTax.calculationMethodCode ?? "PERCENTAGE",
+                isIncluded: productTax.isIncluded,
+              },
+            },
+          ];
+        }
+
         const taxAmount = this.roundCurrency(
-          taxes.reduce(
-            (sum, tax) => sum + Number(tax.amount ?? 0),
-            0
-          ) || item.taxAmount || item.taxTotal
+          taxes.reduce((sum, tax) => sum + Number(tax.amount ?? 0), 0)
         );
         const totalAmount = this.roundCurrency(
-          item.lineTotal ?? item.subtotal ?? subtotalAmount + taxAmount - discountAmount
+          item.lineTotal ?? item.subtotal ?? lineSubtotal + taxAmount - discountAmount
         );
 
         return {
@@ -1071,9 +1569,11 @@ export class SaleService {
           description: product.description ?? product.name,
           quantity: this.toDecimalWireValue(item.quantity),
           unitCode: product.measurementUnit,
-          unitPrice: this.toDecimalWireValue(item.priceWithoutTax),
+          unitPrice: this.toUnitPriceWireValue(
+            item.quantity > 0 ? lineSubtotal / item.quantity : item.priceWithoutTax
+          ),
           discountAmount: this.toDecimalWireValue(discountAmount),
-          subtotalAmount: this.toDecimalWireValue(subtotalAmount),
+          subtotalAmount: this.toDecimalWireValue(lineSubtotal),
           taxAmount: this.toDecimalWireValue(taxAmount),
           totalAmount: this.toDecimalWireValue(totalAmount),
           taxTreatment: resolveElectronicBillingTaxTreatment(taxes, taxAmount),
@@ -1185,28 +1685,24 @@ export class SaleService {
   private isElectronicBillingCustomerFiscalDataComplete(
     customer: SaleCustomerSnapshot,
   ) {
-    const requiresPersonNames =
-      customer.customerType === "PERSON" && customer.isFinalConsumer !== true;
     const isNit =
       customer.identificationTypeCode?.trim().toUpperCase() === "31" ||
       customer.identificationTypeCode?.trim().toUpperCase() === "NIT" ||
       customer.identificationType?.trim().toUpperCase() === "NIT";
+    const isCompany = customer.customerType === "COMPANY" || isNit;
+    const requiresPersonNames =
+      customer.customerType === "PERSON" && !isNit && customer.isFinalConsumer !== true;
     return Boolean(
       customer.identificationNumber?.trim() &&
         customer.identificationTypeCode?.trim() &&
         (!isNit || customer.verificationDigit?.trim()) &&
         customer.legalName?.trim() &&
         customer.countryCode?.trim() &&
-        customer.countryName?.trim() &&
-        customer.departmentCode?.trim() &&
-        customer.departmentName?.trim() &&
-        customer.municipalityCode?.trim() &&
-        customer.cityName?.trim() &&
         customer.addressLine1?.trim() &&
         customer.email?.trim() &&
         customer.taxLevelCode?.trim() &&
         customer.taxSchemeId?.trim() &&
-        customer.fiscalResponsibilityCodes?.length &&
+        (isCompany ? true : (customer.fiscalResponsibilityCodes?.length ?? 0) > 0) &&
         (requiresPersonNames ? customer.firstName?.trim() : true) &&
         (requiresPersonNames ? customer.familyName?.trim() : true),
     );
@@ -1338,12 +1834,13 @@ export class SaleService {
     } catch (error) {
       throw new BadRequestException((error as Error).message);
     }
-    const totals = effectivePricedItems.reduce(
-      (acc, item) => {
-        acc.subtotalAmount += item.taxBase ?? item.priceWithoutTax * item.quantity;
-        acc.discountAmount += item.discountTotal ?? item.discountAmount ?? 0;
-        acc.taxAmount += item.taxAmount ?? item.taxTotal;
-        acc.totalAmount += item.lineTotal ?? item.subtotal;
+    const lineSnapshots = lines;
+    const totals = lineSnapshots.reduce(
+      (acc, line) => {
+        acc.subtotalAmount += this.toNumber(line.subtotalAmount);
+        acc.discountAmount += this.toNumber(line.discountAmount ?? 0);
+        acc.taxAmount += this.toNumber(line.taxAmount);
+        acc.totalAmount += this.toNumber(line.totalAmount);
         return acc;
       },
       {
@@ -1353,7 +1850,6 @@ export class SaleService {
         totalAmount: 0,
       }
     );
-    const lineSnapshots = lines;
     const taxSnapshots = this.buildElectronicBillingTaxes(lineSnapshots);
     const paymentSnapshots = this.buildElectronicBillingPayments(
       effectiveLegacyPaymentMethods,
@@ -1418,6 +1914,34 @@ export class SaleService {
 
   getElectronicBillingMode() {
     return getElectronicBillingMode();
+  }
+
+  /**
+   * Emits right after the sale commit and waits for the fiscal result. Only a
+   * network/transient failure leaves the outbox event queued for background retry.
+   */
+  private async dispatchElectronicBillingOnline(
+    eventId: string,
+    saleId: string,
+  ): Promise<ElectronicBillingOnlineResult | null> {
+    if (!this.integrationOutboxDispatcher) {
+      return null;
+    }
+    try {
+      const result = await this.integrationOutboxDispatcher.runOnceForEvent(eventId);
+      return buildOnlineResultFromDelivery(result?.delivery ?? null);
+    } catch (error) {
+      this.logger.warn(
+        `Online electronic billing dispatch failed for sale ${saleId}; background dispatch remains active: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return buildOnlineResultFromDelivery({
+        outcome: "RETRYABLE",
+        statusCode: null,
+        errorCode: "BILLING_BACKEND_UNREACHABLE",
+        message: error instanceof Error ? error.message : String(error),
+        electronicDocument: null,
+      });
+    }
   }
 
   private async getTenantElectronicBillingPolicy(
@@ -1601,7 +2125,19 @@ export class SaleService {
         ? deterministicEvent
         : null;
 
-    const stalePendingEvent = staleDeterministicEvent;
+    const staleReplacementEvent =
+      replacementEvent &&
+      replacementEvent.attempt_count === 0 &&
+      this.isElectronicBillingSnapshotStale(
+        replacementEvent,
+        saleRow,
+        currentCustomer,
+        currentLines,
+      )
+        ? replacementEvent
+        : null;
+
+    const stalePendingEvent = staleDeterministicEvent ?? staleReplacementEvent;
     const eventToReplace = failedRecoveryEvent ?? stalePendingEvent;
 
     const eligibility = evaluateElectronicBillingEligibility({
@@ -1626,7 +2162,7 @@ export class SaleService {
         electronicDocumentId: null,
       };
     }
-    if (replacementEvent) {
+    if (replacementEvent && !staleReplacementEvent) {
       return {
         saleId,
         result: "REQUESTED",
@@ -1802,15 +2338,9 @@ export class SaleService {
         client,
       );
       await client.query("COMMIT");
-      if (result.outboxEventId && this.integrationOutboxDispatcher) {
-        try {
-          await this.integrationOutboxDispatcher.runOnceForEvent(result.outboxEventId);
-        } catch (error) {
-          this.logger.warn(
-            `Immediate electronic billing dispatch failed for sale ${saleId}; background dispatch remains active: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
+      const electronicBilling = result.outboxEventId
+        ? await this.dispatchElectronicBillingOnline(result.outboxEventId, saleId)
+        : null;
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
         userId: saleContext.userId,
@@ -1819,7 +2349,7 @@ export class SaleService {
         entityId: saleId,
         action: "ELECTRONIC_BILLING_REQUESTED_MANUALLY",
       });
-      return result;
+      return { ...result, electronicBilling };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -2617,7 +3147,7 @@ export class SaleService {
   }
 
   async createSale(
-    data: Omit<CreateSaleInput, "tenantId" | "branchId" | "terminalId" | "userId" | "posSessionId">,
+    data: CreateSaleRequestData,
     context: SaleContext,
     idempotencyKey?: string | string[] | null,
   ) {
@@ -2694,11 +3224,16 @@ export class SaleService {
 
       const payments = this.normalizePayments(data.payments);
       const pricingCalculatedAt = new Date();
+      const preparedSaleItems = await this.prepareSaleItemsForPricing(
+        data.items,
+        saleContext,
+        client,
+      );
       const pricedItems = await this.calculatePricedPosItems({
         tenantId: saleContext.tenantId,
         branchId: saleContext.branchId,
         customerId: data.customerId,
-        items: data.items,
+        items: preparedSaleItems.items,
         pricingCalculatedAt,
       });
       const backendTotal = this.calculateBackendSaleTotal(pricedItems);
@@ -2721,6 +3256,35 @@ export class SaleService {
       );
       if (!saleRow) {
         throw new BadRequestException("sale could not be created");
+      }
+
+      for (const capture of preparedSaleItems.captures) {
+        const saleItem = pricedItems.find((item) => item.saleItemId === capture.saleItemId);
+        if (!saleItem || !this.weightCapturePersistence) {
+          throw new BadRequestException("weighted sale item correlation is unavailable");
+        }
+        await this.repository.associateWeightCaptureToSaleItem(client, {
+          tenantId: saleContext.tenantId,
+          captureId: capture.captureId,
+          saleId: saleRow.id,
+          saleItemId: capture.saleItemId,
+          rawWeightKg: capture.rawWeightKg,
+          commercialQuantityKg: capture.commercialQuantityKg,
+        });
+        try {
+          await this.weightCapturePersistence.consume(client, {
+            captureId: capture.captureId,
+            nonce: capture.nonce,
+            expected: capture.scope,
+            saleId: saleRow.id,
+            consumerUserId: saleContext.userId,
+          });
+        } catch (error) {
+          if (error instanceof Error && /^(CAPTURE_|AUTHORIZED_SCALE_BINDING_REQUIRED)/.test(error.message)) {
+            throw new ConflictException("weight capture could not be consumed; sale transaction was rolled back");
+          }
+          throw error;
+        }
       }
 
       const saleCashSessionId =
@@ -2779,8 +3343,9 @@ export class SaleService {
         saleContext.branchId,
         saleContext.terminalId,
       );
+      let enqueuedBillingEvent: Awaited<ReturnType<SaleService["enqueueSaleCompletedForElectronicBilling"]>> = null;
       if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
-        await this.enqueueSaleCompletedForElectronicBilling(
+        enqueuedBillingEvent = await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
           { ...saleRow, status: finalizedStatus },
           pricedItems as PricedSaleItem[],
@@ -2804,6 +3369,10 @@ export class SaleService {
       }
 
       await client.query("COMMIT");
+      const electronicBilling = enqueuedBillingEvent?.eventId
+        ? await this.dispatchElectronicBillingOnline(enqueuedBillingEvent.eventId, saleRow.id)
+        : null;
+
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
         userId: saleContext.userId,
@@ -2813,10 +3382,21 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      return this.getSaleById(saleRow.id, saleContext);
+      const sale = await this.getSaleById(saleRow.id, saleContext);
+      return electronicBilling ? { ...sale, electronicBilling } : sale;
     } catch (error) {
-      console.error("[SaleService.createSale] Error:", error);
       await client.query("ROLLBACK");
+      const definitiveStockFailure =
+        await this.translateDefinitiveStockFailure(
+          error,
+          data,
+          saleContext,
+          client,
+        );
+      if (definitiveStockFailure) {
+        throw definitiveStockFailure;
+      }
+      console.error("[SaleService.createSale] Error:", error);
       throw error;
     } finally {
       client.release();
@@ -2938,8 +3518,9 @@ export class SaleService {
         saleContext.branchId,
         saleContext.terminalId,
       );
+      let enqueuedBillingEvent: Awaited<ReturnType<SaleService["enqueueSaleCompletedForElectronicBilling"]>> = null;
       if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
-        await this.enqueueSaleCompletedForElectronicBilling(
+        enqueuedBillingEvent = await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
           saleRow,
           null,
@@ -2954,6 +3535,10 @@ export class SaleService {
       }
 
       await client.query("COMMIT");
+      const electronicBilling = enqueuedBillingEvent?.eventId
+        ? await this.dispatchElectronicBillingOnline(enqueuedBillingEvent.eventId, saleRow.id)
+        : null;
+
       this.auditService.logEvent({
         tenantId: saleContext.tenantId,
         userId: saleContext.userId,
@@ -2963,7 +3548,8 @@ export class SaleService {
         action: "SALE_CREATED",
       });
 
-      return this.getSaleById(saleRow.id, saleContext.tenantId);
+      const sale = await this.getSaleById(saleRow.id, saleContext.tenantId);
+      return electronicBilling ? { ...sale, electronicBilling } : sale;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -3082,6 +3668,7 @@ export class SaleService {
             sale_id,
             product_id,
             order_item_id,
+            sale_mode,
             quantity,
             price,
             price_without_tax,

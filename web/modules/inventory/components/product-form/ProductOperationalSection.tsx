@@ -18,6 +18,7 @@ import {
 type ProductOperationalSectionProps = {
   values: ProductFormValues;
   errors: ProductFormErrors;
+  structuralConfigurationLocked: boolean;
   onOperationalChange: <K extends keyof ProductFormValues>(
     field: K,
     value: ProductFormValues[K],
@@ -27,6 +28,7 @@ type ProductOperationalSectionProps = {
 export const ProductOperationalSection = ({
   values,
   errors,
+  structuralConfigurationLocked,
   onOperationalChange,
 }: ProductOperationalSectionProps) => (
   <ProductSectionCard
@@ -35,11 +37,61 @@ export const ProductOperationalSection = ({
     icon={<Settings2 className="h-5 w-5" />}
   >
     <div className="space-y-5">
+      <div className="space-y-1">
+        <Select
+          label="Tipo de producto"
+          value={values.isInventoryable ? "INVENTORYABLE" : "SERVICE"}
+          disabled={structuralConfigurationLocked}
+          onChange={(event) =>
+            onOperationalChange(
+              "isInventoryable",
+              event.target.value === "INVENTORYABLE",
+            )
+          }
+          hint="Servicio no consulta existencias ni genera movimientos físicos."
+        >
+          <option value="INVENTORYABLE">Producto inventariable</option>
+          <option value="SERVICE">Servicio / no inventariable</option>
+        </Select>
+        {!values.isInventoryable ? (
+          <p className="text-xs text-amber-700">
+            Lote, vencimiento, reservas y stock físico quedan inactivos para este producto.
+          </p>
+        ) : null}
+      </div>
+      {/*
+        <div className="space-y-1">
+          <Input
+            label="Motivo del cambio a servicio"
+            value={values.inventoryabilityChangeReason}
+            onChange={(event) =>
+              onOperationalChange(
+                "inventoryabilityChangeReason",
+                event.target.value,
+              )
+            }
+            placeholder="Ej: servicio de impresión"
+          />
+          {errors.inventoryabilityChangeReason ? (
+            <p className="text-xs text-rose-600">
+              {errors.inventoryabilityChangeReason}
+            </p>
+          ) : null}
+        </div>
+      */}
+      {structuralConfigurationLocked ? (
+        <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="note">
+          El tipo de producto y la configuracion de perecibilidad, lote y
+          vencimiento se definen al crear el producto y no pueden cambiarse
+          despues del primer guardado.
+        </p>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-3">
         <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
           <input
             type="checkbox"
             checked={values.isPerishable}
+            disabled={structuralConfigurationLocked || !values.isInventoryable}
             onChange={(event) =>
               onOperationalChange("isPerishable", event.target.checked)
             }
@@ -59,6 +111,7 @@ export const ProductOperationalSection = ({
           <input
             type="checkbox"
             checked={values.requiresLot}
+            disabled={structuralConfigurationLocked || !values.isInventoryable}
             onChange={(event) =>
               onOperationalChange("requiresLot", event.target.checked)
             }
@@ -78,6 +131,7 @@ export const ProductOperationalSection = ({
           <input
             type="checkbox"
             checked={values.requiresExpiration}
+            disabled={structuralConfigurationLocked || !values.isInventoryable}
             onChange={(event) =>
               onOperationalChange("requiresExpiration", event.target.checked)
             }
@@ -94,7 +148,7 @@ export const ProductOperationalSection = ({
         </label>
       </div>
 
-      {values.isPerishable ? (
+      {values.isInventoryable && values.isPerishable ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Producto perecedero
         </div>
@@ -157,6 +211,7 @@ export const ProductOperationalSection = ({
               onOperationalChange("minStock", event.target.value)
             }
             placeholder="Opcional"
+            disabled={!values.isInventoryable}
           />
           {errors.minStock ? (
             <p className="text-xs text-rose-600">{errors.minStock}</p>
@@ -174,6 +229,7 @@ export const ProductOperationalSection = ({
               onOperationalChange("maxStock", event.target.value)
             }
             placeholder="Opcional"
+            disabled={!values.isInventoryable}
           />
           {errors.maxStock ? (
             <p className="text-xs text-rose-600">{errors.maxStock}</p>

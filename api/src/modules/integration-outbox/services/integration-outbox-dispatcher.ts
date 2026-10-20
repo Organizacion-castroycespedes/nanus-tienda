@@ -1,8 +1,12 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import type { IntegrationOutboxConfig } from "../config/integration-outbox.config";
+import {
+  DEFAULT_INTEGRATION_OUTBOX_INLINE_TIMEOUT_MS,
+  type IntegrationOutboxConfig,
+} from "../config/integration-outbox.config";
+import type { ElectronicBillingInlineDelivery } from "../contracts/electronic-billing-outcome";
 import type { SaleCompletedForElectronicBillingEventEnvelope } from "../contracts/integration-outbox-events";
 import type { IntegrationOutboxEventRecord } from "../repositories/integration-outbox.repository";
-import { BillingIntegrationClient } from "./billing-integration-client";
+import { BillingIntegrationClient, type BillingSendOptions } from "./billing-integration-client";
 import { IntegrationOutboxService } from "./integration-outbox.service";
 import { INTEGRATION_OUTBOX_CONFIG } from "../integration-outbox.tokens";
 
@@ -13,6 +17,43 @@ export type IntegrationOutboxDispatcherSummary = {
   skipped: number;
   errors: number;
 };
+
+export type IntegrationOutboxSingleEventResult = IntegrationOutboxDispatcherSummary & {
+  delivery: ElectronicBillingInlineDelivery;
+};
+
+const SKIPPED_DELIVERY: ElectronicBillingInlineDelivery = {
+  outcome: "SKIPPED",
+  statusCode: null,
+  errorCode: null,
+  message: null,
+  electronicDocument: null,
+};
+
+const failedDelivery = (
+  errorCode: string,
+  message: string | null,
+  statusCode: number | null = null,
+  electronicDocument: ElectronicBillingInlineDelivery["electronicDocument"] = null,
+): ElectronicBillingInlineDelivery => ({
+  outcome: "FAILED",
+  statusCode,
+  errorCode,
+  message,
+  electronicDocument,
+});
+
+const retryableDelivery = (
+  message: string | null,
+  statusCode: number | null = null,
+  electronicDocument: ElectronicBillingInlineDelivery["electronicDocument"] = null,
+): ElectronicBillingInlineDelivery => ({
+  outcome: "RETRYABLE",
+  statusCode,
+  errorCode: "BILLING_BACKEND_UNREACHABLE",
+  message,
+  electronicDocument,
+});
 
 const isPositiveInteger = (value: number) => Number.isInteger(value) && value > 0;
 
@@ -70,13 +111,40 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
     return this.processClaimedEvents(claimed);
   }
 
-  async runOnceForEvent(eventId: string): Promise<IntegrationOutboxDispatcherSummary> {
+  /**
+   * Online emission right after the sale commit. The event row already exists
+   * (same transaction as the sale), so a crash here leaves it PENDING for the
+   * background dispatcher instead of losing the fiscal request.
+   */
+  async runOnceForEvent(eventId: string): Promise<IntegrationOutboxSingleEventResult> {
+    const skipped: IntegrationOutboxSingleEventResult = {
+      published: 0,
+      retryable: 0,
+      failed: 0,
+      skipped: 0,
+      errors: 0,
+      delivery: SKIPPED_DELIVERY,
+    };
     if (!this.config.billingBackendBaseUrl || !this.config.internalToken) {
-      return { published: 0, retryable: 0, failed: 0, skipped: 0, errors: 0 };
+      return skipped;
     }
 
     const claimed = await this.outboxService.claimDueEvent(eventId, this.config.leaseMs);
-    return this.processClaimedEvents(claimed ? [claimed] : []);
+    if (!claimed) {
+      return skipped;
+    }
+
+    const summary: IntegrationOutboxDispatcherSummary = {
+      published: 0,
+      retryable: 0,
+      failed: 0,
+      skipped: 0,
+      errors: 0,
+    };
+    const delivery = await this.processSingleEvent(claimed, summary, {
+      timeoutMs: this.config.inlineTimeoutMs ?? DEFAULT_INTEGRATION_OUTBOX_INLINE_TIMEOUT_MS,
+    });
+    return { ...summary, delivery };
   }
 
   private canRun() {
@@ -166,7 +234,8 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
   private async processSingleEvent(
     event: IntegrationOutboxEventRecord,
     summary: IntegrationOutboxDispatcherSummary,
-  ) {
+    sendOptions: BillingSendOptions = {},
+  ): Promise<ElectronicBillingInlineDelivery> {
     try {
       const payload = event.payload as {
         sale?: { saleStatus?: string | null };
@@ -225,18 +294,24 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
           (hasTaxLines &&
             !customerFiscalDataComplete))
       ) {
+        const ineligibleReason =
+          payload.sale?.saleStatus !== undefined &&
+          payload.sale?.saleStatus !== "CONFIRMED"
+            ? "sale snapshot is not CONFIRMED"
+            : "customer fiscal data is incomplete for tax-bearing sale";
         await this.outboxService.markTerminalFailure(event.event_id, {
           lastError: JSON.stringify({
             code: "OUTBOX_EVENT_INELIGIBLE_SNAPSHOT",
-            reason:
-              payload.sale?.saleStatus !== undefined &&
-              payload.sale?.saleStatus !== "CONFIRMED"
-                ? "sale snapshot is not CONFIRMED"
-                : "customer fiscal data is incomplete for tax-bearing sale",
+            reason: ineligibleReason,
           }),
         });
         summary.failed += 1;
-        return;
+        return failedDelivery(
+          "OUTBOX_EVENT_INELIGIBLE_SNAPSHOT",
+          ineligibleReason === "sale snapshot is not CONFIRMED"
+            ? "La venta no está confirmada para facturación electrónica."
+            : "Los datos fiscales del cliente están incompletos para una factura con IVA.",
+        );
       }
       const envelope: SaleCompletedForElectronicBillingEventEnvelope = {
         eventId: event.event_id,
@@ -253,12 +328,19 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
         payload: event.payload as SaleCompletedForElectronicBillingEventEnvelope["payload"],
       };
 
-      const result = await this.billingClient.sendSaleCompletedEvent(envelope);
+      const result = await this.billingClient.sendSaleCompletedEvent(envelope, sendOptions);
+      const electronicDocument = result.electronicDocument ?? null;
 
       if (result.outcome === "PUBLISHED" || result.outcome === "ALREADY_PROCESSED") {
         await this.outboxService.markPublished(event.event_id, new Date());
         summary.published += 1;
-        return;
+        return {
+          outcome: "PUBLISHED",
+          statusCode: result.statusCode,
+          errorCode: null,
+          message: result.message,
+          electronicDocument,
+        };
       }
 
       if (result.retryable) {
@@ -269,7 +351,7 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
             lastError: result.message ?? "Integration outbox max retry attempts reached",
           });
           summary.failed += 1;
-          return;
+          return failedDelivery("OUTBOX_MAX_RETRY_ATTEMPTS", result.message, result.statusCode, electronicDocument);
         }
 
         await this.outboxService.markRetryableFailure(
@@ -280,13 +362,14 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
           },
         );
         summary.retryable += 1;
-        return;
+        return retryableDelivery(result.message, result.statusCode, electronicDocument);
       }
 
       await this.outboxService.markTerminalFailure(event.event_id, {
         lastError: result.message ?? "Integration outbox non-retryable failure",
       });
       summary.failed += 1;
+      return failedDelivery("BILLING_REQUEST_REJECTED", result.message, result.statusCode, electronicDocument);
     } catch (error) {
       summary.errors += 1;
       const lastError = error instanceof Error ? error.message : String(error);
@@ -295,7 +378,7 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
           lastError,
         });
         summary.failed += 1;
-        return;
+        return failedDelivery("OUTBOX_MAX_RETRY_ATTEMPTS", lastError);
       }
 
       await this.outboxService.markRetryableFailure(
@@ -306,6 +389,7 @@ export class IntegrationOutboxDispatcher implements OnModuleInit, OnModuleDestro
         },
       );
       summary.retryable += 1;
+      return retryableDelivery(lastError);
     }
   }
 

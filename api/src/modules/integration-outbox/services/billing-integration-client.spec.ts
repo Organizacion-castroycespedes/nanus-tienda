@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { BillingIntegrationClient } from "./billing-integration-client";
+import { BillingAdminRequestError, BillingIntegrationClient } from "./billing-integration-client";
 
 const buildEvent = () => ({
   eventId: randomUUID(),
@@ -152,6 +152,162 @@ test("client maps timeout and network errors to retryable failures", async () =>
     const timeout = await client.sendSaleCompletedEvent(buildEvent());
     assert.equal(timeout.outcome, "RETRYABLE_FAILURE");
     assert.equal(timeout.retryable, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+const buildClient = () => new BillingIntegrationClient({
+  enabled: true,
+  scanIntervalMs: 30000,
+  batchSize: 10,
+  concurrencyLimit: 4,
+  maxRetryAttempts: 5,
+  leaseMs: 300000,
+  initialBackoffMs: 30000,
+  maxBackoffMs: 1800000,
+  timeoutMs: 15000,
+  inlineTimeoutMs: 60000,
+  billingBackendBaseUrl: "http://billing-backend.local",
+  internalToken: "secret-token",
+});
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+const rejectedDocument = {
+  electronicDocumentId: "doc-1",
+  documentType: "INVOICE",
+  status: "REJECTED",
+  failureClass: "DIAN_REJECTED",
+  retryable: false,
+  errorCode: "FAK61",
+  errorMessage: "Regla: FAK61",
+  failures: [{ code: "FAK61", message: "Regla: FAK61", origin: "DIAN", solution: "Corregir correo" }],
+};
+
+test("client parses the electronic document outcome from sale completed", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => jsonResponse({
+    status: "ACCEPTED",
+    electronicDocumentId: "doc-1",
+    retryable: false,
+    electronicDocument: rejectedDocument,
+  })) as typeof fetch;
+
+  try {
+    const result = await buildClient().sendSaleCompletedEvent(buildEvent(), { timeoutMs: 60000 });
+    assert.equal(result.outcome, "PUBLISHED");
+    assert.equal(result.electronicDocument?.status, "REJECTED");
+    assert.equal(result.electronicDocument?.failures[0]?.solution, "Corregir correo");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("provider administration writes use internal token and safe JSON contract", async () => {
+  const originalFetch = globalThis.fetch;
+  let request: RequestInit | undefined;
+  let url = "";
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    url = String(input);
+    request = init;
+    return jsonResponse({
+      id: "provider-1",
+      code: "FACTUCORE",
+      name: "FactuCore",
+      providerType: "ELECTRONIC_BILLING",
+      active: true,
+      capabilities: {},
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+  }) as typeof fetch;
+  try {
+    const client = buildClient();
+    await client.createElectronicBillingProvider({
+      code: "FACTUCORE",
+      name: "FactuCore",
+      providerType: "ELECTRONIC_BILLING",
+      capabilities: {
+        invoice: true, creditNote: true, debitNote: true, retry: true,
+        pdf: true, xml: true, signedXml: true, asyncStatus: true, attachmentDownload: true,
+      },
+    });
+    assert.match(url, /\/internal\/electronic-billing\/admin\/providers$/);
+    assert.equal(request?.method, "POST");
+    assert.match(String((request?.headers as Record<string, string>).Authorization), /^Bearer /);
+    assert.doesNotMatch(JSON.stringify(request), /clientSecret|encrypted_credentials|credential_reference/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("provider administration maps upstream conflict without exposing body", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => jsonResponse({ message: "secret internal detail" }, 409)) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => buildClient().updateElectronicBillingProviderStatus("provider-1", { active: false }),
+      /conflict|rejected/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("client correlates FactuCore context reads and preserves upstream 401 classification", async () => {
+  const originalFetch = globalThis.fetch;
+  let captured: Request | null = null;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    captured = new Request(input, init);
+    return jsonResponse({ message: "unauthorized" }, 401);
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => buildClient().getTenantFactuCoreContext("tenant-a", "corr-identity-1"),
+      (error: unknown) => error instanceof BillingAdminRequestError && error.statusCode === 401,
+    );
+    assert.equal(captured?.method, "GET");
+    assert.equal(captured?.headers.get("x-correlation-id"), "corr-identity-1");
+    assert.doesNotMatch(JSON.stringify(captured), /secret-token/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("issueCreditNote returns outcome, request rejection or network failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = "";
+  const responses = [
+    jsonResponse({ electronicDocument: { ...rejectedDocument, documentType: "CREDIT_NOTE", status: "ACCEPTED" } }),
+    jsonResponse({ message: "Invoice is not accepted" }, 409),
+    jsonResponse({ message: "busy" }, 503),
+  ];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    capturedUrl = String(input);
+    const next = responses.shift();
+    if (!next) {
+      throw new TypeError("fetch failed");
+    }
+    return next;
+  }) as typeof fetch;
+
+  try {
+    const client = buildClient();
+    const accepted = await client.issueCreditNote("tenant-a", "doc-1", { noteReason: "Devolución" });
+    const rejected = await client.issueCreditNote("tenant-a", "doc-1", {});
+    const unavailable = await client.issueCreditNote("tenant-a", "doc-1", {});
+    const network = await client.issueCreditNote("tenant-a", "doc-1", {});
+
+    assert.equal(accepted.kind, "OUTCOME");
+    assert.equal(accepted.kind === "OUTCOME" && accepted.electronicDocument.documentType, "CREDIT_NOTE");
+    assert.match(capturedUrl, /\/documents\/doc-1\/credit-note\/issue$/);
+    assert.equal(rejected.kind, "REQUEST_REJECTED");
+    assert.equal(rejected.kind === "REQUEST_REJECTED" && rejected.statusCode, 409);
+    assert.equal(unavailable.kind, "NETWORK_FAILURE");
+    assert.equal(network.kind, "NETWORK_FAILURE");
   } finally {
     globalThis.fetch = originalFetch;
   }

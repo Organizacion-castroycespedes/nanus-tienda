@@ -7,6 +7,7 @@ import { LogsModule } from "./modules/logs/logs.module";
 import { PrinterModule } from "./modules/printer/printer.module";
 import { ScaleModule } from "./modules/scale/scale.module";
 import { ScannerModule } from "./modules/scanner/scanner.module";
+import { AgentSecurityModule } from "./modules/agent-security/agent-security.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ScannerModule } from "./modules/scanner/scanner.module";
     CashDrawerModule,
     ScaleModule,
     ScannerModule,
+    AgentSecurityModule,
   ],
 })
 export class AppModule {}

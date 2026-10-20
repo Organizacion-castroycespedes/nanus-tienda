@@ -212,6 +212,32 @@ export const thermalStyles: StyleDictionary = {
   },
 };
 
+export const buildThermalLogo = (logo?: string | null): Content[] =>
+  logo && /^data:image\/(?:png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/i.test(logo)
+    ? [{ image: logo, width: 96, alignment: "center", margin: [0, 0, 0, 4] }]
+    : [];
+
+export const buildThermalCustomDocument = (
+  content: Content[]
+): TDocumentDefinitions => ({
+  pageSize: {
+    width: THERMAL_80MM_LAYOUT.paperWidthPt,
+    height: "auto",
+  },
+  pageMargins: [
+    THERMAL_80MM_LAYOUT.safeHorizontalMarginPt,
+    THERMAL_80MM_LAYOUT.safeVerticalMarginPt,
+    THERMAL_80MM_LAYOUT.safeHorizontalMarginPt,
+    THERMAL_80MM_LAYOUT.safeVerticalMarginPt,
+  ],
+  content,
+  styles: thermalStyles,
+  defaultStyle: {
+    font: "Roboto",
+    fontSize: 8,
+  },
+});
+
 export const buildThermalDocument = (
   options: ThermalLayoutOptions
 ): TDocumentDefinitions => ({
@@ -226,9 +252,7 @@ export const buildThermalDocument = (
     THERMAL_80MM_LAYOUT.safeVerticalMarginPt,
   ],
   content: [
-    ...(options.logo && /^data:image\/(?:png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/i.test(options.logo)
-      ? [{ image: options.logo, width: 96, alignment: "center" as const, margin: [0, 0, 0, 4] as [number, number, number, number] }]
-      : []),
+    ...buildThermalLogo(options.logo),
     buildThermalHeader(options.title, options.subtitle),
     ...(options.metadata && options.metadata.length > 0
       ? [buildThermalDivider(), buildThermalMetadata(options.metadata)]

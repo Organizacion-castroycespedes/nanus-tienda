@@ -36,7 +36,54 @@ func (sink *productiveCoreWebViewSink) closeAllowed() bool {
 	return coreCloseAllowed(sink.state)
 }
 
+type productiveUIMode uint8
+
+const (
+	productiveUIInstall productiveUIMode = iota
+	productiveUIConfigure
+)
+
+func shouldEmitInstallerInitialState(mode productiveUIMode) bool {
+	return mode == productiveUIInstall
+}
+
 func runProductiveInstallerUI(manifest installerManifest) error {
+	return runProductiveUI(manifest, productiveUIInstall)
+}
+
+// runProductiveConfigureUI opens the already-installed Agent's device UI. It
+// deliberately performs only read-only lifecycle checks before creating the
+// same typed bridge used by the installer UI.
+func runProductiveConfigureUI(manifest installerManifest) error {
+	configured, err := resolveConfigureManifest(manifest)
+	if err != nil {
+		return err
+	}
+	present, running, err := queryManagedService(manifest)
+	if err != nil {
+		return fmt.Errorf("query Manus service for configure: %w", err)
+	}
+	if !present || !running {
+		return fmt.Errorf("Manus Peripheral Agent is not running; configure requires a healthy installed Agent")
+	}
+	if err := waitForHealthVersion(manifest, configured.Version); err != nil {
+		return fmt.Errorf("Agent health gate for configure: %w", err)
+	}
+	return runProductiveUI(configured, productiveUIConfigure)
+}
+
+func resolveConfigureManifest(manifest installerManifest) (installerManifest, error) {
+	layout := buildLayout(manifest)
+	installedVersion, _ := currentInstalledVersion(manifest, layout)
+	if installedVersion == "" {
+		return installerManifest{}, fmt.Errorf("Manus Peripheral Agent is not installed; configure requires an existing installation")
+	}
+	configured := manifest
+	configured.Version = installedVersion
+	return configured, nil
+}
+
+func runProductiveUI(manifest installerManifest, mode productiveUIMode) error {
 	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
 		return fmt.Errorf("productive UI requires Windows x64")
 	}
@@ -123,6 +170,14 @@ func runProductiveInstallerUI(manifest installerManifest) error {
 		showWebViewFallback(err)
 		return nil
 	}
+	if err := w.Bind("testScaleReading", deviceBridge.testScaleReading); err != nil {
+		showWebViewFallback(err)
+		return nil
+	}
+	if err := w.Bind("confirmScaleKilograms", deviceBridge.confirmScaleKilograms); err != nil {
+		showWebViewFallback(err)
+		return nil
+	}
 	if err := w.Bind("launchPOS", func() bool {
 		if manifest.PosRoot == "" || !exists(layout.POSExecutable) {
 			return false
@@ -144,6 +199,9 @@ func runProductiveInstallerUI(manifest installerManifest) error {
 		return nil
 	}
 	html = []byte(appendCoreFlowHarness(string(html)) + appendProductiveDevicesHarness())
+	if mode == productiveUIConfigure {
+		html = []byte(appendConfigureModeHarness(string(html)))
+	}
 	w.SetHtml(string(html))
 	cleanup, err := installNativeCloseProtection(w.Window(), sink.closeAllowed, func() { w.Dispatch(func() { w.Terminate() }) }, func() { w.Dispatch(func() { w.Eval("window.manusInstaller.onCloseDenied()") }) })
 	if err != nil {
@@ -155,6 +213,9 @@ func runProductiveInstallerUI(manifest installerManifest) error {
 		select {
 		case <-uiReady:
 		case <-time.After(5 * time.Second):
+			return
+		}
+		if !shouldEmitInstallerInitialState(mode) {
 			return
 		}
 		initial, _ := json.Marshal(sink.state)

@@ -17,6 +17,7 @@ export type PeripheralAgentHealth = {
 };
 
 export type PrinterProfileId = "THERMAL_80MM" | "THERMAL_58MM" | "GENERIC_TEXT";
+export type PeripheralProfileId = PrinterProfileId | "ROCHI_A01E";
 
 export type PeripheralDeviceType =
   | "PRINTER"
@@ -51,6 +52,24 @@ export type DeviceNetworkConfig = {
 export type DeviceUsbConfig = {
   deviceId: string;
   printerName: string;
+  windowsQueueName?: string;
+};
+
+export type SerialParity = "none" | "even" | "odd";
+export type SerialFlowControl = "none" | "rtscts";
+
+export type SerialConnectionOptions = {
+  port: string;
+  baudRate: number;
+  dataBits: 5 | 6 | 7 | 8;
+  stopBits: 1 | 2;
+  parity: SerialParity;
+  flowControl: SerialFlowControl;
+  pnp?: {
+    deviceId: string;
+    vendorId?: string;
+    productId?: string;
+  };
 };
 
 export type PeripheralDevice = {
@@ -60,10 +79,11 @@ export type PeripheralDevice = {
   status: PeripheralDeviceStatus;
   connectionType: PeripheralConnectionType;
   terminalId: string;
-  profileId?: PrinterProfileId;
+  profileId?: PeripheralProfileId;
   profile?: DeviceProfile;
   network?: DeviceNetworkConfig;
   usb?: DeviceUsbConfig;
+  serial?: SerialConnectionOptions;
   metadata?: Record<string, unknown>;
 };
 
@@ -74,9 +94,10 @@ export type CreateDeviceRequest = {
   status: PeripheralDeviceStatus;
   connectionType: PeripheralConnectionType;
   terminalId: string;
-  profileId?: PrinterProfileId;
+  profileId?: PeripheralProfileId;
   network?: DeviceNetworkConfig;
   usb?: DeviceUsbConfig;
+  serial?: SerialConnectionOptions;
   metadata?: Record<string, unknown>;
 };
 
@@ -222,6 +243,7 @@ export const PERIPHERAL_ERROR_CODES = {
   CONNECTION_REFUSED: "CONNECTION_REFUSED",
   PRINT_ERROR: "PRINT_ERROR",
   PRINTER_NOT_CONFIGURED: "PRINTER_NOT_CONFIGURED",
+  SCALE_WEIGHT_ZERO: "SCALE_WEIGHT_ZERO",
   NETWORK_ERROR: "NETWORK_ERROR",
   HTTP_ERROR: "HTTP_ERROR",
   AGENT_ERROR: "AGENT_ERROR",
@@ -299,12 +321,20 @@ export type PosTerminalPeripheralSettings = {
   updatedAt?: string | null;
 };
 
+export type PosTerminalScaleClassification = "MOCK" | "UNKNOWN";
+
+export type PosTerminalScaleResolution = {
+  assignment: "ASSIGNED" | "NONE";
+  classification: PosTerminalScaleClassification;
+  deviceId: string | null;
+};
+
 export type UpdateDeviceRequest = Partial<{
   name: string;
   status: PeripheralDeviceStatus;
   terminalId: string;
   connectionType: PeripheralConnectionType;
-  profileId: PrinterProfileId;
+  profileId: PeripheralProfileId;
   network: DeviceNetworkConfig | null;
   usb: DeviceUsbConfig | null;
   metadata: Record<string, unknown>;
@@ -335,6 +365,7 @@ export type PosTerminalResolvedConfig = PosTerminalPeripheralSettings & {
   mode: PosTerminalMode | null;
   active: boolean;
   source: PosTerminalConfigSource;
+  scale: PosTerminalScaleResolution;
 };
 
 export type CreatePosTerminalRequest = {
@@ -468,8 +499,11 @@ export type PeripheralDiscoverResponse = {
 export type PeripheralScaleWeight = {
   deviceId: string;
   weight: number;
-  unit: string;
-  stable: boolean;
+  unit: string | null;
+  stable: boolean | null;
+  source?: "MOCK" | "REAL";
+  unitVerified?: boolean;
+  stabilityVerified?: boolean;
   timestamp: string;
 };
 

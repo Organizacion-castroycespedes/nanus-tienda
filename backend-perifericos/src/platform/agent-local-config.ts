@@ -13,6 +13,10 @@ type AgentLocalConfig = {
   usbRawPhysicalCutCertified?: boolean;
   logLimit?: number;
   printerWidthChars?: number;
+  enrollmentApiBaseUrl?: string;
+  enrollmentSigningPublicKeyPem?: string;
+  enrollmentAudience?: string;
+  enrollmentSigningKeyId?: string;
 };
 
 const configEnvironmentMapping: Record<keyof AgentLocalConfig, string> = {
@@ -26,6 +30,10 @@ const configEnvironmentMapping: Record<keyof AgentLocalConfig, string> = {
   usbRawPhysicalCutCertified: "PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED",
   logLimit: "PERIPHERALS_LOG_LIMIT",
   printerWidthChars: "PERIPHERALS_PRINTER_WIDTH_CHARS",
+  enrollmentApiBaseUrl: "PERIPHERALS_ENROLLMENT_API_BASE_URL",
+  enrollmentSigningPublicKeyPem: "PERIPHERALS_ENROLLMENT_SIGNING_PUBLIC_KEY_PEM",
+  enrollmentAudience: "PERIPHERALS_ENROLLMENT_AUDIENCE",
+  enrollmentSigningKeyId: "PERIPHERALS_ENROLLMENT_SIGNING_KEY_ID",
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

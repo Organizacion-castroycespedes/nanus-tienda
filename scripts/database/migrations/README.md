@@ -29,3 +29,6 @@ Reglas:
 - Una responsabilidad clara por archivo.
 - Toda migracion debe ser idempotente cuando sea razonable.
 - Si una migracion ya existe en `public.migrations_history`, no se modifica: cualquier cambio va en una nueva migracion.
+- Las migraciones post-cutover no deben contener `BEGIN`, `START TRANSACTION`, `COMMIT`, `END`, `ROLLBACK`, `ABORT`, `SAVEPOINT` o `RELEASE`; `scripts/database/apply_single_migration.sh` es el unico propietario de la frontera transaccional junto con `public.migrations_history`.
+- El runner acepta `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` y `DB_PASSWORD`; `DB_ADMIN_USER` y `DB_ADMIN_PASSWORD` son aliases opcionales con precedencia explicita cuando existen. La configuracion valida nombres, no certifica privilegios.
+- `MIGRATION_TARGET_ENV=LOCAL` solo acepta `ENVIRONMENT=local`, host `localhost` o `127.0.0.1`, puerto `5432`, base `manus_tienda_qa`, esquema `public` y usuario `postgres`. El runner fuerza IPv4 y verifica la identidad efectiva antes de ejecutar DDL.

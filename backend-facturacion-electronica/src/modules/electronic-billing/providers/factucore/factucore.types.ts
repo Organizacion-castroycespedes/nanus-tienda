@@ -142,7 +142,10 @@ export type FactuCoreInvoiceRequest = {
   lines: FactuCoreDocumentLine[];
   references?: FactuCoreDocumentReference[];
   metadata?: Record<string, unknown>;
+  transmissionMode?: FactuCoreTransmissionMode;
 };
+
+export type FactuCoreTransmissionMode = "sync" | "queued";
 
 export type FactuCoreCreditNoteRequest = {
   customerId?: string | null;
@@ -167,6 +170,14 @@ export type FactuCoreCreditNoteRequest = {
   lines: FactuCoreDocumentLine[];
   references?: FactuCoreDocumentReference[];
   metadata?: Record<string, unknown>;
+  transmissionMode?: FactuCoreTransmissionMode;
+};
+
+export type FactuCoreTransmissionError = {
+  code?: string | null;
+  message?: string | null;
+  path?: string | null;
+  severity?: string | null;
 };
 
 export type FactuCoreDocumentResponse = {
@@ -200,6 +211,12 @@ export type FactuCoreDocumentResponse = {
   idempotencyKey?: Record<string, unknown> | null;
   message?: string | null;
   metadata?: Record<string, unknown> | null;
+  transmissionMode?: FactuCoreTransmissionMode | null;
+  failureClass?: string | null;
+  reason?: string | null;
+  probableCause?: string | null;
+  errors?: FactuCoreTransmissionError[] | null;
+  graphicRepresentation?: Record<string, unknown> | null;
   [key: string]: unknown;
 };
 
@@ -209,6 +226,36 @@ export type FactuCoreStatusResponse = FactuCoreDocumentResponse & {
   providerStatusCode?: string | null;
   providerStatusMessage?: string | null;
   trackingId?: string | null;
+};
+
+export type FactuCoreClientContextResponse = {
+  apiClientId: string;
+  tenantId: string;
+  environment: string;
+  issuer: {
+    identificationTypeCode: string | null;
+    identificationNumber: string | null;
+    verificationDigit: string | null;
+    legalName: string | null;
+    tradeName: string | null;
+    complete: boolean;
+  };
+  resolution: {
+    configured: boolean;
+    status: string | null;
+    isDefault: boolean;
+    validTo: string | null;
+    remaining: number | null;
+  };
+  dianReadiness: {
+    status: "READY" | "NOT_READY" | "UNKNOWN";
+    configurationComplete: boolean;
+    issuerComplete: boolean;
+    resolutionConfigured: boolean;
+    configurationEnvironment: string | null;
+    failedChecks: string[];
+    basis: "CONFIGURATION_ONLY";
+  };
 };
 
 export type FactuCoreDocumentOperationsResponse = {
@@ -238,15 +285,20 @@ export type FactuCoreBinaryResponse = {
 };
 
 export const FACTUCORE_DEFAULT_TIMEOUT_MS = 15_000;
+export const FACTUCORE_DEFAULT_SYNC_TIMEOUT_MS = 45_000;
 export const FACTUCORE_TENANT_ID_SETTING = "factuCoreTenantId";
 
 export const FACTUCORE_DOCUMENT_ENDPOINT = "/api/v1/external/documents";
+export const FACTUCORE_CLIENT_CONTEXT_ENDPOINT = "/api/v1/external/client-context";
 
 export type FactuCoreRuntimeContext = {
   baseUrl: string;
   credentials: FactuCoreCredentials;
   timeoutMs: number;
+  syncTimeoutMs?: number;
+  transmissionMode?: FactuCoreTransmissionMode;
   factuCoreTenantId?: string;
+  correlationId?: string;
 };
 
 export type FactuCoreStatusMapping = {

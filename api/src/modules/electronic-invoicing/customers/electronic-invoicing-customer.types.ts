@@ -39,6 +39,8 @@ export type ElectronicInvoicingCustomer = {
   countryCode: string | null;
   departmentCode: string | null;
   municipalityCode: string | null;
+  departmentName: string | null;
+  cityName: string | null;
   personType: PersonType | null;
   taxRegime: string | null;
   taxResponsibilities: string[];

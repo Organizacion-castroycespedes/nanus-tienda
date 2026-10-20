@@ -18,6 +18,7 @@ const configured = (printerDeviceId: string): PosTerminalResolvedConfig => ({
   active: true, source: "CONFIGURED", printerDeviceId,
   cashDrawerDeviceId: "mock-cashdrawer-001", scaleDeviceId: "mock-scale-001",
   scannerDeviceId: "mock-scanner-001",
+  scale: { assignment: "ASSIGNED", classification: "MOCK", deviceId: "mock-scale-001" },
   features: { printSale: true, printPurchase: true, printOrder: true, openDrawer: true, scale: true, scanner: true },
 });
 

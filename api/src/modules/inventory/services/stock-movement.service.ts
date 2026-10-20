@@ -129,6 +129,12 @@ export class StockMovementService {
   }
 
   async createMovement(data: StockMovementProps, client?: PoolClient) {
+    await this.query(
+      `SELECT public.inventory_lock_stock_scope($1::uuid, $2::uuid, $3::uuid)`,
+      [data.tenantId, data.branchId ?? null, data.productId],
+      client
+    );
+
     const product = await this.query<{ id: string }>(
       `
       SELECT id

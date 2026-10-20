@@ -50,6 +50,8 @@ export type ProductFormValues = {
   danePriceEffectiveFrom: string;
   danePriceEffectiveTo: string;
   isActive: boolean;
+  isInventoryable: boolean;
+  inventoryabilityChangeReason: string;
   isPerishable: boolean;
   requiresLot: boolean;
   requiresExpiration: boolean;

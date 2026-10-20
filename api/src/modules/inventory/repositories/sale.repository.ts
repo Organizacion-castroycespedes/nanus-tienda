@@ -31,7 +31,9 @@ export type SaleCreateContext = {
 };
 
 export type CreateSaleItemInput = {
+  saleItemId?: string;
   productId: string;
+  saleMode?: "UNIT" | "WEIGHT";
   quantity: number;
   price: number;
   orderItemId?: string | null;
@@ -66,6 +68,27 @@ export type CreateSaleItemInput = {
   }>;
 };
 
+export type SaleLineRequest =
+  | {
+      productId: string;
+      saleMode?: "UNIT";
+      quantity: number;
+      price: number;
+      orderItemId?: string | null;
+      weightCapture?: never;
+    }
+  | {
+      productId: string;
+      saleMode: "WEIGHT";
+      weightCapture: { captureId: string; nonce: string };
+      orderItemId?: string | null;
+      quantity?: never;
+      price?: never;
+      weight?: never;
+      unit?: never;
+      source?: never;
+    };
+
 export type CreateSalePaymentInput = {
   paymentMethodId: string;
   amount: number;
@@ -87,6 +110,12 @@ export type SaleCreationIdempotencyRecord = {
   requestHash: string;
   saleId: string | null;
   created: boolean;
+};
+
+export type SaleStockAvailability = {
+  requiresLot: boolean;
+  aggregateAvailableQuantity: number;
+  eligibleLotQuantity: number | null;
 };
 
 type ProductForSaleRow = {
@@ -177,6 +206,8 @@ export class SaleRepository {
       quantity: item.quantity,
       price: item.price,
       order_item_id: item.orderItemId ?? null,
+      sale_item_id: item.saleItemId ?? null,
+      sale_mode: item.saleMode ?? "UNIT",
     };
 
     if (item.subtotal !== undefined) serializedItem.subtotal = item.subtotal;
@@ -416,6 +447,72 @@ export class SaleRepository {
     );
     const value = result.rows[0]?.available_stock ?? 0;
     return typeof value === "number" ? value : Number(value);
+  }
+
+  async getStockAvailability(
+    tenantId: string,
+    branchId: string,
+    productId: string,
+    client: PoolClient,
+  ): Promise<SaleStockAvailability | null> {
+    const result = await this.query<{
+      requires_lot: boolean;
+      aggregate_available_quantity: string | number;
+      eligible_lot_quantity: string | number | null;
+    }>(
+      `WITH movement_stock AS (
+         SELECT
+           COALESCE(SUM(quantity) FILTER (WHERE type = 'IN'), 0)
+             - COALESCE(SUM(quantity) FILTER (WHERE type = 'OUT'), 0)
+             AS available_quantity
+         FROM stock_movements
+         WHERE tenant_id = $1
+           AND branch_id = $2
+           AND product_id = $3
+       ), eligible_lot_stock AS (
+         SELECT COALESCE(SUM(balance.quantity_available), 0) AS available_quantity
+         FROM inventory_lot_balances AS balance
+         INNER JOIN inventory_lots AS lot
+           ON lot.id = balance.lot_id
+          AND lot.tenant_id = balance.tenant_id
+          AND lot.branch_id = balance.branch_id
+          AND lot.product_id = balance.product_id
+         WHERE balance.tenant_id = $1
+           AND balance.branch_id = $2
+           AND balance.product_id = $3
+           AND balance.quantity_available > 0
+           AND lot.status = 'ACTIVE'
+           AND (lot.expiration_date IS NULL OR lot.expiration_date >= CURRENT_DATE)
+       )
+       SELECT
+         product.requires_lot,
+         movement_stock.available_quantity AS aggregate_available_quantity,
+         eligible_lot_stock.available_quantity AS eligible_lot_quantity
+       FROM products AS product
+       CROSS JOIN movement_stock
+       CROSS JOIN eligible_lot_stock
+       WHERE product.id = $3
+         AND product.tenant_id = $1
+       LIMIT 1`,
+      [tenantId, branchId, productId],
+      client,
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const toNumber = (value: string | number | null | undefined) =>
+      value == null ? 0 : typeof value === "number" ? value : Number(value);
+
+    return {
+      requiresLot: row.requires_lot,
+      aggregateAvailableQuantity: toNumber(row.aggregate_available_quantity),
+      eligibleLotQuantity: row.requires_lot
+        ? toNumber(row.eligible_lot_quantity)
+        : null,
+    };
   }
 
   async createSale(
@@ -700,6 +797,43 @@ export class SaleRepository {
     );
 
     return result.rows[0] ?? null;
+  }
+
+  async findActivePosTerminalId(
+    tenantId: string,
+    branchId: string,
+    operationalTerminalId: string,
+    client: PoolClient,
+  ): Promise<string | null> {
+    const result = await this.query<{ id: string }>(
+      `SELECT id
+       FROM pos_terminals
+       WHERE tenant_id = $1 AND branch_id = $2
+         AND operational_terminal_id = $3 AND active IS TRUE
+       LIMIT 1`,
+      [tenantId, branchId, operationalTerminalId],
+      client,
+    );
+    return result.rows[0]?.id ?? null;
+  }
+
+  async associateWeightCaptureToSaleItem(client: PoolClient, input: {
+    tenantId: string;
+    captureId: string;
+    saleId: string;
+    saleItemId: string;
+    rawWeightKg: string;
+    commercialQuantityKg: string;
+  }) {
+    await this.query(
+      `INSERT INTO sale_item_weight_captures (
+         tenant_id, capture_id, sale_id, sale_item_id,
+         raw_weight_kg, commercial_quantity_kg, created_at
+       ) VALUES ($1, $2, $3, $4, $5::numeric(18,6), $6::numeric(14,3), now())`,
+      [input.tenantId, input.captureId, input.saleId, input.saleItemId,
+        input.rawWeightKg, input.commercialQuantityKg],
+      client,
+    );
   }
 
   async assignFinancialInstitutionsToSalePayments(

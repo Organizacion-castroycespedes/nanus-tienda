@@ -7,6 +7,7 @@ import {
   isEligibleForElectronicBillingRequest,
   providerCreateIntentRecoveryMessage,
   PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION,
+  resolveOperationalSaleVoidAvailability,
   shouldShowProviderCreateIntentRecovery,
 } from "./operational-sales.service";
 
@@ -72,6 +73,27 @@ test("provider-create recovery visibility uses only backend capability and write
   }
 });
 
+test("sale void uses one accepted-only electronic flow and keeps local void for sales without FE", () => {
+  assert.equal(resolveOperationalSaleVoidAvailability(sale() as never).kind, "LOCAL");
+  assert.equal(
+    resolveOperationalSaleVoidAvailability(sale({ electronicBilling: { status: "ACCEPTED" } }) as never).kind,
+    "CREDIT_NOTE",
+  );
+
+  for (const status of ["PENDING", "PROCESSING", "REJECTED", "TECHNICAL_ERROR", "CANCELLED"]) {
+    const result = resolveOperationalSaleVoidAvailability(
+      sale({ electronicBilling: { status } }) as never,
+    );
+    assert.equal(result.kind, "BLOCKED_ELECTRONIC", status);
+    assert.match(result.message ?? "", /Solo una factura aceptada/);
+  }
+
+  assert.equal(
+    resolveOperationalSaleVoidAvailability(sale({ status: "CANCELLED" }) as never).kind,
+    "HIDDEN",
+  );
+});
+
 test("provider-create recovery single-post guard blocks concurrent double interaction", async () => {
   const guard = createSinglePostGuard();
   let calls = 0;
@@ -103,7 +125,9 @@ test("provider-create recovery messages and UI wiring stay dedicated", () => {
   const serviceSource = readFileSync(join(process.cwd(), "modules", "operational-sales", "services", "operational-sales.service.ts"), "utf8");
   const hookSource = readFileSync(join(process.cwd(), "modules", "operational-sales", "hooks", "use-operational-sale-detail.ts"), "utf8");
   const componentSource = readFileSync(join(process.cwd(), "modules", "operational-sales", "components", "OperationalSaleDetailPage.tsx"), "utf8");
+  const wizardSource = readFileSync(join(process.cwd(), "modules", "operational-sales", "components", "wizard", "PreInvoiceWizardModal.tsx"), "utf8");
   assert.match(serviceSource, /electronic-billing\/recover-provider-create-intent/);
+  assert.match(serviceSource, /\/sales\/\$\{encodeURIComponent\(saleId\)\}\/electronic-billing/);
   assert.match(hookSource, /recoveryPostGuard\.run/);
   assert.match(componentSource, /ConfirmDialog/);
   assert.match(componentSource, /setRecoveryConfirmOpen\(true\)/);
@@ -111,4 +135,9 @@ test("provider-create recovery messages and UI wiring stay dedicated", () => {
   assert.match(componentSource, /confirmText="Recuperar procesamiento"/);
   assert.match(componentSource, /cancelText="Cancelar"/);
   assert.match(componentSource, /Recuperar procesamiento/);
+  assert.match(componentSource, /Venta: \$\{sale\.id\}/);
+  assert.match(componentSource, /Tenant: \$\{tenantContext\}/);
+  assert.match(wizardSource, /requestOperationalSaleElectronicBilling\(sale\.id\)/);
+  assert.match(wizardSource, /requestCreated|DOCUMENT_EXISTS/);
+  assert.match(wizardSource, /no confirma creación del proveedor/);
 });

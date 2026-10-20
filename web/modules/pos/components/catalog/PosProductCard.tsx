@@ -65,7 +65,18 @@ export const PosProductCard = memo(
     onAction,
   }: PosProductCardProps) => {
     const productSaleType = getProductSaleType(product);
+    const isInventoryable = product.isInventoryable !== false;
     const hasProductInCart = quantityInCart > 0;
+    const availabilityTone = isInventoryable
+      ? getProductStockTone(stock)
+      : "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200";
+    const availabilityLabel = isInventoryable
+      ? stock <= 0
+        ? "Sin stock"
+        : isLowStock(stock)
+          ? `Stock bajo ${stock}`
+          : `Stock ${stock}`
+      : "Servicio";
     const actionLabel = requiresScale
       ? scaleMockEnabled
         ? "Leer balanza"
@@ -106,15 +117,9 @@ export const PosProductCard = memo(
                   {product.name}
                 </h3>
                 <span
-                  className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${getProductStockTone(
-                    stock
-                  )}`}
+                  className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${availabilityTone}`}
                 >
-                  {stock <= 0
-                    ? "Sin stock"
-                    : isLowStock(stock)
-                      ? `Stock bajo ${stock}`
-                      : `Stock ${stock}`}
+                  {availabilityLabel}
                 </span>
               </div>
 
@@ -217,15 +222,9 @@ export const PosProductCard = memo(
             </div>
             <div className="absolute right-2.5 top-2.5">
               <span
-                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${getProductStockTone(
-                  stock
-                )}`}
+                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${availabilityTone}`}
               >
-                {stock <= 0
-                  ? "Sin stock"
-                  : isLowStock(stock)
-                    ? `Stock bajo ${stock}`
-                    : `Stock ${stock}`}
+                {availabilityLabel}
               </span>
             </div>
           </div>

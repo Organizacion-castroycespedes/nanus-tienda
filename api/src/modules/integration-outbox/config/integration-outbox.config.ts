@@ -8,9 +8,13 @@ export type IntegrationOutboxConfig = {
   initialBackoffMs: number;
   maxBackoffMs: number;
   timeoutMs: number;
+  /** Timeout for online POS emission; must cover FactuCore sync transmission to DIAN. */
+  inlineTimeoutMs?: number;
   billingBackendBaseUrl: string;
   internalToken: string;
 };
+
+export const DEFAULT_INTEGRATION_OUTBOX_INLINE_TIMEOUT_MS = 60_000;
 
 const readBooleanEnv = (name: string, fallback: boolean) => {
   const raw = process.env[name];
@@ -37,7 +41,7 @@ export const getIntegrationOutboxConfig = (): IntegrationOutboxConfig => {
   const internalToken = readTrimmedEnv("API_INTERNAL_TOKEN");
 
   return {
-    enabled: readBooleanEnv("INTEGRATION_OUTBOX_DISPATCHER_ENABLED", false),
+    enabled: readBooleanEnv("INTEGRATION_OUTBOX_DISPATCHER_ENABLED", true),
     scanIntervalMs: readPositiveIntegerEnv(
       "INTEGRATION_OUTBOX_DISPATCHER_SCAN_INTERVAL_MS",
       30_000,
@@ -61,6 +65,10 @@ export const getIntegrationOutboxConfig = (): IntegrationOutboxConfig => {
       1_800_000,
     ),
     timeoutMs: readPositiveIntegerEnv("INTEGRATION_OUTBOX_DISPATCHER_TIMEOUT_MS", 15_000),
+    inlineTimeoutMs: readPositiveIntegerEnv(
+      "INTEGRATION_OUTBOX_INLINE_TIMEOUT_MS",
+      DEFAULT_INTEGRATION_OUTBOX_INLINE_TIMEOUT_MS,
+    ),
     billingBackendBaseUrl,
     internalToken,
   };

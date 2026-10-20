@@ -28,9 +28,9 @@ const method = (overrides: Partial<PaymentMethod>): PaymentMethod =>
   }) as PaymentMethod;
 
 describe("pos-payment-rules", () => {
-  it("keeps reference optional in POS", () => {
+  it("requires reference only when the payment method is configured for it", () => {
     assert.equal(getRequiresReferenceForPos(method({ requiresReference: false })), false);
-    assert.equal(getRequiresReferenceForPos(method({ requiresReference: true })), false);
+    assert.equal(getRequiresReferenceForPos(method({ requiresReference: true })), true);
     assert.equal(getRequiresReferenceForPos(null), false);
   });
 

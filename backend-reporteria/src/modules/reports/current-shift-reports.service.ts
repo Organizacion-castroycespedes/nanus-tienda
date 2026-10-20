@@ -1378,7 +1378,7 @@ export class CurrentShiftReportsService {
     return {
       hasOpenCashSession: true,
       message: ownClosureDelivered
-        ? "Ya entregaste tu cierre. Puedes consultar tus ventas del turno en solo lectura."
+        ? "Ya entregaste tu cierre. Esta vista queda en solo lectura, pero puedes volver a entrar al POS mientras la caja compartida siga abierta."
         : null,
       cashSession: session,
       summary: this.buildSummary(session, dayTotals, cashCount, deliverySummary, {

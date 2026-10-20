@@ -168,7 +168,12 @@ export const PreInvoiceWizardModal: React.FC<PreInvoiceWizardModalProps> = ({
                 onEmitInvoice={async () => {
                   setError(null);
                   const result = await requestOperationalSaleElectronicBilling(sale.id);
-                  if (!result.requestCreated) {
+                  const isSuccess =
+                    result.requestCreated ||
+                    result.result === "REQUESTED" ||
+                    result.result === "DOCUMENT_EXISTS";
+
+                  if (!isSuccess) {
                     const errorMsg =
                       result.message ||
                       "No se pudo crear la solicitud de facturación electrónica.";
@@ -186,7 +191,8 @@ export const PreInvoiceWizardModal: React.FC<PreInvoiceWizardModalProps> = ({
                   }
 
                   onSuccess(
-                    result.message ?? "Solicitud de facturación electrónica enviada exitosamente."
+                    result.message
+                      ?? "Solicitud aceptada por MANUS. Esto no confirma creación del proveedor, transmisión ni aceptación DIAN."
                   );
                   onClose();
                 }}

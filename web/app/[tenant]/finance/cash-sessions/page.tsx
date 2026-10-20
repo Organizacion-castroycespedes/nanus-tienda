@@ -7,6 +7,7 @@ import {
   Download,
   Eye,
   Filter,
+  LogIn,
   Plus,
   Printer,
   Receipt,
@@ -205,7 +206,6 @@ const CashSessionsPage = () => {
   const [pdfConfig, setPdfConfig] = useState<PdfConfig | null>(null);
   const [recentMovementsExpanded, setRecentMovementsExpanded] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
-  const historyInitialized = useRef(false);
 
   const { canViewFinance, canViewPaymentMethods, canOperateCashSessions } =
     getFinancePermissions(role);
@@ -221,7 +221,6 @@ const CashSessionsPage = () => {
     errorMessage,
     loadCurrentSession,
     loadHistory,
-    loadAvailableOpenSessions,
     loadSessionSummary,
     selectCurrentSession,
     closeSession,
@@ -263,16 +262,11 @@ const CashSessionsPage = () => {
       return;
     }
 
-    if (!historyInitialized.current) {
-      historyInitialized.current = true;
-      void loadHistory({
-        tenantId: selectedTenantId,
-        status: "OPEN",
-        limit: 100,
-      });
-    } else {
-      void loadAvailableOpenSessions({ tenantId: selectedTenantId });
-    }
+    void loadHistory({
+      tenantId: selectedTenantId,
+      status: "OPEN",
+      limit: 100,
+    });
     void loadBranches(selectedTenantId);
     void loadCashRegisters({ tenantId: selectedTenantId, activo: true });
   }, [
@@ -280,7 +274,6 @@ const CashSessionsPage = () => {
     loadBranches,
     loadCashRegisters,
     loadHistory,
-    loadAvailableOpenSessions,
     selectedTenantId,
   ]);
 
@@ -750,10 +743,13 @@ const CashSessionsPage = () => {
             {canOperateCashSessions ? (
               <Button
                 onClick={() => router.push(`/${tenantSlug}/pos/select-context`)}
-                disabled={Boolean(currentSession)}
               >
-                <Plus className="h-4 w-4" />
-                Abrir caja desde contexto
+                {currentSession ? (
+                  <LogIn className="h-4 w-4" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                {currentSession ? "Entrar al POS" : "Abrir caja desde contexto"}
               </Button>
             ) : null}
           </>
@@ -879,9 +875,21 @@ const CashSessionsPage = () => {
             <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Consultando sesion actual...</p>
           ) : !currentSession || ownClosureDelivered ? (
             <div className="mt-3 rounded-xl border border-dashed border-slate-200 p-3 text-sm text-slate-500 dark:text-slate-400">
-              {ownClosureDelivered
-                ? "Ya entregaste tu cierre. No hay acciones ni datos operativos pendientes para ti."
-                : "No tienes una sesion abierta en este momento."}
+              <p>
+                {ownClosureDelivered
+                  ? "Ya entregaste tu cierre. No puedes entregar otro, pero puedes volver a entrar al POS mientras la caja compartida siga abierta."
+                  : "No tienes una sesion abierta en este momento."}
+              </p>
+              {ownClosureDelivered ? (
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  onClick={() => router.push(`/${tenantSlug}/pos/select-context`)}
+                >
+                  <LogIn className="h-4 w-4" />
+                  Entrar al POS
+                </Button>
+              ) : null}
             </div>
           ) : (
             <div className="mt-3 space-y-3">

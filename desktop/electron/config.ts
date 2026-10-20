@@ -30,6 +30,28 @@ export type VersionedShellConfig = {
   agentLoopbackOrigin: string;
 };
 
+export type AgentRoutingConfig = {
+  agentLoopbackOrigin: string;
+};
+
+/**
+ * Agent routing is deliberately independent from the packaged navigation
+ * shell. Development may use only the fixed loopback Agent origin; packaged
+ * builds inherit the already validated shell configuration.
+ */
+export const resolveAgentRoutingConfig = (
+  isPackaged: boolean,
+  packagedShellConfig: VersionedShellConfig | null,
+): AgentRoutingConfig | null => {
+  if (isPackaged) {
+    return packagedShellConfig
+      ? { agentLoopbackOrigin: packagedShellConfig.agentLoopbackOrigin }
+      : null;
+  }
+
+  return { agentLoopbackOrigin: DEFAULT_AGENT_LOOPBACK_ORIGIN };
+};
+
 const LOOPBACK_HOSTS = new Set(["127.0.0.1"]);
 
 const originOf = (value: string): URL => {

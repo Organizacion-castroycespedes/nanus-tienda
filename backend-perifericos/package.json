@@ -10,6 +10,10 @@
     "dev": "tsx watch src/main.ts",
     "start:dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.build.json",
+    "qa:rochi": "node scripts/qa-rochi-diagnostic.mjs",
+    "qa:rochi:disconnect": "node scripts/qa-rochi-disconnect.mjs",
+    "test:rochi:disconnect": "node --test test/rochi-a01e.disconnect-runner.spec.mjs",
+    "test:rochi:disconnect-flow": "node --test test/rochi-a01e.disconnect-flow.spec.mjs",
     "build:prod": "npm run build",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
@@ -29,7 +33,9 @@
   },
   "pkg": {
     "assets": [
-      "dist/**/*"
+      "dist/**/*",
+      "node_modules/@serialport/bindings-cpp/dist/**/*",
+      "node_modules/@serialport/bindings-cpp/prebuilds/**/*"
     ],
     "targets": [
       "node24-linux-x64",
@@ -47,7 +53,8 @@
     "@nestjs/platform-express": "^10.3.2",
     "dotenv": "^17.4.2",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "serialport": "^12.0.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

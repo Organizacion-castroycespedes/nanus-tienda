@@ -1,0 +1,506 @@
+{
+  "version": 2,
+  "changes": [
+    {
+      "change_id": "implementar-gobernanza-openspec-migraciones-manus",
+      "paths": [
+        "AGENTS.md",
+        "scripts/governance/**",
+        "scripts/database/apply_single_migration.sh",
+        "scripts/database/load_migration_env.py",
+        "scripts/database/migrations/**",
+        "scripts/database/test_apply_single_migration.sh",
+        "scripts/database/test_load_migration_env.py",
+        "openspec/changes/implementar-gobernanza-openspec-migraciones-manus/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "implementar-plan-promocion-migraciones-ambientes",
+      "paths": [
+        ".github/workflows/manus-governance-ci.yml",
+        "openspec/changes/implementar-plan-promocion-migraciones-ambientes/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "reconciliar-drift-historico-pre-gobernanza",
+      "paths": [
+        "openspec/changes/reconciliar-drift-historico-pre-gobernanza/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "disponer-historial-fallido-y-bundles-manuales",
+      "paths": [
+        "openspec/changes/disponer-historial-fallido-y-bundles-manuales/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "conectar-cutover-gobernanza-v095",
+      "paths": [
+        "openspec/changes/conectar-cutover-gobernanza-v095/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "autorizar-estado-estricto-gobernanza",
+      "paths": [
+        "openspec/changes/autorizar-estado-estricto-gobernanza/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "administrar-facturacion-electronica-por-tenant",
+      "paths": [
+        "api/src/common/constants/menu-keys.ts",
+        "api/src/modules/electronic-invoicing/admin/**",
+        "api/src/modules/electronic-invoicing/electronic-invoicing.module.ts",
+        "api/src/modules/integration-outbox/services/billing-integration-client.ts",
+        "api/src/modules/integration-outbox/services/billing-integration-client.spec.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/**",
+        "backend-facturacion-electronica/.env.example",
+        "backend-facturacion-electronica/test/electronic-billing-admin.controller.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-admin.runtime.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-context-classifier.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-credential-crypto.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-credential-resolver.encrypted.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-credential-transition-policy.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-operational-approval.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-provider-admin.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-provider-resolver.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing-tenant-config-admin.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing.processing.service.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing.repositories.spec.ts",
+        "backend-facturacion-electronica/test/factucore.client.spec.ts",
+        "web/app/[tenant]/configuracion/facturacion-electronica/proveedores/page.tsx",
+        "web/app/[tenant]/configuracion/page.tsx",
+        "web/components/design-system/WizardModal.tsx",
+        "web/domains/electronic-billing/**",
+        "web/domains/menu/constants.ts",
+        "web/lib/route-permissions.ts",
+        "web/modules/operational-sales/components/wizard/PreInvoiceWizardModal.tsx",
+        "openspec/changes/administrar-facturacion-electronica-por-tenant/**",
+        "openspec/changes/administrar-proveedores-facturacion-electronica/**",
+        "openspec/changes/recuperar-rechazo-facturacion-electronica/**",
+        "openspec/changes/transicion-credenciales-electronicas-legacy/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "corregir-anulacion-fiscal-ventas-operativas",
+      "paths": [
+        "api/.env.example",
+        "api/src/modules/integration-outbox/contracts/electronic-billing-outcome.ts",
+        "api/src/modules/operational-sales/operational-sales.service.spec.ts",
+        "web/modules/operational-sales/components/OperationalSaleDetailPage.tsx",
+        "web/modules/operational-sales/components/VoidSaleModal.tsx",
+        "web/modules/operational-sales/services/operational-sales.service.spec.ts",
+        "web/modules/operational-sales/services/operational-sales.service.ts",
+        "openspec/changes/corregir-anulacion-fiscal-ventas-operativas/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "restringir-anulacion-dian-y-kardex",
+      "paths": [
+        "api/src/modules/inventory/services/stock-movement.service.ts",
+        "api/src/modules/inventory/services/stock-movement.service.spec.ts",
+        "api/src/modules/operational-sales/dto/void-operational-sale.dto.ts",
+        "api/src/modules/operational-sales/on-demand-billing-validation.spec.ts",
+        "api/src/modules/operational-sales/operational-sales.module.ts",
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "openspec/changes/restringir-anulacion-dian-y-kardex/**",
+        "scripts/database/tests/20261018_operational_sale_void_kardex_qa_test.ts"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "inmutabilizar-configuracion-estructural-productos",
+      "paths": [
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/product.service.spec.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/product-form/ProductBasicSection.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "openspec/changes/inmutabilizar-configuracion-estructural-productos/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "fix-liquor-invoice-icl-rounding",
+      "paths": [
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.mapper.ts",
+        "backend-facturacion-electronica/test/factucore.provider.spec.ts",
+        "openspec/changes/fix-liquor-invoice-icl-rounding/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "fix-invoice-line-base-rounding",
+      "paths": [
+        "api/src/modules/inventory/services/sale.service.spec.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/pricing/pricing-tax-rounding.ts",
+        "openspec/changes/fix-invoice-line-base-rounding/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "integrar-venta-real-por-peso-en-pos",
+      "paths": [
+        "backend-perifericos/src/modules/health/health.controller.ts",
+        "backend-perifericos/test/runtime-http.spec.ts",
+        "api/src/modules/inventory/controllers/sale.controller.ts",
+        "api/src/modules/inventory/controllers/sale.controller.spec.ts",
+        "api/src/modules/inventory/entities/sale-item.entity.ts",
+        "api/src/modules/inventory/inventory.module.ts",
+        "api/src/modules/inventory/repositories/sale.repository.spec.ts",
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/inventory/weighted-sale-migration.spec.ts",
+        "api/src/modules/inventory/weighted-sale-quantity.spec.ts",
+        "api/src/modules/inventory/weighted-sale-quantity.ts",
+        "api/src/modules/pricing/pricing.controller.spec.ts",
+        "api/src/modules/pricing/pricing.controller.ts",
+        "api/src/modules/pricing/pricing.service.spec.ts",
+        "api/src/modules/pricing/pricing.service.ts",
+        "api/src/modules/pricing/pricing.types.ts",
+        "desktop/electron/runtime-contract.spec.ts",
+        "openspec/changes/integrar-venta-real-por-peso-en-pos/**",
+        "web/domains/peripherals/runtime-contract.spec.ts",
+        "web/modules/pos/components/PosScreen.scale-fail-closed.spec.ts",
+        "web/modules/pos/services/pos.service.ts",
+        "web/domains/peripherals/api.spec.ts",
+        "web/modules/pos/utils/scale-capture-error.spec.ts",
+        "web/modules/pos/utils/scale-capture-error.ts"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "backfill-product-standard-identification",
+      "paths": [
+        "openspec/changes/backfill-product-standard-identification/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "integrar-balanza-rochi-a01e",
+      "paths": [
+        "api/src/modules/pos-terminals/pos-terminals.service.spec.ts",
+        "api/src/modules/pos-terminals/pos-terminals.service.ts",
+        "backend-perifericos/README.md",
+        "backend-perifericos/package-lock.json",
+        "backend-perifericos/package.json",
+        "backend-perifericos/scripts/build-windows-installer.mjs",
+        "backend-perifericos/scripts/qa-rochi-diagnostic.mjs",
+        "backend-perifericos/scripts/qa-rochi-disconnect.control.mjs",
+        "backend-perifericos/scripts/qa-rochi-disconnect.flow.mjs",
+        "backend-perifericos/scripts/qa-rochi-disconnect.mjs",
+        "backend-perifericos/src/modules/devices/devices.service.ts",
+        "backend-perifericos/src/modules/devices/devices.types.ts",
+        "backend-perifericos/src/modules/scale/rochi-a01e.parser.ts",
+        "backend-perifericos/src/modules/scale/rochi-a01e.qa.ts",
+        "backend-perifericos/src/modules/scale/rochi-a01e.serial-port.factory.ts",
+        "backend-perifericos/src/modules/scale/rochi-a01e.serial.ts",
+        "backend-perifericos/src/modules/scale/rochi-a01e.simulator.ts",
+        "backend-perifericos/src/modules/scale/scale.service.ts",
+        "backend-perifericos/src/modules/scale/scale.types.ts",
+        "backend-perifericos/src/platform/device-registry-state.store.ts",
+        "backend-perifericos/src/platform/system-usb-printer-discovery.ts",
+        "backend-perifericos/src/platform/windows/windows-printer-discovery.provider.ts",
+        "backend-perifericos/src/shared/discovery/device-discovery-provider.ts",
+        "backend-perifericos/src/shared/discovery/printer-reconciliation.spec.ts",
+        "backend-perifericos/src/shared/discovery/printer-reconciliation.ts",
+        "backend-perifericos/src/shared/profiles/device-profiles.ts",
+        "backend-perifericos/src/shared/types/peripheral.types.ts",
+        "backend-perifericos/src/shared/usb/usb-printer-discovery.ts",
+        "backend-perifericos/src/shared/utils/request-validation.util.ts",
+        "backend-perifericos/test/platform-boundaries.spec.ts",
+        "backend-perifericos/test/rochi-a01e.disconnect-flow.spec.mjs",
+        "backend-perifericos/test/rochi-a01e.disconnect-runner.spec.mjs",
+        "backend-perifericos/test/rochi-a01e.parser.spec.ts",
+        "backend-perifericos/test/rochi-a01e.qa.spec.ts",
+        "backend-perifericos/test/rochi-a01e.serial.spec.ts",
+        "backend-perifericos/test/scale-rochi-runtime.spec.ts",
+        "backend-perifericos/test/serial-device-model.spec.ts",
+        "backend-perifericos/test/serial-discovery.spec.ts",
+        "backend-perifericos/test/windows-autostart.spec.ts",
+        "backend-perifericos/windows-installer/assets/pos-manifest.json",
+        "backend-perifericos/windows-installer/assets/pos/resources/app.asar",
+        "backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json",
+        "backend-perifericos/windows-installer/core_flow_qa_windows_test.go",
+        "backend-perifericos/windows-installer/installer_core_events.go",
+        "backend-perifericos/windows-installer/installer_core_state.go",
+        "backend-perifericos/windows-installer/installer_core_state_test.go",
+        "backend-perifericos/windows-installer/localservice_state_windows.go",
+        "backend-perifericos/windows-installer/localservice_state_windows_test.go",
+        "backend-perifericos/windows-installer/managed_acl_windows.go",
+        "backend-perifericos/windows-installer/managed_acl_windows_test.go",
+        "backend-perifericos/windows-installer/productive_devices_windows.go",
+        "backend-perifericos/windows-installer/productive_ui_windows.go",
+        "backend-perifericos/windows-installer/readonly_bridge_windows.go",
+        "backend-perifericos/windows-installer/task_query_windows.go",
+        "backend-perifericos/windows-installer/task_query_windows_test.go",
+        "desktop/electron/agent-client.spec.ts",
+        "desktop/electron/config.spec.ts",
+        "desktop/electron/config.ts",
+        "desktop/electron/resources/manus-shell.config.json",
+        "web/domains/peripherals/contracts.spec.ts",
+        "web/domains/peripherals/header-readiness.spec.ts",
+        "web/domains/peripherals/header-readiness.ts",
+        "web/domains/peripherals/scale-association.spec.ts",
+        "web/domains/peripherals/scale-association.ts",
+        "web/domains/peripherals/scale-visibility.spec.ts",
+        "web/domains/peripherals/scale-visibility.ts",
+        "web/domains/peripherals/terminal-config.ts",
+        "web/domains/peripherals/types.ts",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
+        "web/modules/pos/components/hardware/PosDiagnosticsPanel.tsx",
+        "openspec/changes/integrar-balanza-rochi-a01e/.openspec.yaml",
+        "openspec/changes/integrar-balanza-rochi-a01e/design.md",
+        "openspec/changes/integrar-balanza-rochi-a01e/proposal.md",
+        "openspec/changes/integrar-balanza-rochi-a01e/specs/rochi-a01e-parser/spec.md",
+        "openspec/changes/integrar-balanza-rochi-a01e/tasks.md"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "reconciliar-drift-migraciones-qa-post-cutover",
+      "paths": [
+        "openspec/changes/reconciliar-drift-migraciones-qa-post-cutover/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "autorizar-balanza-real-pos-peso",
+      "paths": [
+        "api/src/modules/app.module.ts",
+        "api/src/modules/scale-authorization/**",
+        "backend-perifericos/scripts/package-windows-x64.mjs",
+        "backend-perifericos/src/app.module.ts",
+        "backend-perifericos/src/main.ts",
+        "backend-perifericos/src/modules/agent-security/**",
+        "backend-perifericos/src/modules/devices/devices.controller.ts",
+        "backend-perifericos/src/modules/scale/scale.controller.ts",
+        "backend-perifericos/src/modules/scale/scale.module.ts",
+        "backend-perifericos/src/platform/agent-local-config.ts",
+        "backend-perifericos/src/shared/config/peripherals.config.ts",
+        "backend-perifericos/test/agent-local-config.spec.ts",
+        "backend-perifericos/test/agent-enrollment-endpoint.spec.ts",
+        "backend-perifericos/test/agent-pairing.crypto.spec.ts",
+        "backend-perifericos/test/agent-pairing.service.spec.ts",
+        "backend-perifericos/test/agent-secret.store.spec.ts",
+        "backend-perifericos/test/bounded-device-discovery.spec.ts",
+        "backend-perifericos/test/cash-drawer-via-printer.spec.ts",
+        "backend-perifericos/test/device-registry-persistence.spec.ts",
+        "backend-perifericos/test/devices-http-reconciliation.spec.ts",
+        "backend-perifericos/test/mock-simulator.spec.ts",
+        "backend-perifericos/test/usb-printer.spec.ts",
+        "backend-perifericos/windows-installer/main_windows.go",
+        "backend-perifericos/windows-installer/main_windows_test.go",
+        "desktop/electron/agent-client.ts",
+        "desktop/electron/electron-api.ts",
+        "desktop/electron/main.ts",
+        "desktop/electron/preload.ts",
+        "desktop/electron/scripts/environments.mjs",
+        "scripts/database/tests/test_v103_scale_authorization_migration.py",
+        "web/domains/peripherals/api.ts",
+        "web/domains/peripherals/components/PeripheralsAdminWorkspace.tsx",
+        "web/domains/peripherals/runtime-contract.ts",
+        "web/domains/peripherals/scale-authorization.api.ts",
+        "web/domains/peripherals/scale-authorization-ui-state.spec.ts",
+        "web/domains/peripherals/scale-authorization-ui-state.ts",
+        "openspec/changes/autorizar-balanza-real-pos-peso/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "habilitar-escpos-raw-usb-thermal-80mm",
+      "paths": [
+        "backend-perifericos/src/modules/cash-drawer/cash-drawer.service.ts",
+        "backend-perifericos/src/modules/printer/printer.service.ts",
+        "backend-perifericos/src/platform/windows/windows-gdi-spooler.transport.ts",
+        "backend-perifericos/src/platform/windows/windows-raw-spooler.transport.ts",
+        "backend-perifericos/src/shared/adapters/usb-system-printer.adapter.ts",
+        "backend-perifericos/src/shared/filters/sanitized-http-exception.filter.ts",
+        "backend-perifericos/src/shared/printing/print-diagnostic.ts",
+        "backend-perifericos/test/print-diagnostic.spec.ts",
+        "backend-perifericos/test/support/no-hardware.ts",
+        "backend-perifericos/test/windows-usb-queue-correlation.spec.ts",
+        "web/domains/peripherals/contracts.ts",
+        "web/domains/peripherals/print-errors.spec.ts",
+        "web/domains/peripherals/print-errors.ts",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/design.md",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/specs/usb-raw-escpos-thermal-printing/spec.md",
+        "openspec/changes/habilitar-escpos-raw-usb-thermal-80mm/tasks.md"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "windows-pnp-discovery-observability",
+      "paths": [
+        "openspec/changes/windows-pnp-discovery-observability/.openspec.yaml",
+        "openspec/changes/windows-pnp-discovery-observability/design.md",
+        "openspec/changes/windows-pnp-discovery-observability/proposal.md",
+        "openspec/changes/windows-pnp-discovery-observability/qa-evidence-qa05-print04.json",
+        "openspec/changes/windows-pnp-discovery-observability/specs/windows-pnp-discovery-observability/spec.md",
+        "openspec/changes/windows-pnp-discovery-observability/tasks.md"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "pos-unknown-sale-recovery",
+      "paths": [
+        "web/app/[tenant]/layout.tsx",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "web/modules/pos/components/PosScreen.integration.test.tsx",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/modules/pos/utils/sale-postprocessing.ts",
+        "web/modules/pos/utils/sale-postprocessing.spec.ts",
+        "web/vitest.config.ts",
+        "web/package.json",
+        "web/package-lock.json",
+        "openspec/changes/pos-unknown-sale-recovery/.openspec.yaml",
+        "openspec/changes/pos-unknown-sale-recovery/proposal.md",
+        "openspec/changes/pos-unknown-sale-recovery/design.md",
+        "openspec/changes/pos-unknown-sale-recovery/specs/pos-unknown-sale-recovery/spec.md",
+        "openspec/changes/pos-unknown-sale-recovery/tasks.md"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "corregir-stock-insuficiente-y-recuperacion-carrito-pos",
+      "paths": [
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/services/sale-stock-rejection.spec.ts",
+        "web/lib/http.ts",
+        "web/modules/pos/components/PosScreen.integration.test.tsx",
+        "web/modules/pos/hooks/useSalePrintWorkflow.spec.ts",
+        "web/modules/pos/components/payment/PaymentDialog.tsx",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "openspec/changes/corregir-stock-insuficiente-y-recuperacion-carrito-pos/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "evolucionar-gobernanza-openspec-ownership-windows",
+      "paths": [
+        "scripts/governance/openspec_governance_diagnostic.py",
+        "scripts/governance/openspec-scope.json",
+        "scripts/governance/test_openspec_governance_diagnostic.py",
+        "scripts/governance/README.md",
+        "openspec/changes/evolucionar-gobernanza-openspec-ownership-windows/**"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "soportar-productos-no-inventariables",
+      "paths": [
+        "openspec/changes/soportar-productos-no-inventariables/**",
+        "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
+        "scripts/database/migrations/V110__inventory_create_sale_v2_non_inventoryable_products.sql"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "bloquear-tipo-producto-edicion",
+      "paths": [
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/payload.spec.ts",
+        "openspec/changes/bloquear-tipo-producto-edicion/**"
+      ],
+      "exemptions": []
+    }
+  ],
+  "current_ownership": [
+    {
+      "change_id": "corregir-stock-insuficiente-y-recuperacion-carrito-pos",
+      "paths": [
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/services/sale-stock-rejection.spec.ts",
+        "web/lib/http.ts",
+        "web/modules/pos/components/catalog/PosProductCard.tsx",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
+        "web/modules/pos/components/PosScreen.integration.test.tsx",
+        "web/modules/pos/hooks/useSalePrintWorkflow.spec.ts",
+        "web/modules/pos/components/payment/PaymentDialog.tsx",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "openspec/changes/corregir-stock-insuficiente-y-recuperacion-carrito-pos/**"
+      ],
+      "reason": "Current branch diff implements the P1 definitive stock rejection and safe POS cart recovery. Historical HU paths remain unchanged."
+    },
+    {
+      "change_id": "soportar-productos-no-inventariables",
+      "paths": [
+        "api/src/modules/inventory/controllers/purchase.controller.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts",
+        "api/src/modules/inventory/entities/purchase.entity.ts",
+        "api/src/modules/inventory/entities/purchase-item.entity.ts",
+        "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
+        "scripts/database/migrations/V110__inventory_create_sale_v2_non_inventoryable_products.sql"
+      ],
+      "reason": "Owner-authorized current ownership for purchase creation, reception, commercial states, purchase-line contracts, tests, V109 structural migration and the V110 sale-function migration; no other functional ownership is reassigned."
+    },
+    {
+      "change_id": "soportar-productos-no-inventariables",
+      "paths": [
+        "api/src/modules/inventory/controllers/product.controller.ts",
+        "api/src/modules/inventory/entities/product.entity.ts",
+        "api/src/modules/inventory/repositories/product.repository.ts",
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/product.service.spec.ts",
+        "web/domains/products/dtos.ts",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/product-form/types.ts",
+        "web/modules/inventory/services/product.service.ts",
+        "web/modules/inventory/services/purchase.service.ts"
+      ],
+      "reason": "Owner-authorized additive ownership for the product classification contract and the purchase receipt client contract; historical associations remain intact and no active owner path is reassigned."
+    },
+    {
+      "change_id": "bloquear-tipo-producto-edicion",
+      "paths": [
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/payload.spec.ts",
+        "openspec/changes/bloquear-tipo-producto-edicion/**"
+      ],
+      "reason": "Follow-up frontend ownership for immutable product type during edit; creation and backend transition contracts remain owned by suportar-productos-no-inventariables."
+    },
+    {
+      "change_id": "evolucionar-gobernanza-openspec-ownership-windows",
+      "paths": [
+        "scripts/governance/openspec_governance_diagnostic.py",
+        "scripts/governance/openspec-scope.json",
+        "scripts/governance/test_openspec_governance_diagnostic.py",
+        "scripts/governance/README.md",
+        "openspec/changes/evolucionar-gobernanza-openspec-ownership-windows/**"
+      ],
+      "reason": "Current branch diff evolves the repository-owned governance contract and documents the Windows runtime limitation."
+    }
+  ]
+}

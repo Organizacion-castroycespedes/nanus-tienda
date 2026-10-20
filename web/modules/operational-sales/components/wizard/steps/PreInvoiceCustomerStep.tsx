@@ -289,7 +289,11 @@ export const PreInvoiceCustomerStep: React.FC<PreInvoiceCustomerStepProps> = ({
       {/* Quick Fiscal Customer Modal */}
       {fiscalModalOpen ? (
         <QuickFiscalCustomerModal
-          customers={customers}
+          customers={
+            currentCustomer
+              ? [currentCustomer, ...customers.filter((c) => c.id !== currentCustomer.id)]
+              : customers
+          }
           selectedCustomerId={selectedCustomerId}
           onClose={() => setFiscalModalOpen(false)}
           onCustomerSelected={(c) => {
@@ -300,7 +304,9 @@ export const PreInvoiceCustomerStep: React.FC<PreInvoiceCustomerStepProps> = ({
             // Re-fetch customer to reflect new fiscal data
             try {
               const fullCustomer = await getCustomerById(saved.id);
-              void handleSelectCustomer(fullCustomer);
+              await handleSelectCustomer(fullCustomer);
+              const updated = await onSaveCustomer(saved.id);
+              onCustomerUpdated(updated);
             } catch {
               // Ignore reload error
             }

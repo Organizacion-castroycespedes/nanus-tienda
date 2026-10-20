@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PricingRepository } from "./pricing.repository";
+import {
+  calculatePercentageTaxAmount,
+  resolveLineTaxBase,
+} from "./pricing-tax-rounding";
 import type {
   CalculateLinePriceInput,
   LinePricePreview,
@@ -90,7 +94,24 @@ export class PricingService {
   }
 
   private getBridgePercentageTax(product: PricingProductSnapshot) {
-    return this.getAssignedTaxes(product).find((tax) => this.isPercentageTax(tax)) ?? null;
+    const assigned = this.getAssignedTaxes(product);
+    if (product.taxId) {
+      const match = assigned.find((tax) => tax.taxId === product.taxId);
+      if (match && this.isPercentageTax(match)) {
+        return match;
+      }
+    }
+    const vatTax = assigned.find(
+      (tax) =>
+        this.isPercentageTax(tax) &&
+        (tax.taxTypeCode === "VAT" ||
+          tax.dianCode === "01" ||
+          tax.taxName?.toUpperCase().includes("IVA"))
+    );
+    if (vatTax) {
+      return vatTax;
+    }
+    return assigned.find((tax) => this.isPercentageTax(tax)) ?? null;
   }
 
   private getPercentageRate(tax: PricingProductTaxSnapshot | null) {
@@ -170,22 +191,19 @@ export class PricingService {
     let lineSubtotal = 0;
     let lineTotal = 0;
 
-    if (taxRate > 0 && !(percentageTax?.isIncluded ?? input.product.taxIsIncluded)) {
+    const isExcludedTax =
+      taxRate > 0 && !(percentageTax?.isIncluded ?? input.product.taxIsIncluded);
+
+    if (isExcludedTax && !hasSeparateCustomerPrice) {
       lineSubtotal = this.roundCurrency(input.quantity * taxCalculationUnitPrice);
       taxBase = lineSubtotal;
-      taxAmount = this.roundCurrency(taxBase * taxRate);
-      lineTotal = hasSeparateCustomerPrice
-        ? this.roundCurrency(input.quantity * finalUnitPrice)
-        : this.roundCurrency(lineSubtotal + taxAmount);
+      taxAmount = calculatePercentageTaxAmount(taxBase, taxRate);
+      lineTotal = this.roundCurrency(lineSubtotal + taxAmount);
     } else {
       lineTotal = this.roundCurrency(input.quantity * finalUnitPrice);
-      const unitPriceWithoutTax =
-        taxRate > 0
-          ? this.roundCurrency(finalUnitPrice / (1 + taxRate))
-          : finalUnitPrice;
-      taxBase = this.roundCurrency(unitPriceWithoutTax * input.quantity);
+      taxBase = resolveLineTaxBase(lineTotal, taxRate);
       taxAmount =
-        taxRate > 0 ? this.roundCurrency(lineTotal - taxBase) : 0;
+        taxRate > 0 ? calculatePercentageTaxAmount(taxBase, taxRate) : 0;
       lineSubtotal = taxBase;
     }
 
@@ -217,13 +235,9 @@ export class PricingService {
     finalUnitPrice: number;
   }) {
     const taxes = this.getAssignedTaxes(input.product);
-    const percentageTax = taxes.find((tax) => this.isPercentageTax(tax)) ?? null;
+    const percentageTax = this.getBridgePercentageTax(input.product);
     const percentageRate = this.getPercentageRate(percentageTax);
     const lineFinal = this.roundCurrency(input.finalUnitPrice * input.quantity);
-    const taxCalculationLine = this.roundCurrency(
-      this.getTaxCalculationUnitPrice(input.product, input.finalUnitPrice) *
-        input.quantity
-    );
     const hasSeparateCustomerPrice = this.hasSeparateCustomerPrice(input.product);
     const profile = input.product.taxProfile;
 
@@ -311,11 +325,13 @@ export class PricingService {
           );
         }
 
-        const taxBase = this.roundCurrency(
-          (lineFinal - consumoAmount) / (1 + percentageRate)
+        const taxBase = resolveLineTaxBase(
+          lineFinal - consumoAmount,
+          percentageRate
         );
-        const taxAmount = this.roundCurrency(
-          lineFinal - consumoAmount - taxBase
+        const taxAmount = calculatePercentageTaxAmount(
+          taxBase,
+          percentageRate
         );
         taxLines.set(
           percentageTax.taxId,
@@ -347,8 +363,23 @@ export class PricingService {
       // ICL and ADV are added on top of that base; they must not be removed
       // before calculating VAT. The authorized liquor invoice contract uses
       // IVA base = lineFinal and total = lineFinal + ICL + ADV + IVA.
-      const taxBase = hasSeparateCustomerPrice ? taxCalculationLine : lineFinal;
-      const taxAmount = this.roundCurrency(taxBase * percentageRate);
+      // With a separate customer price the charged line already contains
+      // every tax, so the IVA base is what remains after ICL, ADV and fixed.
+      const chargedNetAmount = this.roundCurrency(
+        lineFinal - consumoAmount - fixedChargeAmount
+      );
+      if (hasSeparateCustomerPrice && chargedNetAmount < 0) {
+        throw new BadRequestException(
+          "alcohol taxes exceed visible line amount"
+        );
+      }
+      const taxBase = hasSeparateCustomerPrice
+        ? resolveLineTaxBase(chargedNetAmount, percentageRate)
+        : lineFinal;
+      const taxAmount = calculatePercentageTaxAmount(
+        taxBase,
+        percentageRate
+      );
       taxLines.set(
         percentageTax.taxId,
         this.buildPreviewTax(percentageTax, {
@@ -503,7 +534,7 @@ export class PricingService {
     };
   }
 
-  private async prepareBaseLine(input: CalculateLinePriceInput) {
+  private async prepareBaseLine(input: CalculateLinePriceInput, quantityScale: 2 | 3 = 2) {
     this.assertInput(input);
     const pricingDate = this.resolveDate(input.date);
 
@@ -519,7 +550,7 @@ export class PricingService {
       throw new BadRequestException("product is inactive");
     }
 
-    const quantity = this.roundCurrency(input.quantity);
+    const quantity = this.roundQuantity(input.quantity, quantityScale);
     const basePreview = this.calculateLinePreview({
       product,
       quantity,
@@ -630,8 +661,21 @@ export class PricingService {
   async calculateLinePrice(
     input: CalculateLinePriceInput
   ): Promise<LinePricePreview> {
+    return this.calculateLinePriceAtQuantityScale(input, 2);
+  }
+
+  async calculateWeightedLinePrice(
+    input: CalculateLinePriceInput
+  ): Promise<LinePricePreview> {
+    return this.calculateLinePriceAtQuantityScale(input, 3);
+  }
+
+  private async calculateLinePriceAtQuantityScale(
+    input: CalculateLinePriceInput,
+    quantityScale: 2 | 3,
+  ): Promise<LinePricePreview> {
     const { product, quantity, pricingDate, basePreview } =
-      await this.prepareBaseLine(input);
+      await this.prepareBaseLine(input, quantityScale);
     const baseUnitPrice = basePreview.baseUnitPrice;
     const promotions = await this.pricingRepository.findApplicablePromotions({
       tenantId: input.tenantId,
@@ -659,6 +703,11 @@ export class PricingService {
       explanation:
         "products.price is treated as the visible unit price with tax included; active non-stackable promotion applied by priority, discount and recency.",
     });
+  }
+
+  private roundQuantity(value: number, scale: number) {
+    const multiplier = 10 ** scale;
+    return Math.round((value + Number.EPSILON) * multiplier) / multiplier;
   }
 
   async calculateProposedLine(input: {

@@ -6,7 +6,10 @@ export type ScaleWeightRequest = {
 export type ScaleWeightResponse = {
   deviceId: string;
   weight: number;
-  unit: "kg";
-  stable: boolean;
+  unit: "kg" | null;
+  stable: boolean | null;
+  source: "MOCK" | "REAL";
+  unitVerified: boolean;
+  stabilityVerified: boolean;
   timestamp: string;
 };

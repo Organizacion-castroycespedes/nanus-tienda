@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -63,6 +64,7 @@ type CreateProductInput = {
   priceWithTax?: number;
   priceWithoutTax?: number;
   isActive?: boolean;
+  isInventoryable?: boolean;
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
@@ -96,6 +98,7 @@ type UpdateProductInput = Partial<
     | "priceWithTax"
     | "priceWithoutTax"
     | "isActive"
+    | "isInventoryable"
     | "isPerishable"
     | "requiresLot"
     | "requiresExpiration"
@@ -121,7 +124,13 @@ type UpdateProductInput = Partial<
 
 type ProductUpdatePayload = UpdateProductInput & Record<string, unknown>;
 
+type ProductUpdateContext = {
+  userId?: string | null;
+  inventoryabilityChangeReason?: string | null;
+};
+
 type ProductOperationalRules = {
+  isInventoryable: boolean;
   isPerishable: boolean;
   requiresLot: boolean;
   requiresExpiration: boolean;
@@ -135,6 +144,17 @@ type ProductSaleModelRules = {
   saleType: ProductSaleType;
   measurementUnit: ProductMeasurementUnit;
 };
+
+const PRODUCT_STRUCTURAL_FIELDS = [
+  "unitId",
+  "saleType",
+  "measurementUnit",
+  "isPerishable",
+  "requiresLot",
+  "requiresExpiration",
+] as const satisfies ReadonlyArray<keyof ProductProps>;
+
+type ProductStructuralField = (typeof PRODUCT_STRUCTURAL_FIELDS)[number];
 
 type PosProductBarcode = {
   code: string;
@@ -603,6 +623,24 @@ export class ProductService {
     return Object.prototype.hasOwnProperty.call(data, field);
   }
 
+  private assertStructuralConfigurationUnchanged(
+    current: ProductEntity,
+    data: ProductUpdatePayload
+  ) {
+    const changedFields = PRODUCT_STRUCTURAL_FIELDS.filter((field) => {
+      if (!this.hasOwn(data, field) || data[field] === undefined) {
+        return false;
+      }
+      return data[field] !== current[field as ProductStructuralField];
+    });
+
+    if (changedFields.length > 0) {
+      throw new BadRequestException(
+        `product structural configuration cannot be changed after creation; blocked fields: ${changedFields.join(", ")}`
+      );
+    }
+  }
+
   private hasImageMetadata(data: Record<string, unknown>) {
     return [
       "imageUrl",
@@ -706,10 +744,13 @@ export class ProductService {
   private validateOperationalRules(rules: ProductOperationalRules) {
     this.assertOperationalStatus(rules.operationalStatus);
     this.assertRotationClass(rules.rotationClass);
-    this.assertOptionalNonNegative(rules.minStock, "minStock");
-    this.assertOptionalNonNegative(rules.maxStock, "maxStock");
+    if (rules.isInventoryable) {
+      this.assertOptionalNonNegative(rules.minStock, "minStock");
+      this.assertOptionalNonNegative(rules.maxStock, "maxStock");
+    }
 
     if (
+      rules.isInventoryable &&
       rules.minStock !== null &&
       rules.maxStock !== null &&
       rules.maxStock < rules.minStock
@@ -719,13 +760,14 @@ export class ProductService {
       );
     }
 
-    if (rules.requiresExpiration && !rules.requiresLot) {
+    if (rules.isInventoryable && rules.requiresExpiration && !rules.requiresLot) {
       throw new BadRequestException(
         "requiresLot is required when requiresExpiration is true"
       );
     }
 
     if (
+      rules.isInventoryable &&
       rules.isPerishable &&
       !rules.requiresLot &&
       !rules.requiresExpiration
@@ -775,6 +817,7 @@ export class ProductService {
     product: CreateProductInput
   ): ProductOperationalRules {
     return {
+      isInventoryable: product.isInventoryable ?? true,
       isPerishable: product.isPerishable ?? false,
       requiresLot: product.requiresLot ?? false,
       requiresExpiration: product.requiresExpiration ?? false,
@@ -809,6 +852,7 @@ export class ProductService {
     data: UpdateProductInput
   ): ProductOperationalRules {
     return {
+      isInventoryable: data.isInventoryable ?? current.isInventoryable,
       isPerishable: data.isPerishable ?? current.isPerishable,
       requiresLot: data.requiresLot ?? current.requiresLot,
       requiresExpiration:
@@ -830,6 +874,7 @@ export class ProductService {
     this.assertOptionalNonNegative(product.priceWithTax, "priceWithTax");
     this.assertOptionalNonNegative(product.priceWithoutTax, "priceWithoutTax");
     this.assertOptionalBoolean(product.isPerishable, "isPerishable");
+    this.assertOptionalBoolean(product.isInventoryable, "isInventoryable");
     this.assertOptionalBoolean(product.requiresLot, "requiresLot");
     this.assertOptionalBoolean(
       product.requiresExpiration,
@@ -912,6 +957,7 @@ export class ProductService {
           priceWithTax: entity.priceWithTax,
           priceWithoutTax: entity.priceWithoutTax,
           isActive: entity.isActive,
+          isInventoryable: entity.isInventoryable,
           isPerishable: entity.isPerishable,
           requiresLot: entity.requiresLot,
           requiresExpiration: entity.requiresExpiration,
@@ -1018,17 +1064,124 @@ export class ProductService {
     };
   }
 
+  private async assertCanDisableInventoryability(
+    tenantId: string,
+    productId: string,
+    client: import("pg").PoolClient
+  ) {
+    const branches = await client.query<{ id: string }>(
+      `
+        SELECT id
+        FROM tenant_branches
+        WHERE tenant_id = $1
+        ORDER BY id ASC
+      `,
+      [tenantId]
+    );
+
+    // V108 uses a distinct advisory-lock scope for branch_id NULL. Acquire it
+    // first so legacy rows cannot race this transition, then acquire every
+    // tenant branch in stable UUID order.
+    await client.query(
+      `SELECT public.inventory_lock_stock_scope($1::uuid, $2::uuid, $3::uuid)`,
+      [tenantId, null, productId]
+    );
+
+    for (const branch of branches.rows) {
+      await client.query(
+        `SELECT public.inventory_lock_stock_scope($1::uuid, $2::uuid, $3::uuid)`,
+        [tenantId, branch.id, productId]
+      );
+    }
+
+    const physicalState = await client.query<{
+      has_balance: boolean;
+      has_active_lot: boolean;
+      has_null_branch_balance: boolean;
+      has_stock_movement: boolean;
+    }>(
+      `
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM stock_movements sm
+            WHERE sm.tenant_id = $1
+              AND sm.product_id = $2
+            GROUP BY sm.branch_id
+            HAVING ROUND(
+              COALESCE(SUM(sm.quantity) FILTER (WHERE sm.type = 'IN'), 0)
+              - COALESCE(SUM(sm.quantity) FILTER (WHERE sm.type = 'OUT'), 0),
+              3
+            ) <> 0
+          ) AS has_stock_movement,
+          EXISTS (
+            SELECT 1
+            FROM inventory_lot_balances
+            WHERE tenant_id = $1
+              AND product_id = $2
+              AND (
+                COALESCE(quantity_on_hand, 0) > 0
+                OR COALESCE(quantity_reserved, 0) > 0
+                OR COALESCE(quantity_available, 0) > 0
+              )
+          ) AS has_balance,
+          EXISTS (
+            SELECT 1
+            FROM inventory_lots lot
+            INNER JOIN inventory_lot_balances balance
+              ON balance.tenant_id = lot.tenant_id
+             AND balance.lot_id = lot.id
+            WHERE lot.tenant_id = $1
+              AND lot.product_id = $2
+              AND lot.status = 'ACTIVE'
+              AND (
+                COALESCE(balance.quantity_on_hand, 0) > 0
+                OR COALESCE(balance.quantity_reserved, 0) > 0
+                OR COALESCE(balance.quantity_available, 0) > 0
+              )
+          ) AS has_active_lot,
+          EXISTS (
+            SELECT 1
+            FROM inventory_lot_balances
+            WHERE tenant_id = $1
+              AND product_id = $2
+              AND branch_id IS NULL
+              AND (
+                COALESCE(quantity_on_hand, 0) > 0
+                OR COALESCE(quantity_reserved, 0) > 0
+                OR COALESCE(quantity_available, 0) > 0
+              )
+          ) AS has_null_branch_balance
+      `,
+      [tenantId, productId]
+    );
+    const state = physicalState.rows[0];
+    if (
+      state?.has_balance ||
+      state?.has_active_lot ||
+      state?.has_null_branch_balance ||
+      state?.has_stock_movement
+    ) {
+      throw new ConflictException(
+        "product must have zero stock, reservations and active lot balances in every branch"
+      );
+    }
+  }
+
   async updateProduct(
     id: string,
     tenantId: string,
-    data: ProductUpdatePayload
+    data: ProductUpdatePayload,
+    context?: ProductUpdateContext
   ) {
     this.assertNoDirectPriceUpdate(data);
 
-    const current = await this.productRepository.findById(id, tenantId);
+    let current = await this.productRepository.findById(id, tenantId);
     if (!current) {
       throw new NotFoundException("product not found");
     }
+
+    this.assertStructuralConfigurationUnchanged(current, data);
 
     if (data.name !== undefined) {
       this.validateName(data.name);
@@ -1038,6 +1191,7 @@ export class ProductService {
     this.assertOptionalNonNegative(data.priceWithTax, "priceWithTax");
     this.assertOptionalNonNegative(data.priceWithoutTax, "priceWithoutTax");
     this.assertOptionalBoolean(data.isPerishable, "isPerishable");
+    this.assertOptionalBoolean(data.isInventoryable, "isInventoryable");
     this.assertOptionalBoolean(data.requiresLot, "requiresLot");
     this.assertOptionalBoolean(data.requiresExpiration, "requiresExpiration");
 
@@ -1109,6 +1263,31 @@ export class ProductService {
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
+
+      const lockedCurrent = await this.productRepository.findByIdForUpdate(
+        id,
+        tenantId,
+        client
+      );
+      if (!lockedCurrent) {
+        throw new NotFoundException("product not found");
+      }
+      current = lockedCurrent;
+
+      const changesInventoryability =
+        data.isInventoryable !== undefined &&
+        data.isInventoryable !== current.isInventoryable;
+      if (changesInventoryability) {
+        const reason = context?.inventoryabilityChangeReason?.trim();
+        if (!reason) {
+          throw new BadRequestException(
+            "inventoryabilityChangeReason is required when changing isInventoryable"
+          );
+        }
+        if (data.isInventoryable === false) {
+          await this.assertCanDisableInventoryability(tenantId, id, client);
+        }
+      }
 
       const shouldRecalcStoredPrices =
         Boolean(taxResolution) || this.hasOwn(data, "taxProfile");
@@ -1210,6 +1389,26 @@ export class ProductService {
             hasAdv: taxResolution?.hasAdv ?? false,
           },
           client
+        );
+      }
+
+      if (changesInventoryability) {
+        await client.query(
+          `
+            INSERT INTO auditoria_eventos
+              (tenant_id, usuario_id, modulo, entidad, entidad_id, accion, datos_antes, datos_despues)
+            VALUES ($1, $2, 'inventory', 'products', $3, 'PRODUCT_INVENTORYABILITY_CHANGED', $4::jsonb, $5::jsonb)
+          `,
+          [
+            tenantId,
+            context?.userId ?? null,
+            id,
+            JSON.stringify({ isInventoryable: current.isInventoryable }),
+            JSON.stringify({
+              isInventoryable: data.isInventoryable,
+              reason: context?.inventoryabilityChangeReason?.trim(),
+            }),
+          ]
         );
       }
 

@@ -19,7 +19,7 @@ export class DevicesController {
   }
 
   @Post("discover")
-  discover(): DiscoverDevicesResponse {
+  discover(): Promise<DiscoverDevicesResponse> {
     return this.devicesService.discover();
   }
 

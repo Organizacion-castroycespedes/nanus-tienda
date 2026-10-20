@@ -4,16 +4,25 @@ import type { RuntimeInfo as ElectronRuntimeInfo } from "../../../desktop/electr
 import { CAPABILITY_METHODS, getTerminalRuntime, hasRuntimeCapability, type RuntimeInfo } from "./runtime-contract";
 import { requestPeripheral, PeripheralAgentRequestError } from "./api";
 
-const info: RuntimeInfo = { electronRuntimeVersion: "0.1.0", bridgeContractVersion: 1, agentApiVersion: 1, capabilities: Object.keys(CAPABILITY_METHODS) as RuntimeInfo["capabilities"] };
+const info: RuntimeInfo = { electronRuntimeVersion: "0.1.0", bridgeContractVersion: 1, agentApiVersion: 2, capabilities: Object.keys(CAPABILITY_METHODS) as RuntimeInfo["capabilities"] };
 // Both independently built applications must agree on the complete wire shape.
 const electronInfo: ElectronRuntimeInfo = info;
 const webInfo: RuntimeInfo = electronInfo;
 const bridge = () => ({ ...Object.fromEntries(Object.values(CAPABILITY_METHODS).map((method) => [method, async () => "ok"])), getRuntimeInfo: async (): Promise<RuntimeInfo> => webInfo });
 
-test("generation 1 contracts and callable capabilities are compatible", async () => {
+test("generation 2 contracts and callable capabilities are compatible", async () => {
   const runtime = await getTerminalRuntime(bridge());
   assert.equal(runtime.state, "COMPATIBLE");
   assert.equal(hasRuntimeCapability(runtime, "printer.printTicket"), true);
+  assert.equal(hasRuntimeCapability(runtime, "scale.capture"), true);
+});
+
+test("generation 1 Agent remains compatible but cannot advertise commercial capture", async () => {
+  const legacyInfo = { ...info, agentApiVersion: 1, capabilities: Object.keys(CAPABILITY_METHODS).filter((name) => name !== "scale.capture") as RuntimeInfo["capabilities"] };
+  const runtime = await getTerminalRuntime({ ...bridge(), getRuntimeInfo: async () => legacyInfo });
+  assert.equal(runtime.state, "DEGRADED");
+  assert.equal(hasRuntimeCapability(runtime, "scale.currentWeight"), true);
+  assert.equal(hasRuntimeCapability(runtime, "scale.capture"), false);
 });
 
 test("browser/SSR and old partial bridges are safe", async () => {
@@ -35,7 +44,7 @@ test("missing methods and declarations degrade and unknown additive capabilities
 });
 
 test("unsupported and malformed metadata fail closed", async () => {
-  for (const raw of [null, {}, { ...info, bridgeContractVersion: 2 }, { ...info, agentApiVersion: 2 }, { ...info, bridgeContractVersion: 1.5 }, { ...info, capabilities: [1] }]) {
+  for (const raw of [null, {}, { ...info, bridgeContractVersion: 2 }, { ...info, agentApiVersion: 3 }, { ...info, bridgeContractVersion: 1.5 }, { ...info, capabilities: [1] }]) {
     const runtime = await getTerminalRuntime({ ...bridge(), getRuntimeInfo: async () => raw });
     assert.equal(runtime.state, "INCOMPATIBLE");
     assert.deepEqual(runtime.capabilities, []);

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -40,9 +41,17 @@ import {
 } from "../hooks/usePosCartStore";
 import { usePosUiStore } from "../hooks/usePosUiStore";
 import { useRequirePosSession } from "../../../domains/pos/hooks/useRequirePosSession";
+import { store } from "../../../store";
 import { useAppSelector } from "../../../store/hooks";
 import { useAutoClearState } from "../../../lib/useAutoClearState";
 import { ApiError } from "../../../lib/request";
+import {
+  acquireSaleSubmission,
+  isSaleIdempotencyConflict,
+  readDefinitiveStockRejection,
+  releaseSaleSubmission,
+} from "../utils/sale-recovery";
+import { runConfirmedSalePostProcessing } from "../utils/sale-postprocessing";
 import { hasMenuAccess } from "../../../lib/permissions";
 import { fetchSystemVersion } from "../../../domains/system/api";
 import {
@@ -62,7 +71,9 @@ import {
   type CartSaleItemPresentation,
 } from "./cart/CartSaleModal";
 import { PosProductCard } from "./catalog/PosProductCard";
+import { PosDiagnosticsPanel } from "./hardware/PosDiagnosticsPanel";
 import {
+  createPosWeightCapture,
   createSale,
   getPosCustomers,
   getPosProducts,
@@ -72,6 +83,8 @@ import {
   type PosLinePricePreviewResponse,
   type PosSalePayload,
 } from "../services/pos.service";
+import { PeripheralAgentRequestError, requestPeripheral } from "../../../domains/peripherals/api";
+import { getScaleCaptureOperatorMessage } from "../utils/scale-capture-error";
 import {
   buildDefaultPayments,
   buildPaymentId,
@@ -102,7 +115,6 @@ import {
 import {
   getPeripheralFeatureFlags,
   openCashDrawer,
-  readCurrentWeight,
   simulateScannerRead,
   subscribeScannerEvents,
 } from "../../../domains/peripherals/contracts";
@@ -110,6 +122,7 @@ import type {
   PeripheralOperationError,
   ScannerReadResult,
 } from "../../../domains/peripherals/types";
+import { PARAMETER_MODES } from "../../../domains/parameters/api";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
 import { useSalePrintWorkflow } from "../hooks/useSalePrintWorkflow";
 import {
@@ -152,6 +165,8 @@ import {
 } from "../utils/floating-control-position";
 import { useDraggableFloatingControl } from "../hooks/useDraggableFloatingControl";
 import { usePosFiltersStorage } from "../hooks/usePosFiltersStorage";
+import { resolvePosScaleUiState } from "../../../domains/peripherals/scale-visibility";
+import { resolveCurrentPosTerminalConfig } from "../../../domains/peripherals/terminal-config";
 
 type StockFilterKey = PosStockFilterKey;
 type ProductViewMode = "grid" | "list";
@@ -359,6 +374,12 @@ const arePaymentsEqual = (
 
 const isLowStock = (stock: number) => stock > 0 && stock <= 5;
 
+const isInventoryableProduct = (
+  product: Pick<ProductResponse, "isInventoryable">,
+) => product.isInventoryable !== false;
+
+const POS_SERVICE_CATALOG_STOCK_SENTINEL = 1_000_000;
+
 const isEditableShortcutTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -524,6 +545,7 @@ export const PosScreen = () => {
     items: cart,
     accounts,
     activeAccountId,
+    contextKey,
     payments,
     saleStatus,
     saleAttempt,
@@ -533,9 +555,9 @@ export const PosScreen = () => {
     setSaleStatus,
     setSelectedCustomerId,
     beginSaleSubmission,
-    markSaleSubmissionUnknown,
-    allowSaleSubmissionRetry,
-    allowUnknownSaleRetry,
+    markUnknownForAccount,
+    applyDefinitiveStockRejection,
+    confirmSaleForAccount,
     resetPosCartSale,
     addAccount,
     switchAccount,
@@ -584,6 +606,7 @@ export const PosScreen = () => {
     [updateFilters]
   );
   const [productToolsOpen, setProductToolsOpen] = useState(false);
+  const [bothSelectionProduct, setBothSelectionProduct] = useState<ProductResponse | null>(null);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
@@ -596,10 +619,16 @@ export const PosScreen = () => {
   const [financialInstitutionsCatalog, setFinancialInstitutionsCatalog] = useState<FinancialInstitution[]>([]);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [processingSale, setProcessingSale] = useState(false);
+  const [availabilityRefreshing, setAvailabilityRefreshing] = useState(false);
+  const [processingAccountIds, setProcessingAccountIds] = useState<Record<string, boolean>>({});
+  const processingSale = Boolean(processingAccountIds[activeAccountId]);
+  const saleSubmissionGateRef = useRef<Record<string, { inFlight: boolean }>>({});
+  const reconciliationGateRef = useRef<Record<string, { inFlight: boolean }>>({});
+  const availabilityRefreshGateRef = useRef(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [retryableUnknownAttemptIds, setRetryableUnknownAttemptIds] = useState<Record<string, string>>({});
   const [paymentWarning, setPaymentWarning] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
   const [scannerMockCode, setScannerMockCode] = useState("46564567");
@@ -614,10 +643,63 @@ export const PosScreen = () => {
   const [scaleLastResult, setScaleLastResult] = useState<string | null>(null);
   const [scaleReading, setScaleReading] = useState(false);
   const [peripheralDiagnosticsOpen, setPeripheralDiagnosticsOpen] = useState(false);
+  const [scaleConfigState, setScaleConfigState] = useState<
+    "loading" | "unconfigured" | "configured" | "error"
+  >("loading");
+  const getSaleSubmissionGate = (accountId: string) =>
+    (saleSubmissionGateRef.current[accountId] ??= { inFlight: false });
+  const getReconciliationGate = (accountId: string) =>
+    (reconciliationGateRef.current[accountId] ??= { inFlight: false });
+  const setAccountProcessing = (accountId: string, processing: boolean) => {
+    setProcessingAccountIds((current) => {
+      if (processing) {
+        return { ...current, [accountId]: true };
+      }
+
+      if (!current[accountId]) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next[accountId];
+      return next;
+    });
+  };
+  const isSaleTargetCurrent = (target: {
+    accountId: string;
+    attemptId: string;
+    contextKey: string;
+  }) => {
+    const current = store.getState().posCart;
+    return (
+      current.contextKey === target.contextKey &&
+      current.accounts.some(
+        (account) =>
+          account.id === target.accountId &&
+          account.saleAttempt?.attemptId === target.attemptId
+      )
+    );
+  };
+  const isSaleTargetActive = (target: {
+    accountId: string;
+    attemptId: string;
+    contextKey: string;
+  }) =>
+    isSaleTargetCurrent(target) && isSaleOriginActive(target);
+  const isSaleOriginActive = (target: {
+    accountId: string;
+    attemptId: string;
+    contextKey: string;
+  }) => {
+    const current = store.getState().posCart;
+    return (
+      current.contextKey === target.contextKey &&
+      current.activeAccountId === target.accountId
+    );
+  };
   const {
     pdfConfig,
     isBillingProcessing,
-    cancelBillingProcessing,
     closePdfModal,
     triggerPrintWorkflow,
   } = useSalePrintWorkflow();
@@ -631,6 +713,8 @@ export const PosScreen = () => {
   const scaleMockEnabled =
     peripheralFeatureFlags.peripheralsEnabled &&
     peripheralFeatureFlags.scaleEnabled;
+  const scaleUiVisible = scaleConfigState === "configured";
+  const scaleCaptureControlsVisible = scaleUiVisible;
   const mockDeviceControlsEnabled =
     process.env.NODE_ENV !== "production" ||
     process.env.NEXT_PUBLIC_POS_MOCK_DEVICES === "true";
@@ -647,6 +731,35 @@ export const PosScreen = () => {
   );
   const playProductAddedSound = useMemo(() => createProductAddedSoundPlayer(), []);
   useAutoClearState(toastMessage, setToastMessage);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setScaleConfigState("loading");
+    setScaleLastWeight(null);
+    setScaleLastResult(null);
+    setScaleMockStatus("disabled");
+
+    void resolveCurrentPosTerminalConfig({
+      tenantId: authUser?.tenantId,
+      branchId: activeBranchId,
+      terminalId: posTerminalId,
+    })
+      .then((config) => {
+        if (!cancelled) {
+          setScaleConfigState(resolvePosScaleUiState(config));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setScaleConfigState("error");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBranchId, authUser?.tenantId, posTerminalId]);
 
   useEffect(() => {
     cartRef.current = cart;
@@ -1172,15 +1285,33 @@ export const PosScreen = () => {
   const stockFilterCounts = useMemo(() => {
     return {
       all: products.length,
-      available: products.filter((product) => Number(product.stock ?? 0) > 0).length,
-      low: products.filter((product) => isLowStock(Number(product.stock ?? 0))).length,
-      out: products.filter((product) => Number(product.stock ?? 0) <= 0).length,
+      available: products.filter(
+        (product) =>
+          !isInventoryableProduct(product) || Number(product.stock ?? 0) > 0,
+      ).length,
+      low: products.filter(
+        (product) =>
+          isInventoryableProduct(product) &&
+          isLowStock(Number(product.stock ?? 0)),
+      ).length,
+      out: products.filter(
+        (product) =>
+          isInventoryableProduct(product) && Number(product.stock ?? 0) <= 0,
+      ).length,
     };
   }, [products]);
 
+  const deferredQuery = useDeferredValue(query);
+
   const filteredProducts = useMemo(() => {
-    return filterPosProductsForCatalog(products, {
-      query,
+    const catalogProducts = products.map((product) =>
+      isInventoryableProduct(product)
+        ? product
+        : { ...product, stock: POS_SERVICE_CATALOG_STOCK_SENTINEL },
+    );
+    const filteredProductIds = new Set(
+      filterPosProductsForCatalog(catalogProducts, {
+      query: deferredQuery,
       stockFilter: activeStockFilter,
       categoryId: selectedProductCategoryId,
       subcategoryId: selectedProductSubcategoryId,
@@ -1189,11 +1320,14 @@ export const PosScreen = () => {
         `${product.name} ${product.description ?? ""} ${collectPosScannerProductCodes(
           product
         ).join(" ")}`,
-    });
+      }).map((product) => product.id),
+    );
+
+    return products.filter((product) => filteredProductIds.has(product.id));
   }, [
     activeStockFilter,
+    deferredQuery,
     products,
-    query,
     selectedProductCategoryId,
     selectedProductSubcategoryId,
   ]);
@@ -1205,7 +1339,7 @@ export const PosScreen = () => {
   useEffect(() => {
     setVisibleProductCount(POS_CATALOG_PAGE_SIZE);
   }, [
-    query,
+    deferredQuery,
     activeStockFilter,
     selectedProductCategoryId,
     selectedProductSubcategoryId,
@@ -1445,7 +1579,12 @@ export const PosScreen = () => {
     [cartWithDerivedValues]
   );
   const refreshCartItemPricing = useCallback(
-    async (productId: string, quantity: number, pricingRequestKey: string) => {
+    async (
+      productId: string,
+      quantity: number,
+      pricingRequestKey: string,
+      saleMode: "UNIT" | "WEIGHT"
+    ) => {
       if (!activeBranchId) {
         return;
       }
@@ -1455,6 +1594,7 @@ export const PosScreen = () => {
           branchId: activeBranchId,
           productId,
           quantity,
+          saleMode,
           channel: "POS",
           customerId: selectedCustomerId ?? undefined,
         });
@@ -1527,7 +1667,12 @@ export const PosScreen = () => {
   );
 
   const queueCartItemPricing = useCallback(
-    (items: PosCartItem[], productId: string, quantity: number) => {
+    (
+      items: PosCartItem[],
+      productId: string,
+      quantity: number,
+      saleMode: "UNIT" | "WEIGHT"
+    ) => {
       if (!activeBranchId) {
         const message = "No hay una sucursal POS activa para calcular precio.";
         setCartItemsAndRef(
@@ -1554,7 +1699,7 @@ export const PosScreen = () => {
       );
 
       setCartItemsAndRef(nextItems);
-      void refreshCartItemPricing(productId, quantity, pricingRequestKey);
+      void refreshCartItemPricing(productId, quantity, pricingRequestKey, saleMode);
     },
     [
       activeBranchId,
@@ -1608,7 +1753,12 @@ export const PosScreen = () => {
         item.productId,
         item.quantity
       );
-      void refreshCartItemPricing(item.productId, item.quantity, pricingRequestKey);
+          void refreshCartItemPricing(
+            item.productId,
+            item.quantity,
+            pricingRequestKey,
+            item.saleMode ?? "UNIT"
+          );
     });
   }, [
     activeBranchId,
@@ -1626,7 +1776,12 @@ export const PosScreen = () => {
       );
       if (pendingItems.length > 0) {
         pendingItems.forEach((item) => {
-          void refreshCartItemPricing(item.productId, item.quantity, item.pricingRequestKey || "");
+          void refreshCartItemPricing(
+            item.productId,
+            item.quantity,
+            item.pricingRequestKey || "",
+            item.saleMode ?? "UNIT"
+          );
         });
       }
     };
@@ -1641,14 +1796,18 @@ export const PosScreen = () => {
 
   const setProductQuantityInCart = useCallback(
     (product: ProductResponse, quantity: number) => {
-      allowSaleSubmissionRetry();
+      if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+        setSubmitError("Verifica la venta pendiente antes de modificar este carrito.");
+        return false;
+      }
       setSubmitError(null);
 
       const currentCart = cartRef.current;
       const existing = currentCart.find((item) => item.productId === product.id);
       const stock = Number(product.stock ?? 0);
+      const isInventoryable = isInventoryableProduct(product);
 
-      if (stock <= 0) {
+      if (isInventoryable && stock <= 0) {
         showToast("El producto no tiene stock disponible.", "warning");
         return false;
       }
@@ -1658,38 +1817,43 @@ export const PosScreen = () => {
         return false;
       }
 
-      if (quantity > stock) {
+      if (isInventoryable && quantity > stock) {
         showToast("No puedes superar el stock disponible.", "warning");
         return false;
       }
 
       if (existing) {
         queueCartItemPricing(
-          currentCart.map((item) =>
-            item.productId === product.id ? { ...item, quantity } : item
-          ),
+          currentCart.map((item) => {
+            if (item.productId !== product.id) return item;
+            const { weightCapture: _weightCapture, ...unitItem } = item;
+            return { ...unitItem, saleMode: "UNIT", quantity };
+          }),
           product.id,
-          quantity
+          quantity,
+          "UNIT"
         );
         return true;
       }
 
       const nextItem: PosCartItem = {
         productId: product.id,
+        saleMode: "UNIT",
         name: product.name,
         sku: product.sku,
         quantity,
         price: Number(product.priceWithTax ?? product.price),
         stock,
+        isInventoryable,
         taxId: product.taxId ?? null,
         priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
         baseUnitPrice: Number(product.priceWithTax ?? product.price),
         basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
       };
-      queueCartItemPricing([...currentCart, nextItem], product.id, quantity);
+      queueCartItemPricing([...currentCart, nextItem], product.id, quantity, "UNIT");
       return true;
     },
-    [allowSaleSubmissionRetry, queueCartItemPricing, showToast]
+    [queueCartItemPricing, saleStatus, showToast]
   );
 
   const addToCart = useCallback(
@@ -1733,6 +1897,17 @@ export const PosScreen = () => {
         id: product.id,
         name: product.name,
       });
+      const saleType = getProductSaleType(product);
+      if (saleType === "BOTH") {
+        setBothSelectionProduct(product);
+        setScannerLastResult("Selecciona Unidad o Peso para continuar");
+        return;
+      }
+      if (saleType === "WEIGHT") {
+        void handleReadScaleForProduct(product);
+        setScannerLastResult("Iniciando lectura REAL de peso");
+        return;
+      }
       const added = addToCart(product);
       if (!added) {
         setScannerLastResult(`Producto no agregado por scanner: ${product.name}`);
@@ -1743,7 +1918,7 @@ export const PosScreen = () => {
       setScannerLastResult(message);
       showToast(message, "success");
     },
-    [addToCart, scannerHidLogger, showToast]
+    [addToCart, handleReadScaleForProduct, scannerHidLogger, showToast]
   );
 
   const handleScannerConnectionError = useCallback(
@@ -1835,122 +2010,84 @@ export const PosScreen = () => {
   ]);
 
   useEffect(() => {
-    if (!scaleMockEnabled) {
-      setScaleMockStatus("disabled");
-      return;
-    }
+    setScaleMockStatus("disabled");
+  }, [scaleUiVisible]);
 
-    setScaleMockStatus((current) => (current === "disabled" ? "ready" : current));
-  }, [scaleMockEnabled]);
-
-  const handleReadScaleForProduct = useCallback(
-    async (product: ProductResponse) => {
-      if (!scaleMockEnabled) {
-        return;
-      }
-
-      if (!isWeighableProduct(product)) {
-        const message = "Selecciona un producto pesable antes de leer la balanza";
+  async function handleReadScaleForProduct(product: ProductResponse) {
+      if (!scaleUiVisible) {
+        const message = "La balanza no está disponible o autorizada para esta terminal";
         setScaleLastResult(message);
         showToast(message, "warning");
         return;
       }
-
-      setScaleReading(true);
-      setScaleMockStatus("reading");
-      try {
-        const result = await readCurrentWeight({
-          tenantId: authUser?.tenantId,
-          branchId: activeBranchId ?? undefined,
-          terminalId: posTerminalId ?? "local-terminal",
-          deviceId: "mock-scale-001",
-        });
-
-        if (!result.success) {
-          const message =
-            result.error.code === "AGENT_OFFLINE"
-              ? "No se pudo leer la balanza"
-              : result.error.message;
-          setScaleMockStatus("error");
-          setScaleLastResult(message);
-          showToast(message, "warning");
-          return;
-        }
-
-        const weight = Number(result.data.weight);
-        const unit = result.data.unit || "kg";
-
-        if (!result.data.stable) {
-          const message = "Peso inestable, intenta nuevamente";
-          setScaleMockStatus("error");
-          setScaleLastResult(message);
-          showToast(message, "warning");
-          return;
-        }
-
-        if (!Number.isFinite(weight) || weight <= 0) {
-          const message = "Peso invalido, intenta nuevamente";
-          setScaleMockStatus("error");
-          setScaleLastResult(message);
-          showToast(message, "warning");
-          return;
-        }
-
-        const reading = `${formatScaleQuantity(weight)} ${unit}`;
-        setScaleLastWeight(reading);
-
-        const applied = setProductQuantityInCart(product, weight);
-        if (!applied) {
-          setScaleMockStatus("error");
-          setScaleLastResult(`Peso no aplicado: ${reading}`);
-          return;
-        }
-
-        const message = `Peso leído: ${reading}`;
-        setScaleMockStatus("ready");
-        setScaleLastResult(message);
-        void playProductAddedSound();
-        showToast(message, "success");
-        focusProductSearch();
-      } finally {
-        setScaleReading(false);
+      const existing = cartRef.current.find((item) => item.productId === product.id);
+      if (existing && existing.saleMode !== "WEIGHT") {
+        const message = "Retira el producto del carrito antes de cambiar su modo de venta";
+        setScaleLastResult(message); showToast(message, "warning"); return;
       }
-    },
-    [
-      activeBranchId,
-      authUser?.tenantId,
-      focusProductSearch,
-      playProductAddedSound,
-      posTerminalId,
-      scaleMockEnabled,
-      setProductQuantityInCart,
-      showToast,
-    ]
-  );
+      try {
+        const capture = await createPosWeightCapture(product.id);
+        const accepted = await requestPeripheral<{ captureId: string; status: string; reading: { weight: number; unit: string; source: string; unitVerified: boolean } }>(
+          "/scale/capture", { method: "POST", body: JSON.stringify({ captureId: capture.captureId }) },
+        );
+        if (accepted.captureId === capture.captureId && accepted.status === "READY"
+          && accepted.reading?.source === "REAL" && accepted.reading.unit === "kg"
+          && accepted.reading.unitVerified === true && accepted.reading.weight === 0) {
+          throw new PeripheralAgentRequestError("SCALE_WEIGHT_ZERO", "SCALE_WEIGHT_ZERO");
+        }
+        if (accepted.captureId !== capture.captureId || accepted.status !== "READY"
+          || accepted.reading?.source !== "REAL" || accepted.reading.unit !== "kg"
+          || accepted.reading.unitVerified !== true || !Number.isFinite(accepted.reading.weight)
+          || accepted.reading.weight <= 0) throw new Error("La captura REAL no fue aceptada");
+        const quantity = Number(accepted.reading.weight.toFixed(3));
+        const nextItem: PosCartItem = {
+          productId: product.id, saleMode: "WEIGHT",
+          weightCapture: { captureId: capture.captureId, nonce: capture.nonce, expiresAt: capture.expiresAt },
+          name: product.name, sku: product.sku, quantity,
+          price: Number(product.priceWithTax ?? product.price), stock: Number(product.stock ?? 0),
+          isInventoryable: isInventoryableProduct(product),
+          taxId: product.taxId ?? null, priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+          baseUnitPrice: Number(product.priceWithTax ?? product.price),
+          basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+        };
+        const nextCart = existing
+          ? cartRef.current.map((item) => item.productId === product.id ? nextItem : item)
+          : [...cartRef.current, nextItem];
+        queueCartItemPricing(nextCart, product.id, quantity, "WEIGHT");
+        setScaleLastResult(`Peso REAL leído: ${quantity.toFixed(3)} kg`);
+      } catch (error) {
+        const message = getScaleCaptureOperatorMessage(error)
+          ?? (error instanceof Error ? error.message : "No se pudo completar la captura REAL");
+        setScaleLastResult(message); showToast(message, "error");
+      }
+  }
 
   const handleReadScaleFromCart = useCallback(async () => {
-    if (!scaleMockEnabled) {
+    const product = firstWeighableCartProduct;
+    if (product) {
+      await handleReadScaleForProduct(product);
       return;
     }
-
-    if (!firstWeighableCartProduct) {
-      const message = "Selecciona un producto pesable antes de leer la balanza";
+    if (!scaleUiVisible) {
+      const message = "Esta terminal no tiene una balanza configurada y habilitada";
       setScaleLastResult(message);
       showToast(message, "warning");
       return;
     }
 
-    await handleReadScaleForProduct(firstWeighableCartProduct);
-  }, [
-    firstWeighableCartProduct,
-    handleReadScaleForProduct,
-    scaleMockEnabled,
-    showToast,
-  ]);
+    const message = "Agrega un producto pesable al carrito antes de leer la balanza";
+    setScaleLastResult(message);
+    showToast(message, "warning");
+  }, [firstWeighableCartProduct, handleReadScaleForProduct, scaleUiVisible, showToast]);
 
   const handleProductCardAction = useCallback(
     (product: ProductResponse) => {
-      if (getProductSaleType(product) === "WEIGHT") {
+      const saleType = getProductSaleType(product);
+      if (saleType === "BOTH") {
+        setBothSelectionProduct(product);
+        return;
+      }
+      if (saleType === "WEIGHT") {
         void handleReadScaleForProduct(product);
         return;
       }
@@ -1959,6 +2096,21 @@ export const PosScreen = () => {
     },
     [addToCart, handleReadScaleForProduct]
   );
+
+  const closeBothSelection = useCallback(() => setBothSelectionProduct(null), []);
+
+  const selectBothUnit = useCallback(() => {
+    if (!bothSelectionProduct) return;
+    addToCart(bothSelectionProduct);
+    setBothSelectionProduct(null);
+  }, [addToCart, bothSelectionProduct]);
+
+  const selectBothWeight = useCallback(() => {
+    if (!bothSelectionProduct) return;
+    const product = bothSelectionProduct;
+    setBothSelectionProduct(null);
+    void handleReadScaleForProduct(product);
+  }, [bothSelectionProduct, handleReadScaleForProduct]);
 
   const handleSearchKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -2041,6 +2193,10 @@ export const PosScreen = () => {
   );
 
   const updateQuantity = (productId: string, nextQuantity: number) => {
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+      setSubmitError("Verifica la venta pendiente antes de modificar este carrito.");
+      return;
+    }
     setSaleStatus(POS_SALE_STATUSES.DRAFT);
     setSubmitError(null);
 
@@ -2055,7 +2211,9 @@ export const PosScreen = () => {
       return;
     }
 
-    const safeQuantity = Math.min(nextQuantity, target.stock);
+    const safeQuantity = target.isInventoryable === false
+      ? nextQuantity
+      : Math.min(nextQuantity, target.stock);
     if (safeQuantity === target.quantity && target.pricingStatus !== POS_CART_PRICING_STATUSES.ERROR) {
       return;
     }
@@ -2068,11 +2226,16 @@ export const PosScreen = () => {
         return [{ ...item, quantity: safeQuantity }];
       }),
       productId,
-      safeQuantity
+      safeQuantity,
+      target.saleMode ?? "UNIT"
     );
   };
 
   const removeCartItem = (productId: string) => {
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+      setSubmitError("Verifica la venta pendiente antes de modificar este carrito.");
+      return;
+    }
     setSaleStatus(POS_SALE_STATUSES.DRAFT);
     setSubmitError(null);
     setCartItemsAndRef(cartRef.current.filter((item) => item.productId !== productId));
@@ -2100,60 +2263,208 @@ export const PosScreen = () => {
       return;
     }
 
-    setProcessingSale(true);
-    setSubmitError(null);
+    if (!contextKey) {
+      return;
+    }
+
+    const target = {
+      accountId: activeAccountId,
+      attemptId: saleAttempt.attemptId,
+      contextKey,
+    };
+    const reconciliationGate = getReconciliationGate(target.accountId);
+    if (!acquireSaleSubmission(reconciliationGate)) {
+      return;
+    }
+
+    setAccountProcessing(target.accountId, true);
+    if (isSaleTargetActive(target)) {
+      setSubmitError(null);
+    }
     try {
-      const sale = await reconcileSale(saleAttempt.attemptId);
-      setSaleStatus(POS_SALE_STATUSES.CONFIRMED);
-      setCartItemsAndRef([]);
-      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
-      setExpandedTaxItems({});
-      setPaymentModalOpen(false);
-      resetPayments();
-      showToast(`Venta ${sale.id} encontrada y confirmada.`, "success");
+      const sale = await reconcileSale(target.attemptId);
+      if (!isSaleTargetCurrent(target)) {
+        return;
+      }
+
+      confirmSaleForAccount({
+        ...target,
+        selectedCustomerId: finalConsumerCustomer?.id ?? null,
+        payments: buildDefaultPayments(),
+      });
+      setRetryableUnknownAttemptIds((current) => {
+        const next = { ...current };
+        delete next[target.accountId];
+        return next;
+      });
+      if (isSaleOriginActive(target)) {
+        setExpandedTaxItems({});
+        setPaymentModalOpen(false);
+        showToast(`Venta ${sale.id} encontrada y confirmada.`, "success");
+      }
     } catch (error) {
+      if (!isSaleTargetCurrent(target)) {
+        return;
+      }
+
       if (error instanceof ApiError && error.status === 404) {
-        setSubmitError("No se encontro una venta con esta clave. Puedes reintentar con la misma clave.");
+        setRetryableUnknownAttemptIds((current) => ({
+          ...current,
+          [target.accountId]: target.attemptId,
+        }));
+        if (isSaleTargetActive(target)) {
+          setSubmitError("No se encontro una venta con esta clave. Puedes reintentar con la misma clave.");
+        }
       } else if (error instanceof ApiError && error.status === 409) {
-        setSubmitError("La venta sigue pendiente en el servidor. Espera y verifica de nuevo.");
+        setRetryableUnknownAttemptIds((current) => {
+          const next = { ...current };
+          delete next[target.accountId];
+          return next;
+        });
+        if (isSaleTargetActive(target)) {
+          setSubmitError("La venta sigue pendiente en el servidor. Espera y verifica de nuevo.");
+        }
       } else {
-        setSubmitError("No se pudo verificar la venta. Conservamos el intento para evitar duplicados.");
+        setRetryableUnknownAttemptIds((current) => {
+          const next = { ...current };
+          delete next[target.accountId];
+          return next;
+        });
+        if (isSaleTargetActive(target)) {
+          setSubmitError("No se pudo verificar la venta. Conservamos el intento para evitar duplicados.");
+        }
       }
     } finally {
-      setProcessingSale(false);
+      releaseSaleSubmission(reconciliationGate);
+      setAccountProcessing(target.accountId, false);
     }
   };
 
-  const openChargeModal = useCallback(() => {
-    setSubmitError(null);
-    const selectedCustomerIsAvailable = customers.some(
-      (customer) => customer.id === selectedCustomerId
-    );
-    if (!selectedCustomerIsAvailable) {
-      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+  const openChargeModal = useCallback(async () => {
+    if (availabilityRefreshGateRef.current) {
+      return;
     }
-    const result = createDefaultCashPayment(
-      summary.total,
-      paymentMethodsCatalog,
-      createPaymentDraft
-    );
-    setPaymentWarning(result.error);
-    setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
-    setPaymentModalOpen(true);
-    setCartSheetOpen(false);
+    if (!activeBranchId || !contextKey) {
+      setSubmitError("No hay un contexto POS activo para actualizar disponibilidad.");
+      return;
+    }
+
+    const targetContextKey = contextKey;
+    const targetAccountId = activeAccountId;
+    availabilityRefreshGateRef.current = true;
+    setAvailabilityRefreshing(true);
+    setSubmitError(null);
+
+    try {
+      const refreshedProducts = (await getPosProducts(activeBranchId)).filter(
+        (product) => product.isActive,
+      );
+      const currentState = store.getState().posCart;
+      if (
+        currentState.contextKey !== targetContextKey ||
+        currentState.activeAccountId !== targetAccountId
+      ) {
+        return;
+      }
+
+      setProducts(refreshedProducts);
+      const refreshedByProductId = new Map(
+        refreshedProducts.map((product) => [product.id, product]),
+      );
+      const refreshedCart = cartRef.current.map((item) => {
+        const product = refreshedByProductId.get(item.productId);
+        return product && typeof product.stock === "number"
+          ? {
+              ...item,
+              stock: product.stock,
+              isInventoryable: isInventoryableProduct(product),
+            }
+          : item;
+      });
+      setCartItemsAndRef(refreshedCart);
+
+      const exceeded = refreshedCart.find(
+        (item) =>
+          item.isInventoryable !== false &&
+          item.saleMode !== "WEIGHT" &&
+          item.quantity > item.stock,
+      );
+      if (exceeded) {
+        setSubmitError(
+          `${exceeded.name}: solicitas ${exceeded.quantity} y hay ${exceeded.stock} disponibles. Reduce la cantidad o elimina el producto.`,
+        );
+        showToast("Disponibilidad actualizada. Revisa el carrito.", "warning");
+        return;
+      }
+
+      const selectedCustomerIsAvailable = customers.some(
+        (customer) => customer.id === selectedCustomerId,
+      );
+      if (!selectedCustomerIsAvailable) {
+        setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+      }
+      const result = createDefaultCashPayment(
+        summary.total,
+        paymentMethodsCatalog,
+        createPaymentDraft,
+      );
+      setPaymentWarning(result.error);
+      setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
+      setPaymentModalOpen(true);
+      setCartSheetOpen(false);
+    } catch {
+      const currentState = store.getState().posCart;
+      if (
+        currentState.contextKey !== targetContextKey ||
+        currentState.activeAccountId !== targetAccountId
+      ) {
+        return;
+      }
+
+      setSubmitError(
+        "No se pudo actualizar la disponibilidad. El backend validará el stock nuevamente antes de registrar la venta.",
+      );
+      const selectedCustomerIsAvailable = customers.some(
+        (customer) => customer.id === selectedCustomerId,
+      );
+      if (!selectedCustomerIsAvailable) {
+        setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
+      }
+      const result = createDefaultCashPayment(
+        summary.total,
+        paymentMethodsCatalog,
+        createPaymentDraft,
+      );
+      setPaymentWarning(result.error);
+      setPayments(result.payments.length > 0 ? result.payments : buildDefaultPayments());
+      setPaymentModalOpen(true);
+      setCartSheetOpen(false);
+    } finally {
+      availabilityRefreshGateRef.current = false;
+      setAvailabilityRefreshing(false);
+    }
   }, [
+    activeAccountId,
+    activeBranchId,
     createPaymentDraft,
+    contextKey,
     customers,
     finalConsumerCustomer,
     paymentMethodsCatalog,
     selectedCustomerId,
+    setCartItemsAndRef,
     setCartSheetOpen,
     setPayments,
     setSelectedCustomerId,
+    showToast,
     summary.total,
   ]);
 
   const cancelCurrentSale = useCallback(async () => {
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+      setSubmitError("Verifica la venta pendiente antes de cancelar este carrito.");
+      return;
+    }
     if (cartRef.current.length > 0) {
       try {
         await confirm({
@@ -2184,7 +2495,23 @@ export const PosScreen = () => {
     setCartItemsAndRef,
     setCartSheetOpen,
     setSelectedCustomerId,
+    saleStatus,
   ]);
+
+  const handleRemoveAccount = useCallback((accountId: string) => {
+    const account = accounts.find((candidate) => candidate.id === accountId);
+    if (account?.saleStatus === POS_SALE_STATUSES.UNKNOWN || account?.saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+      setSubmitError("Verifica la venta pendiente antes de eliminar esta cuenta.");
+      return;
+    }
+    removeAccount(accountId);
+  }, [accounts, removeAccount]);
+
+  const handleSwitchAccount = useCallback((accountId: string) => {
+    setPaymentModalOpen(false);
+    setSubmitError(null);
+    switchAccount(accountId);
+  }, [switchAccount]);
 
   const closeCartSheet = useCallback(() => {
     setCartSheetOpen(false);
@@ -2441,7 +2768,8 @@ export const PosScreen = () => {
     }
 
     const hasExceededStock = cartWithDerivedValues.some(
-      (item) => item.quantity > item.stock
+      (item) =>
+        item.isInventoryable !== false && item.quantity > item.stock,
     );
     if (hasExceededStock) {
       return "Hay items que superan el stock disponible.";
@@ -2484,14 +2812,17 @@ export const PosScreen = () => {
       return "Selecciona un metodo de pago valido en cada linea.";
     }
 
-    const hasMissingReference = localParsed.some(
+    const paymentMissingReference = localParsed.find(
       (payment) =>
         payment.numericAmount > 0 &&
         payment.method?.requiresReference &&
         payment.reference.trim().length === 0
     );
-    if (hasMissingReference) {
-      return "Los metodos que exigen referencia deben incluirla.";
+    if (paymentMissingReference) {
+      const methodName = paymentMissingReference.method?.nombre?.trim();
+      return methodName
+        ? `Falta el número de referencia del pago con ${methodName}.`
+        : "Falta el número de referencia del pago.";
     }
 
     const duplicateMethods = localParsed
@@ -2526,11 +2857,25 @@ export const PosScreen = () => {
   const submitSale = async (options?: {
     paymentsOverride?: PaymentDraft[];
     customerIdOverride?: string | null;
+    allowUnknownRetry?: boolean;
   }) => {
-    if (saleStatus === POS_SALE_STATUSES.UNKNOWN) {
+    const retryableUnknownAttemptId = retryableUnknownAttemptIds[activeAccountId];
+    const isApprovedUnknownRetry =
+      options?.allowUnknownRetry === true &&
+      saleStatus === POS_SALE_STATUSES.UNKNOWN &&
+      saleAttempt?.attemptId === retryableUnknownAttemptId;
+    if (saleStatus === POS_SALE_STATUSES.UNKNOWN && !isApprovedUnknownRetry) {
       setSubmitError(
         "La solicitud anterior quedo sin respuesta comprobable. Verifica la lista de ventas antes de habilitar otro intento."
       );
+      return;
+    }
+    if (options?.allowUnknownRetry && !saleAttempt) {
+      setSubmitError("No existe un intento comprobable para reintentar.");
+      return;
+    }
+    if (!contextKey) {
+      setSubmitError("La sesión POS no está lista para registrar la venta.");
       return;
     }
 
@@ -2549,6 +2894,13 @@ export const PosScreen = () => {
       setSubmitError(validationError);
       return;
     }
+    const invalidWeightCapture = cartWithDerivedValues.find((item) => item.saleMode === "WEIGHT"
+      && (!item.weightCapture || !Number.isFinite(Date.parse(item.weightCapture.expiresAt))
+        || Date.parse(item.weightCapture.expiresAt) <= Date.now()));
+    if (invalidWeightCapture) {
+      setSubmitError("La captura de peso venció o ya no está disponible. Retira y vuelve a leer el producto.");
+      return;
+    }
 
     const effectivePayments = buildEffectivePayments(localParsed, derived.overpayment);
     const paymentTotal = round(
@@ -2558,21 +2910,42 @@ export const PosScreen = () => {
     const saleType: PosSalePayload["type"] =
       paymentTotal >= summary.total ? "CASH" : "CREDIT";
 
+    const saleGate = getSaleSubmissionGate(activeAccountId);
+    if (!acquireSaleSubmission(saleGate)) {
+      return;
+    }
+
     const attempt = saleAttempt ?? {
       attemptId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
       startedAt: new Date().toISOString(),
     };
+    const target = {
+      accountId: activeAccountId,
+      attemptId: attempt.attemptId,
+      contextKey,
+    };
+    const notifyOrigin = (message: string, variant: ToastVariant) => {
+      if (isSaleOriginActive(target)) {
+        showToast(message, variant);
+      }
+    };
     beginSaleSubmission(attempt);
-    setProcessingSale(true);
+    setAccountProcessing(target.accountId, true);
     setSubmitError(null);
 
+    let sale: Awaited<ReturnType<typeof createSale>>;
     try {
-      const sale = await createSale(
+      sale = await createSale(
         {
           customerId: customerIdForSubmit!,
           type: saleType,
-          items: cartWithDerivedValues.map((item) => ({
+          items: cartWithDerivedValues.map((item) => item.saleMode === "WEIGHT"
+            ? { productId: item.productId, saleMode: "WEIGHT" as const, weightCapture: {
+                captureId: item.weightCapture!.captureId, nonce: item.weightCapture!.nonce,
+              } }
+            : {
             productId: item.productId,
+            saleMode: "UNIT" as const,
             quantity: item.quantity,
             price: item.finalUnitPrice ?? item.price,
             taxes: item.taxes.map((tax) => ({
@@ -2586,7 +2959,7 @@ export const PosScreen = () => {
               taxAmount: tax.taxAmount,
               isIncluded: tax.isIncluded,
             })),
-          })),
+          }),
           payments: effectivePayments.map((payment) => ({
             paymentMethodId: payment.paymentMethodId,
             amount: payment.amount,
@@ -2598,15 +2971,79 @@ export const PosScreen = () => {
         },
         { "Idempotency-Key": attempt.attemptId },
       );
+    } catch (error) {
+      if (!isSaleTargetCurrent(target)) {
+        releaseSaleSubmission(saleGate);
+        setAccountProcessing(target.accountId, false);
+        return;
+      }
+      const definitiveStockRejection = readDefinitiveStockRejection(error);
+      if (definitiveStockRejection) {
+        // The reducer clears saleAttempt synchronously. Authorize feedback first.
+        const shouldNotifyOrigin = isSaleTargetActive(target);
+        applyDefinitiveStockRejection({
+          ...target,
+          productId: definitiveStockRejection.productId,
+          availableQuantity: definitiveStockRejection.availableQuantity,
+        });
+        setRetryableUnknownAttemptIds((current) => {
+          const next = { ...current };
+          delete next[target.accountId];
+          return next;
+        });
+        if (shouldNotifyOrigin && isSaleOriginActive(target)) {
+          const failedItem = cartWithDerivedValues.find(
+            (item) => item.productId === definitiveStockRejection.productId,
+          );
+          const productName = failedItem?.name ?? definitiveStockRejection.productId;
+          const message = `${productName}: solicitaste ${definitiveStockRejection.requestedQuantity} y hay ${definitiveStockRejection.availableQuantity} disponibles. Ajusta el carrito y vuelve a cobrar.`;
+          setSubmitError(message);
+          notifyOrigin(message, "warning");
+        }
+        releaseSaleSubmission(saleGate);
+        setAccountProcessing(target.accountId, false);
+        return;
+      }
 
-      setSaleStatus(POS_SALE_STATUSES.CONFIRMED);
-      // Successful checkout clears the persisted sale for this POS context.
-      setCartItemsAndRef([]);
-      setSelectedCustomerId(finalConsumerCustomer?.id ?? null);
-      setExpandedTaxItems({});
-      setPaymentModalOpen(false);
-      resetPayments();
-      showToast("Venta confirmada correctamente.", "success");
+      markUnknownForAccount(target);
+      setRetryableUnknownAttemptIds((current) => {
+        const next = { ...current };
+        delete next[target.accountId];
+        return next;
+      });
+      if (isSaleTargetActive(target)) {
+        setSubmitError(
+          isSaleIdempotencyConflict(error)
+            ? "La solicitud usa una clave de idempotencia en conflicto. Verifica la venta antes de reintentar."
+            : "No se recibio una respuesta comprobable. La venta podria haberse registrado; revisa la lista de ventas antes de reintentar."
+        );
+        notifyOrigin("Venta pendiente de verificacion.", "warning");
+      }
+      releaseSaleSubmission(saleGate);
+      setAccountProcessing(target.accountId, false);
+      return;
+    }
+
+    try {
+      if (!isSaleTargetCurrent(target)) {
+        return;
+      }
+
+      confirmSaleForAccount({
+        ...target,
+        selectedCustomerId: finalConsumerCustomer?.id ?? null,
+        payments: buildDefaultPayments(),
+      });
+      setRetryableUnknownAttemptIds((current) => {
+        const next = { ...current };
+        delete next[target.accountId];
+        return next;
+      });
+      if (isSaleOriginActive(target)) {
+        setExpandedTaxItems({});
+        setPaymentModalOpen(false);
+        notifyOrigin("Venta confirmada correctamente.", "success");
+      }
 
       const salePeripheralContext: PosSalePeripheralContext = {
         saleId: sale.id,
@@ -2656,9 +3093,9 @@ export const PosScreen = () => {
             reason: "SALE_CASH_PAYMENT",
           }).then((drawerRes) => {
             if (drawerRes.success) {
-              showToast("Cajón abierto", "success");
+              notifyOrigin("Cajón abierto", "success");
             }
-          });
+          }).catch(() => undefined);
         }
       }
 
@@ -2669,35 +3106,26 @@ export const PosScreen = () => {
         branchId: activeBranchId,
         terminalId: posTerminalId ?? undefined,
         electronicBillingEnabled: branding.electronicBillingEnabled !== false,
-        showToast,
-      });
+        electronicBillingMode:
+          branding.electronicBillingMode === PARAMETER_MODES.ON_DEMAND
+            ? PARAMETER_MODES.ON_DEMAND
+            : PARAMETER_MODES.AUTOMATIC,
+        electronicBilling: sale.electronicBilling ?? null,
+        showToast: notifyOrigin,
+      }).catch(() => undefined);
 
-      try {
-        if (!activeBranchId) {
-          throw new Error("missing branch");
-        }
-        const productsResult = await getPosProducts(activeBranchId);
-        setProducts(productsResult.filter((product) => product.isActive));
-      } catch {
-        // ignore background refresh issues
-      }
-    } catch (error) {
-      const isDefinitiveRejection =
-        error instanceof ApiError && error.status >= 400 && error.status < 500;
-      if (isDefinitiveRejection) {
-        allowSaleSubmissionRetry();
-        const msg = (error instanceof Error && error.message?.trim()) ? error.message.trim() : 'La venta fue rechazada. Revisa stock, pagos y permisos.';
-        setSubmitError(msg);
-        showToast("La venta fue rechazada.", "error");
-      } else {
-        markSaleSubmissionUnknown();
-        setSubmitError(
-          "No se recibio una respuesta comprobable. La venta podria haberse registrado; revisa la lista de ventas antes de reintentar."
-        );
-        showToast("Venta pendiente de verificacion.", "warning");
-      }
+      await runConfirmedSalePostProcessing({
+        refreshProducts: async () => {
+          if (!activeBranchId) {
+            throw new Error("missing branch");
+          }
+          const productsResult = await getPosProducts(activeBranchId);
+          setProducts(productsResult.filter((product) => product.isActive));
+        },
+      });
     } finally {
-      setProcessingSale(false);
+      releaseSaleSubmission(saleGate);
+      setAccountProcessing(target.accountId, false);
     }
   };
 
@@ -2705,6 +3133,13 @@ export const PosScreen = () => {
     saleStatus === POS_SALE_STATUSES.CONFIRMED && cartWithDerivedValues.length === 0
       ? POS_SALE_STATUSES.CONFIRMED
       : POS_SALE_STATUSES.DRAFT;
+
+  const retryUnknownSaleWithSameKey = () => {
+    if (!saleAttempt || saleAttempt.attemptId !== retryableUnknownAttemptIds[activeAccountId]) {
+      return;
+    }
+    void submitSale({ allowUnknownRetry: true });
+  };
 
   if (!canRead) {
     return (
@@ -2732,6 +3167,7 @@ export const PosScreen = () => {
       saleTypeLabel: productSaleTypeLabels[productSaleType],
       unitLabel,
       isWeighable: Boolean(product && isWeighableProduct(product)),
+      isInventoryable: product ? isInventoryableProduct(product) : true,
     };
   };
 
@@ -2834,9 +3270,50 @@ export const PosScreen = () => {
         ) : null}
       </div>
 
+      {bothSelectionProduct ? (
+        <Modal
+          title="Selecciona la modalidad de venta"
+          description={`${bothSelectionProduct.name} permite vender por unidad o por peso.`}
+          size="md"
+          onClose={closeBothSelection}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button variant="primary" size="lg" onClick={selectBothUnit} className="min-h-24 flex-col gap-1">
+              <span>Unidad</span>
+              <span className="text-xs font-normal opacity-80">Agregar como unidad</span>
+            </Button>
+            <Button variant="outline" size="lg" onClick={selectBothWeight} className="min-h-24 flex-col gap-1">
+              <span>Peso</span>
+              <span className="text-xs font-normal">Solicitar pesaje</span>
+            </Button>
+          </div>
+          <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+            La modalidad Peso requiere una balanza REAL autorizada. La selección no activa
+            el MOCK ni agrega el producto si el pesaje no está disponible.
+          </p>
+        </Modal>
+      ) : null}
+
       {catalogError ? (
         <section className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
           {catalogError}
+        </section>
+      ) : null}
+      {saleStatus === POS_SALE_STATUSES.UNKNOWN && saleAttempt ? (
+        <section className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+          <p className="font-semibold">Venta pendiente de verificación</p>
+          <p className="mt-1">Verifica la venta antes de modificar, cancelar o eliminar esta cuenta.</p>
+          {submitError ? <p className="mt-2">{submitError}</p> : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => void reconcileUnknownSale()} disabled={processingSale}>
+              Verificar venta
+            </Button>
+            {retryableUnknownAttemptIds[activeAccountId] === saleAttempt.attemptId ? (
+              <Button type="button" variant="primary" onClick={retryUnknownSaleWithSameKey} disabled={processingSale}>
+                Reintentar con la misma clave
+              </Button>
+            ) : null}
+          </div>
         </section>
       ) : null}
       {/* Main Layout - Sale-first workspace */}
@@ -2848,10 +3325,10 @@ export const PosScreen = () => {
               <PosAccountTabs
                 accounts={accounts}
                 activeAccountId={activeAccountId}
-                onSelectAccount={switchAccount}
+                onSelectAccount={handleSwitchAccount}
                 onAddAccount={addAccount}
                 onRenameAccount={renameAccount}
-                onRemoveAccount={removeAccount}
+                onRemoveAccount={handleRemoveAccount}
                 formatCurrency={formatCurrency}
               />
 
@@ -2974,7 +3451,7 @@ export const PosScreen = () => {
                 </div>
               </section>
 
-              {scaleMockEnabled && scaleMockStatus === "error" ? (
+              {scaleCaptureControlsVisible && scaleMockStatus === "error" ? (
                 <div
                   className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
                   role="alert"
@@ -2985,116 +3462,24 @@ export const PosScreen = () => {
               ) : null}
 
               {peripheralDiagnosticsOpen && canShowPeripheralDiagnostics ? (
-              <>
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                        Scanner
-                      </span>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                          scannerMockStatus === "connected"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
-                            : scannerMockStatus === "error"
-                              ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
-                              : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                        }`}
-                      >
-                        {scannerMockEnabled
-                          ? scannerMockStatus === "error"
-                            ? "Desconectado"
-                            : "Escuchando scanner.code.read"
-                          : "Desactivado por feature flag"}
-                      </span>
-                    </div>
-                    <Input
-                      label="Código scanner"
-                      placeholder="SKU, codigo de barras o referencia"
-                      value={scannerMockCode}
-                      onChange={(event) => setScannerMockCode(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void handleSimulateScannerRead();
-                        }
-                      }}
-                      disabled={!scannerMockEnabled}
-                      className="dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="md"
-                    isLoading={scannerSimulating}
-                    disabled={!scannerMockEnabled || !scannerMockCode.trim()}
-                    onClick={() => void handleSimulateScannerRead()}
-                    className="xl:mb-0.5"
-                  >
-                    <Search className="h-4 w-4" />
-                    Simular scanner
-                  </Button>
-                </div>
-                {scannerLastCode || scannerLastResult ? (
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
-                    {scannerLastCode ? <span>Ultimo codigo: {scannerLastCode}</span> : null}
-                    {scannerLastResult ? <span>{scannerLastResult}</span> : null}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-800/70">
-                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <div className="min-w-0">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                        <Scale className="h-4 w-4" />
-                        Balanza
-                      </span>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                          scaleMockStatus === "ready"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
-                            : scaleMockStatus === "reading"
-                              ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
-                              : scaleMockStatus === "error"
-                                ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
-                                : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
-                        }`}
-                      >
-                        {scaleMockEnabled
-                          ? scaleMockStatus === "reading"
-                            ? "Leyendo"
-                            : scaleMockStatus === "error"
-                              ? "Error"
-                              : "Listo"
-                          : "Desactivado por feature flag"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-300">
-                      <span>
-                        Producto pesable:{" "}
-                        {firstWeighableCartProduct?.name ?? "ninguno en carrito"}
-                      </span>
-                      {scaleLastWeight ? <span>Ultimo peso: {scaleLastWeight}</span> : null}
-                      {scaleLastResult ? <span>{scaleLastResult}</span> : null}
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="md"
-                    isLoading={scaleReading}
-                    disabled={!scaleMockEnabled || scaleReading}
-                    onClick={() => void handleReadScaleFromCart()}
-                    className="xl:mb-0.5"
-                  >
-                    <Scale className="h-4 w-4" />
-                    Leer balanza
-                  </Button>
-                </div>
-              </div>
-              </>
+                <PosDiagnosticsPanel
+                  scannerMockStatus={scannerMockStatus}
+                  scannerMockEnabled={scannerMockEnabled}
+                  scannerMockCode={scannerMockCode}
+                  setScannerMockCode={setScannerMockCode}
+                  scannerSimulating={scannerSimulating}
+                  onSimulateScannerRead={() => void handleSimulateScannerRead()}
+                  scannerLastCode={scannerLastCode}
+                  scannerLastResult={scannerLastResult}
+                  scaleMockStatus={scaleMockStatus}
+                  scaleMockEnabled={scaleCaptureControlsVisible}
+                  scaleConfigState={scaleConfigState}
+                  firstWeighableCartProduct={firstWeighableCartProduct}
+                  scaleLastWeight={scaleLastWeight}
+                  scaleLastResult={scaleLastResult}
+                  scaleReading={scaleReading}
+                  onReadScaleFromCart={() => void handleReadScaleFromCart()}
+                />
               ) : null}
 
             </div>
@@ -3124,9 +3509,9 @@ export const PosScreen = () => {
                     const productSaleType = getProductSaleType(product);
                     const requiresScale = productSaleType === "WEIGHT";
                     const isProductActionDisabled =
-                      stock <= 0 ||
+                      (isInventoryableProduct(product) && stock <= 0) ||
                       !canCreate ||
-                      (requiresScale && (!scaleMockEnabled || scaleReading));
+                      (requiresScale && (!scaleCaptureControlsVisible || scaleReading));
                     const effectiveImage = resolveEffectivePosProductImage(product, {
                       categoryById: productCategoryById,
                       subcategoryById: productSubcategoryById,
@@ -3141,7 +3526,7 @@ export const PosScreen = () => {
                         stock={stock}
                         isProductActionDisabled={isProductActionDisabled}
                         requiresScale={requiresScale}
-                        scaleMockEnabled={scaleMockEnabled}
+                        scaleMockEnabled={scaleCaptureControlsVisible}
                         scaleReading={scaleReading}
                         effectiveImage={effectiveImage}
                         formattedPrice={formatCurrency(
@@ -3193,10 +3578,10 @@ export const PosScreen = () => {
         items={cartWithDerivedValues}
         summary={summary}
         expandedTaxItems={expandedTaxItems}
-        canCharge={canCharge}
+        canCharge={canCharge && !availabilityRefreshing}
         hasPricingPending={hasPricingPending}
         pricingErrorMessage={pricingErrorMessage}
-        scaleMockEnabled={scaleMockEnabled}
+        scaleControlsVisible={scaleCaptureControlsVisible}
         scaleReading={scaleReading}
         resolvePresentation={resolveCartItemPresentation}
         formatCurrency={formatCurrency}
@@ -3333,27 +3718,21 @@ export const PosScreen = () => {
           getPdf={pdfConfig.getPdf}
           description={pdfConfig.description}
           allowPrint={pdfConfig.allowPrint ?? true}
+          variant="ticket"
           onClose={closePdfModal}
         />
       ) : null}
 
       {isBillingProcessing ? (
-        <Modal
-          title="Facturación Electrónica"
-          onClose={cancelBillingProcessing}
-          size="md"
-        >
-          <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
+        <Modal title="Facturación electrónica" size="md">
+          <div className="flex flex-col items-center justify-center gap-3 px-6 py-8 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
-            <div>
-              <p className="text-base font-semibold text-slate-800">Generando Factura Electrónica</p>
-              <p className="text-xs text-slate-500 mt-1">
-                Procesando documento con el servicio fiscal. Puede tardar hasta 2 minutos.
-              </p>
-              <p className="text-xs text-slate-500 mt-2">
-                Si cierras esta ventana, la factura seguirá procesándose. La impresión automática se detendrá y podrás imprimirla desde Reportería POS.
-              </p>
-            </div>
+            <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              Preparando la factura…
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Esto toma unos segundos.
+            </p>
           </div>
         </Modal>
       ) : null}

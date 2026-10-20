@@ -4,6 +4,7 @@ import { apiClient } from "../../../lib/http";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
 import type { TaxResponse } from "../../inventory/services/tax.service";
+import type { ElectronicBillingOnlineResult } from "../../reporteria/services/electronic-billing.service";
 
 export type PosSalePayload = {
   customerId: string;
@@ -11,6 +12,7 @@ export type PosSalePayload = {
   type: "CASH" | "CREDIT";
   items: Array<{
     productId: string;
+    saleMode: "UNIT";
     quantity: number;
     price: number;
     orderItemId?: string | null;
@@ -25,6 +27,11 @@ export type PosSalePayload = {
       taxAmount: number;
       isIncluded: boolean;
     }>;
+  } | {
+    productId: string;
+    saleMode: "WEIGHT";
+    weightCapture: { captureId: string; nonce: string };
+    orderItemId?: string | null;
   }>;
   payments?: Array<{
     paymentMethodId: string;
@@ -49,12 +56,14 @@ export type SaleResponse = {
   totalPaid: number;
   balanceDue: number;
   createdAt: string;
+  electronicBilling?: ElectronicBillingOnlineResult | null;
 };
 
 export type PosLinePricePreviewPayload = {
   branchId: string;
   productId: string;
   quantity: number;
+  saleMode: "UNIT" | "WEIGHT";
   channel: "POS";
   customerId?: string;
   date?: string;
@@ -106,6 +115,11 @@ export const createSale = (payload: PosSalePayload, headers?: HeadersInit) =>
     headers,
     includePosSession: true,
     body: JSON.stringify(payload),
+  });
+
+export const createPosWeightCapture = (productId: string, headers?: HeadersInit) =>
+  apiClient<{ captureId: string; nonce: string; expiresAt: string }>("/sales/weight-captures", {
+    method: "POST", headers, includePosSession: true, body: JSON.stringify({ productId }),
   });
 
 export const reconcileSale = (idempotencyKey: string, headers?: HeadersInit) =>

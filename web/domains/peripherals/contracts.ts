@@ -1,3 +1,4 @@
+import { toPeripheralOperationErrorCode } from "./print-errors";
 import {
   fetchCurrentWeight,
   fetchPeripheralDevices,
@@ -127,7 +128,7 @@ const normalizeOperationError = (
   error: unknown
 ): PeripheralOperationError => {
   if (isPeripheralAgentRequestError(error)) {
-    return buildOperationError(operation, error.code, error.message);
+    return buildOperationError(operation, toPeripheralOperationErrorCode(error.code), error.message);
   }
 
   const message = getErrorMessage(error);
@@ -532,7 +533,7 @@ export const subscribePeripheralEvents = (
       emitSubscriptionError(
         callback,
         "subscribePeripheralEvents",
-        config.errorCode ?? "INVALID_CONFIG",
+        toPeripheralOperationErrorCode(config.errorCode ?? "INVALID_CONFIG"),
         config.message ?? "Configuracion de backend-perifericos invalida."
       );
       return () => undefined;
@@ -548,7 +549,7 @@ export const subscribePeripheralEvents = (
         return;
       }
 
-      const delayMs = Math.min(1000 * 2 ** reconnectAttempt, 10_000);
+      const delayMs = Math.min(2000 * 2 ** Math.min(reconnectAttempt, 4), 30_000);
       reconnectAttempt += 1;
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
@@ -567,15 +568,29 @@ export const subscribePeripheralEvents = (
         socket = new WebSocket(config.wsUrl);
 
         socket.onopen = () => {
+          if (stopped) {
+            try {
+              socket?.close();
+            } catch {
+              // ignore
+            }
+            return;
+          }
           reconnectAttempt = 0;
           options.onStatus?.("CONNECTED");
         };
 
         socket.onmessage = (event) => {
+          if (stopped) {
+            return;
+          }
           callback(parseSocketEvent(event));
         };
 
         socket.onerror = () => {
+          if (stopped) {
+            return;
+          }
           options.onStatus?.("DISCONNECTED");
           emitSubscriptionError(
             callback,
@@ -587,10 +602,16 @@ export const subscribePeripheralEvents = (
 
         socket.onclose = () => {
           socket = null;
+          if (stopped) {
+            return;
+          }
           options.onStatus?.("DISCONNECTED");
           scheduleReconnect();
         };
       } catch (error) {
+        if (stopped) {
+          return;
+        }
         options.onStatus?.("DISCONNECTED");
         emitSubscriptionError(
           callback,
@@ -611,8 +632,24 @@ export const subscribePeripheralEvents = (
         reconnectTimer = null;
       }
       options.onStatus?.("DISCONNECTED");
-      socket?.close();
-      socket = null;
+      if (socket) {
+        const currentSocket = socket;
+        socket = null;
+        currentSocket.onopen = null;
+        currentSocket.onmessage = null;
+        currentSocket.onerror = null;
+        currentSocket.onclose = null;
+        if (
+          currentSocket.readyState === WebSocket.OPEN ||
+          currentSocket.readyState === WebSocket.CONNECTING
+        ) {
+          try {
+            currentSocket.close();
+          } catch {
+            // ignore
+          }
+        }
+      }
     };
   } catch (error) {
     options.onStatus?.("DISCONNECTED");

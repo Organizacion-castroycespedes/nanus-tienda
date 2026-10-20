@@ -2,11 +2,13 @@ import { app, BrowserWindow, ipcMain, net, screen, shell } from "electron";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 
-import { createAgentDevice, discoverAgentDevices, getAgentCurrentWeight, getAgentHealth, listAgentDevices, listAgentLogs, openAgentCashDrawer, printAgentTicket, simulateAgentScanner, testAgentPrint, updateAgentDevice } from "./agent-client.js";
-import { buildRuntimeInfo, IPC_CHANNELS, type AgentHealth, type ShellInfo } from "./electron-api.js";
+import { acceptAgentEnrollmentEnvelope, captureAgentWeightForSaleIpc, createAgentDevice, discoverAgentDevices, getAgentCurrentWeight, getAgentHealth, getAgentSecurityStatus, listAgentDevices, listAgentLogs, openAgentCashDrawer, printAgentTicket, simulateAgentScanner, startAgentPairing, testAgentAuthorizationReading, testAgentPrint, updateAgentDevice } from "./agent-client.js";
+import { buildRuntimeInfo, IPC_CHANNELS, scaleCaptureIpcFailure, type AgentHealth, type ScaleCaptureIpcResult, type ShellInfo } from "./electron-api.js";
 import {
   resolveElectronConfig,
+  resolveAgentRoutingConfig,
   validateVersionedShellConfig,
+  type AgentRoutingConfig,
   type VersionedShellConfig,
 } from "./config.js";
 import {
@@ -50,6 +52,7 @@ const parseCloseBehavior = (value: string | undefined): CloseBehavior => {
 
 let electronConfig = resolveElectronConfig();
 let packagedShellConfig: VersionedShellConfig | null = null;
+let agentRoutingConfig: AgentRoutingConfig | null = null;
 let manusWebOrigin = electronConfig.webBaseUrl.origin;
 let closeBehavior = parseCloseBehavior(process.env.MANUS_ELECTRON_CLOSE_BEHAVIOR);
 let rendererRecoveryTimes: number[] = [];
@@ -77,12 +80,14 @@ const focusMainWindow = () => {
 
 const loadShellConfig = async () => {
   if (!app.isPackaged) {
+    agentRoutingConfig = resolveAgentRoutingConfig(false, null);
     return;
   }
   const configPath = path.join(process.resourcesPath, "manus-shell.config.json");
   try {
     const raw = JSON.parse(await readFile(configPath, "utf8"));
     packagedShellConfig = validateVersionedShellConfig(raw);
+    agentRoutingConfig = resolveAgentRoutingConfig(true, packagedShellConfig);
     electronConfig = resolveElectronConfig({
       MANUS_WEB_URL: packagedShellConfig.frontendUrl,
     });
@@ -97,7 +102,7 @@ const getShellInfo = (): ShellInfo => ({
   environment: packagedShellConfig?.environment ?? "dev",
   shellVersion: app.getVersion(),
   frontendOrigin: manusWebOrigin,
-  agentAvailable: Boolean(packagedShellConfig),
+  agentAvailable: Boolean(agentRoutingConfig),
 });
 
 const registerIpcHandlers = () => {
@@ -105,37 +110,44 @@ const registerIpcHandlers = () => {
   ipcMain.removeAllListeners(IPC_CHANNELS.retryConnection);
   ipcMain.handle(IPC_CHANNELS.getRuntimeInfo, async () => buildRuntimeInfo(
     app.getVersion(),
-    packagedShellConfig ? await getAgentHealth(packagedShellConfig) : { available: false },
+    agentRoutingConfig ? await getAgentHealth(agentRoutingConfig) : { available: false },
   ));
   ipcMain.removeHandler(IPC_CHANNELS.getShellInfo);
   ipcMain.removeHandler(IPC_CHANNELS.getAgentHealth);
   ipcMain.removeHandler(IPC_CHANNELS.listDevices);
   ipcMain.removeHandler(IPC_CHANNELS.discoverDevices);
-  for (const channel of [IPC_CHANNELS.createDevice, IPC_CHANNELS.updateDevice, IPC_CHANNELS.testPrint, IPC_CHANNELS.printTicket, IPC_CHANNELS.openCashDrawer, IPC_CHANNELS.simulateScanner, IPC_CHANNELS.currentWeight, IPC_CHANNELS.listLogs]) ipcMain.removeHandler(channel);
+  for (const channel of [IPC_CHANNELS.createDevice, IPC_CHANNELS.updateDevice, IPC_CHANNELS.testPrint, IPC_CHANNELS.printTicket, IPC_CHANNELS.openCashDrawer, IPC_CHANNELS.simulateScanner, IPC_CHANNELS.currentWeight, IPC_CHANNELS.agentSecurityStatus, IPC_CHANNELS.startAgentPairing, IPC_CHANNELS.acceptAgentEnrollmentEnvelope, IPC_CHANNELS.scaleAuthorizationTest, IPC_CHANNELS.scaleCapture, IPC_CHANNELS.listLogs]) ipcMain.removeHandler(channel);
   ipcMain.handle(IPC_CHANNELS.getShellInfo, () => getShellInfo());
   ipcMain.on(IPC_CHANNELS.retryConnection, () => requestManualRetry?.());
   ipcMain.handle(IPC_CHANNELS.getAgentHealth, async (): Promise<AgentHealth> => {
-    if (!packagedShellConfig) {
+    if (!agentRoutingConfig) {
       return { available: false, reason: "UNAVAILABLE" };
     }
-    return getAgentHealth(packagedShellConfig);
+    return getAgentHealth(agentRoutingConfig);
   });
   ipcMain.handle(IPC_CHANNELS.listDevices, async () => {
-    if (!packagedShellConfig) return [];
-    return listAgentDevices(packagedShellConfig);
+    if (!agentRoutingConfig) return [];
+    return listAgentDevices(agentRoutingConfig);
   });
   ipcMain.handle(IPC_CHANNELS.discoverDevices, async (_event, terminalId: unknown) => {
-    if (!packagedShellConfig || typeof terminalId !== "string") return { devices: [] };
-    return discoverAgentDevices(packagedShellConfig, terminalId);
+    if (!agentRoutingConfig || typeof terminalId !== "string") return { devices: [] };
+    return discoverAgentDevices(agentRoutingConfig, terminalId);
   });
-  ipcMain.handle(IPC_CHANNELS.createDevice, (_event, payload: unknown) => packagedShellConfig ? createAgentDevice(packagedShellConfig, payload) : []);
-  ipcMain.handle(IPC_CHANNELS.updateDevice, (_event, id: unknown, payload: unknown) => packagedShellConfig ? updateAgentDevice(packagedShellConfig, typeof id === "string" ? id : "", payload) : null);
-  ipcMain.handle(IPC_CHANNELS.testPrint, (_event, payload: unknown) => packagedShellConfig ? testAgentPrint(packagedShellConfig, payload) : null);
-  ipcMain.handle(IPC_CHANNELS.printTicket, (_event, payload: unknown) => packagedShellConfig ? printAgentTicket(packagedShellConfig, payload) : null);
-  ipcMain.handle(IPC_CHANNELS.openCashDrawer, (_event, payload: unknown) => packagedShellConfig ? openAgentCashDrawer(packagedShellConfig, payload) : null);
-  ipcMain.handle(IPC_CHANNELS.simulateScanner, (_event, payload: unknown) => packagedShellConfig ? simulateAgentScanner(packagedShellConfig, payload) : null);
-  ipcMain.handle(IPC_CHANNELS.currentWeight, (_event, payload: unknown) => packagedShellConfig ? getAgentCurrentWeight(packagedShellConfig, payload) : null);
-  ipcMain.handle(IPC_CHANNELS.listLogs, () => packagedShellConfig ? listAgentLogs(packagedShellConfig) : []);
+  ipcMain.handle(IPC_CHANNELS.createDevice, (_event, payload: unknown) => agentRoutingConfig ? createAgentDevice(agentRoutingConfig, payload) : []);
+  ipcMain.handle(IPC_CHANNELS.updateDevice, (_event, id: unknown, payload: unknown) => agentRoutingConfig ? updateAgentDevice(agentRoutingConfig, typeof id === "string" ? id : "", payload) : null);
+  ipcMain.handle(IPC_CHANNELS.testPrint, (_event, payload: unknown) => agentRoutingConfig ? testAgentPrint(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.printTicket, (_event, payload: unknown) => agentRoutingConfig ? printAgentTicket(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.openCashDrawer, (_event, payload: unknown) => agentRoutingConfig ? openAgentCashDrawer(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.simulateScanner, (_event, payload: unknown) => agentRoutingConfig ? simulateAgentScanner(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.currentWeight, (_event, payload: unknown) => agentRoutingConfig ? getAgentCurrentWeight(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.agentSecurityStatus, () => agentRoutingConfig ? getAgentSecurityStatus(agentRoutingConfig) : null);
+  ipcMain.handle(IPC_CHANNELS.startAgentPairing, () => agentRoutingConfig ? startAgentPairing(agentRoutingConfig) : null);
+  ipcMain.handle(IPC_CHANNELS.acceptAgentEnrollmentEnvelope, (_event, payload: unknown) => agentRoutingConfig ? acceptAgentEnrollmentEnvelope(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.scaleAuthorizationTest, (_event, payload: unknown) => agentRoutingConfig ? testAgentAuthorizationReading(agentRoutingConfig, payload) : null);
+  ipcMain.handle(IPC_CHANNELS.scaleCapture, (_event, payload: unknown): Promise<ScaleCaptureIpcResult<unknown>> => agentRoutingConfig
+    ? captureAgentWeightForSaleIpc(agentRoutingConfig, payload)
+    : Promise.resolve(scaleCaptureIpcFailure("AGENT_UNAVAILABLE")));
+  ipcMain.handle(IPC_CHANNELS.listLogs, () => agentRoutingConfig ? listAgentLogs(agentRoutingConfig) : []);
 };
 
 const isSameOrigin = (candidateUrl: string) => {

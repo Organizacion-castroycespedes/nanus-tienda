@@ -72,6 +72,8 @@ export type SaleItemProps = {
   tenantId: string;
   saleId: string;
   productId: string;
+  saleMode?: "UNIT" | "WEIGHT";
+  measurementUnit?: "UND" | "KG" | null;
   orderItemId?: string | null;
   quantity: number;
   price: number;
@@ -100,6 +102,8 @@ export class SaleItemEntity {
   readonly tenantId: string;
   readonly saleId: string;
   readonly productId: string;
+  readonly saleMode: "UNIT" | "WEIGHT";
+  readonly measurementUnit: "UND" | "KG" | null;
   readonly orderItemId: string | null;
   readonly quantity: number;
   readonly price: number;
@@ -185,6 +189,8 @@ export class SaleItemEntity {
     this.tenantId = props.tenantId;
     this.saleId = props.saleId;
     this.productId = props.productId;
+    this.saleMode = props.saleMode ?? "UNIT";
+    this.measurementUnit = props.measurementUnit ?? (this.saleMode === "WEIGHT" ? "KG" : "UND");
     this.orderItemId = props.orderItemId ?? null;
     this.quantity = props.quantity;
     this.price = props.price;

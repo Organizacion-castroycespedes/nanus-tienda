@@ -67,8 +67,17 @@ export class PricingController {
     operationalRoles: pricingPreviewOperationalRoles,
   })
   previewLine(@Body() body: PreviewLineBody, @Req() request: AuthRequest) {
-    return this.pricingService.calculateLinePrice({
-      ...body,
+    if (body.saleMode !== undefined && body.saleMode !== "UNIT" && body.saleMode !== "WEIGHT") {
+      throw new BadRequestException("saleMode must be UNIT or WEIGHT");
+    }
+
+    const { saleMode, ...lineInput } = body;
+    const calculate = saleMode === "WEIGHT"
+      ? this.pricingService.calculateWeightedLinePrice
+      : this.pricingService.calculateLinePrice;
+
+    return calculate.call(this.pricingService, {
+      ...lineInput,
       tenantId: this.getTenantId(request),
     });
   }

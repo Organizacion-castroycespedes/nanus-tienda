@@ -72,6 +72,77 @@ test("electronic billing normalizes IVA base and amount for three units", () => 
   assert.deepEqual(normalized, { taxableBase: 300000, amount: 15000 });
 });
 
+test("electronic billing normalizes ADV unit snapshot for three units", () => {
+  const normalized = normalizeElectronicBillingTaxForQuantity({
+    quantity: 3,
+    lineBase: 346429.29,
+    expectedLineBase: 542601,
+    tax: {
+      dianCode: "36",
+      taxRate: 0.25,
+      taxBase: 180867,
+      taxAmount: 45216.75,
+    },
+  });
+
+  assert.deepEqual(normalized, { taxableBase: 542601, amount: 135650.25 });
+});
+
+test("electronic billing normalizes ICL unit snapshot for three units", () => {
+  const normalized = normalizeElectronicBillingTaxForQuantity({
+    quantity: 3,
+    lineBase: 346429.29,
+    expectedLineBase: 120,
+    tax: {
+      dianCode: "32",
+      taxRate: 360,
+      taxBase: 40,
+      taxAmount: 14400,
+    },
+  });
+
+  assert.deepEqual(normalized, { taxableBase: 120, amount: 43200 });
+});
+
+test("electronic billing keeps ICL and ADV line snapshots for two units", () => {
+  const icl = normalizeElectronicBillingTaxForQuantity({
+    quantity: 2,
+    lineBase: 126489.14,
+    expectedLineBase: 58,
+    tax: { dianCode: "32", taxRate: 360, taxBase: 58, taxAmount: 20880 },
+  });
+  const adv = normalizeElectronicBillingTaxForQuantity({
+    quantity: 2,
+    lineBase: 126489.14,
+    expectedLineBase: 90000,
+    tax: { dianCode: "36", taxRate: 0.25, taxBase: 90000, taxAmount: 22500 },
+  });
+  const iclWithoutProfile = normalizeElectronicBillingTaxForQuantity({
+    quantity: 2,
+    lineBase: 126489.14,
+    tax: { dianCode: "32", taxRate: 360, taxBase: 58, taxAmount: 20880 },
+  });
+
+  assert.deepEqual(icl, { taxableBase: 58, amount: 20880 });
+  assert.deepEqual(adv, { taxableBase: 90000, amount: 22500 });
+  assert.deepEqual(iclWithoutProfile, { taxableBase: 58, amount: 20880 });
+});
+
+test("electronic billing returns zero amount when tax rate is zero", () => {
+  const normalized = normalizeElectronicBillingTaxForQuantity({
+    quantity: 1,
+    lineBase: 52702.7,
+    tax: {
+      dianCode: "30",
+      taxRate: 0,
+      taxBase: 52702.7,
+      taxAmount: 25297.3,
+    },
+  });
+
+  assert.deepEqual(normalized, { taxableBase: 52702.7, amount: 0 });
+});
+
 type Scenario = {
   saleStatus?: "DRAFT" | "CONFIRMED" | "CANCELLED" | "REFUNDED";
   requiresLot?: boolean;
@@ -155,11 +226,22 @@ const makePreview = (
 
 class FakePricingService {
   readonly calls: CalculateLinePriceInput[] = [];
+  readonly weightedCalls: CalculateLinePriceInput[] = [];
 
   constructor(private readonly previews: LinePricePreview[] = []) {}
 
   async calculateLinePrice(input: CalculateLinePriceInput) {
     this.calls.push(input);
+    const preview = this.previews.shift() ?? makePreview();
+    return {
+      ...preview,
+      productId: input.productId,
+      quantity: input.quantity,
+    };
+  }
+
+  async calculateWeightedLinePrice(input: CalculateLinePriceInput) {
+    this.weightedCalls.push(input);
     const preview = this.previews.shift() ?? makePreview();
     return {
       ...preview,
@@ -687,6 +769,19 @@ const buildCreateSaleService = (
   const client = new FakeCreateSaleClient(includeTaxSnapshot, saleItemTaxRows);
   const repository = new FakeCreateSaleRepository(paymentMethodRecord);
   const pricingService = new FakePricingService([...previews]);
+  const productRepository = {
+    ...(billing?.productRepository ?? {}),
+    findById: async (id: string, tenantId: string) => {
+      const product = billing?.productRepository
+        ? await billing.productRepository.findById(id, tenantId)
+        : [ids.product, ids.productTwo].includes(id)
+          ? { id, isActive: true, saleType: "UNIT", measurementUnit: "UND" }
+          : null;
+      return product
+        ? { isActive: true, saleType: "UNIT", measurementUnit: "UND", ...product }
+        : null;
+    },
+  };
   const createdPayments: unknown[] = [];
   const auditEvents: unknown[] = [];
   const outboxEvents: Array<unknown> = [];
@@ -732,7 +827,7 @@ const buildCreateSaleService = (
         }
       : undefined,
     billing?.customerRepository as never,
-    billing?.productRepository as never,
+    productRepository as never,
     billing?.taxRepository as never,
     billing?.invoicingCustomersRepository as never
   );
@@ -1956,3 +2051,164 @@ test("SaleService validates verification digit presence for NIT customer fiscal 
   assert.equal(isComplete.call(service, { ...validNitCustomer, verificationDigit: null }), false);
 });
 
+
+test("SaleService sends a six-decimal unit price that rebuilds the line base", async () => {
+  const { service } = buildCreateSaleService([], {
+    customerRepository: { findById: async () => null },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "AGUA-300",
+        name: "Agua 300ml",
+        description: "Agua 300ml",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: { findById: async () => null },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => null,
+      findActiveFinalConsumer: async () => null,
+    },
+  });
+  const buildLines = (service as unknown as {
+    buildElectronicBillingLines: (
+      tenantId: string,
+      items: unknown[]
+    ) => Promise<Array<{ unitPrice: string; subtotalAmount: string; totalAmount: string }>>;
+  }).buildElectronicBillingLines;
+
+  const [line] = await buildLines.call(service, ids.tenant, [
+    {
+      saleItemId: "sale-item-1",
+      productId: ids.product,
+      quantity: 12,
+      price: 1000,
+      priceWithoutTax: 840.34,
+      taxBase: 10084.03,
+      lineTotal: 12000,
+      taxes: [
+        {
+          taxId: "iva-19",
+          taxName: "IVA 19%",
+          dianCode: "01",
+          taxTypeCode: "VAT",
+          calculationMethodCode: "PERCENTAGE",
+          taxRate: 0.19,
+          taxBase: 10084.03,
+          taxAmount: 1915.97,
+          isIncluded: true,
+        },
+      ],
+    },
+  ]);
+
+  assert.equal(line.unitPrice, "840.335833");
+  assert.equal(line.subtotalAmount, "10084.03");
+  assert.equal(line.totalAmount, "12000.00");
+  assert.equal(Math.round(Number(line.unitPrice) * 12 * 100) / 100, 10084.03);
+});
+
+test("SaleService keeps legacy UNIT input and requires capture-only WEIGHT input", () => {
+  const { service } = buildCreateSaleService([]);
+  const validate = (service as unknown as { ensureSaleInput: (data: unknown) => void })
+    .ensureSaleInput.bind(service);
+
+  assert.doesNotThrow(() => validate({
+    customerId: ids.customer,
+    type: "CASH",
+    items: [{ productId: ids.product, quantity: 2, price: 1250 }],
+  }));
+  assert.doesNotThrow(() => validate({
+    customerId: ids.customer,
+    type: "CASH",
+    items: [{
+      productId: ids.product,
+      saleMode: "WEIGHT",
+      weightCapture: {
+        captureId: "40000000-0000-4000-8000-000000000024",
+        nonce: "A".repeat(43),
+      },
+    }],
+  }));
+  assert.throws(() => validate({
+    customerId: ids.customer,
+    type: "CASH",
+    items: [{
+      productId: ids.product,
+      saleMode: "WEIGHT",
+      quantity: 0.245,
+      weightCapture: {
+        captureId: "40000000-0000-4000-8000-000000000024",
+        nonce: "A".repeat(43),
+      },
+    }],
+  }), /WEIGHT sale line cannot provide measurement or price authority/);
+  assert.throws(() => validate({
+    customerId: ids.customer,
+    type: "CASH",
+    items: [{
+      productId: ids.product,
+      saleMode: "WEIGHT",
+      weightCapture: { captureId: ids.product, nonce: "invalid" },
+    }],
+  }), /weightCapture captureId and nonce are required/);
+});
+
+test("weighted POS pricing preserves the canonical 0.245 kg quantity", async () => {
+  const { service, pricingService } = buildCreateSaleService([
+    makePreview({ quantity: 0.245, lineSubtotal: 24.5, lineTotal: 24.5 }),
+  ]);
+  const calculate = (service as unknown as {
+    calculatePricedPosItems: (input: unknown) => Promise<CreateSaleInput["items"]>;
+  }).calculatePricedPosItems.bind(service);
+
+  const [pricedItem] = await calculate({
+    tenantId: ids.tenant,
+    branchId: ids.branch,
+    customerId: ids.customer,
+    pricingCalculatedAt: new Date("2026-10-07T12:00:00.000Z"),
+    items: [{
+      saleItemId: "10000000-0000-0000-0000-000000000025",
+      saleMode: "WEIGHT",
+      productId: ids.product,
+      quantity: 0.245,
+      price: 0,
+    }],
+  });
+
+  assert.equal(pricingService.calls.length, 0);
+  assert.equal(pricingService.weightedCalls[0].quantity, 0.245);
+  assert.equal(pricedItem.quantity, 0.245);
+});
+
+test("SaleService starts PENDING capture from trusted POS context and returns the nonce once", async () => {
+  const statements: string[] = [];
+  const client = { query: async (sql: string) => {
+    statements.push(sql.trim());
+    if (sql.includes("FROM pos_terminals p")) return { rows: [{ binding_id: "binding", logical_scale_id: "scale", terminal_device_id: "device" }], rowCount: 1 };
+    return { rows: [], rowCount: 1 };
+  }, release: () => undefined };
+  const issued = { captureId: "capture-id", nonce: "one-time-nonce", expiresAt: new Date(Date.now() + 60_000) };
+  const service = Object.assign(Object.create(SaleService.prototype), {
+    db: { getClient: async () => client },
+    repository: {
+      validateActivePosSession: async (context: Record<string, string>) => context.posSessionId === ids.posSession,
+      findActivePosTerminalId: async () => "pos-terminal",
+    },
+    productRepository: { findById: async () => ({ isActive: true, saleType: "BOTH", measurementUnit: "KG" }) },
+    weightCapturePersistence: { createPending: async (_client: unknown, scope: Record<string, string>, ttlMs: number) => {
+      assert.deepEqual(scope, { tenantId: ids.tenant, branchId: ids.branch, posTerminalId: "pos-terminal",
+        operationalTerminalId: ids.terminal, posSessionId: ids.posSession, productId: ids.product,
+        logicalScaleId: "scale", bindingId: "binding", terminalDeviceId: "device" });
+      assert.equal(ttlMs, 60_000); return issued;
+    } },
+  }) as SaleService;
+  const result = await service.startWeightCapture(ids.product, {
+    tenantId: ids.tenant, userId: ids.user, branchId: ids.branch, terminalId: ids.terminal,
+    posSessionId: ids.posSession,
+  } as never);
+  assert.deepEqual(result, { captureId: "capture-id", nonce: "one-time-nonce", expiresAt: issued.expiresAt.toISOString() });
+  assert.equal(statements[0], "BEGIN");
+  assert.match(statements[1], /FROM pos_terminals p/);
+  assert.equal(statements[statements.length - 1], "COMMIT");
+});

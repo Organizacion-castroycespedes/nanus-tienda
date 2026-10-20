@@ -19,7 +19,6 @@ import {
   Calculator,
   Calendar,
   ClipboardList,
-  CreditCard,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -27,6 +26,7 @@ import {
   IdCard,
   KeyRound,
   LayoutDashboard,
+  LayoutGrid,
   Loader2,
   LogOut,
   Menu,
@@ -69,6 +69,7 @@ import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { setAuthPermissions, setUser } from "../../store/authSlice";
 import { setMenuCache, setMenuItems, setPermissions } from "../../store/menuSlice";
 import { usePosUiStore } from "../../modules/pos/hooks/usePosUiStore";
+import { hasProtectedSaleAttempt } from "../../store/posCart";
 import type { AuthProfile } from "../../domains/auth/types";
 import type { MenuItem, MenuResponse } from "../../domains/menu/types";
 import { Select } from "../../components/design-system/Select";
@@ -80,13 +81,24 @@ import { Toast, type ToastVariant } from "../../components/design-system/Toast";
 import { getCurrentCashSession } from "../../modules/finance/services/finance.service";
 import type { CashSession } from "../../modules/finance/types";
 import {
+  getPeripheralAgentHealth,
   getPeripheralDevices,
+  getPeripheralFeatureFlags,
   subscribePeripheralEvents,
   type PeripheralSocketStatus,
 } from "../../domains/peripherals/contracts";
-import type { PeripheralDevice } from "../../domains/peripherals/types";
+import type {
+  PeripheralAgentHealth,
+  PeripheralDevice,
+  PosTerminalResolvedConfig,
+} from "../../domains/peripherals/types";
+import { isElectronTerminal } from "../../domains/peripherals/api";
 import { resolveCurrentPosTerminalConfig } from "../../domains/peripherals/terminal-config";
 import { resolvePrinterDisplayName } from "../../domains/peripherals/printer-display";
+import {
+  resolvePrinterHeaderState,
+  resolveScaleHeaderState,
+} from "../../domains/peripherals/header-readiness";
 import {
   HeaderPeripheralStatus,
   HeaderPeripheralStatusGroup,
@@ -99,6 +111,8 @@ const normalizeIconName = (value: string) =>
 const iconByName: Record<string, LucideIcon> = {
   menu: Menu,
   layoutdashboard: LayoutDashboard,
+  layoutgrid: LayoutGrid,
+  grid: LayoutGrid,
   settings: Settings,
   user: User,
   users: Users,
@@ -238,19 +252,25 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   const posCartItemCount = useAppSelector((state) =>
     state.posCart.items.reduce((sum, item) => sum + item.quantity, 0)
   );
+  const hasProtectedPosSale = useAppSelector((state) =>
+    hasProtectedSaleAttempt(state.posCart)
+  );
   const hasPendingPosSale = posCartItemCount > 0;
   const confirm = useConfirm();
   const sidebarCompanyName = company?.razonSocial || authUser?.tenantName || "Empresa";
-  const brandingLogo = branding.logoUrl ?? branding.logo;
+  const brandingLogo = branding.logo ?? branding.logoUrl;
   const params = useParams();
   const urlTenant = Array.isArray(params?.tenant) ? params.tenant[0] : params?.tenant;
   const tenantSlug = resolveTenantSlug(authUser);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [connectivityState, setConnectivityState] = useState<HeaderConnectivityState>("RECONNECTING");
+  const [isElectronRuntime, setIsElectronRuntime] = useState(false);
   const [printerSocketStatus, setPrinterSocketStatus] = useState<PeripheralSocketStatus>("CONNECTING");
   const [printerName, setPrinterName] = useState<string | null>(null);
   const [peripheralDevices, setPeripheralDevices] = useState<PeripheralDevice[]>([]);
+  const [peripheralConfig, setPeripheralConfig] = useState<PosTerminalResolvedConfig | null>(null);
+  const [peripheralAgentHealth, setPeripheralAgentHealth] = useState<PeripheralAgentHealth | null>(null);
   const companyInitials = useMemo(() => {
     const name = sidebarCompanyName.trim();
     if (!name) return "";
@@ -279,26 +299,52 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
       peripheralDevices.find((device) => device.type === type),
     [peripheralDevices]
   );
-  const scaleDevice = findPeripheral("SCALE");
+  const discoveredScaleDevice = findPeripheral("SCALE");
+  const scaleDevice = isElectronRuntime
+    ? peripheralConfig?.source === "CONFIGURED" && peripheralConfig.features.scale
+      ? peripheralDevices.find(
+          (device) => device.id === peripheralConfig.scaleDeviceId && device.type === "SCALE"
+        )
+      : undefined
+    : discoveredScaleDevice;
   const scannerDevice = findPeripheral("SCANNER");
-  const printerHeaderStatus =
+  const legacyPrinterHeaderStatus =
     printerSocketStatus === "CONNECTED"
       ? "OK"
       : printerSocketStatus === "CONNECTING"
         ? "Conectando"
         : "Error";
-  const printerHeaderTone: HeaderPeripheralTone =
+  const legacyPrinterHeaderTone: HeaderPeripheralTone =
     printerSocketStatus === "CONNECTED"
       ? "ok"
       : printerSocketStatus === "CONNECTING"
         ? "warning"
         : "error";
-  const printerHeaderDetail =
+  const legacyPrinterHeaderDetail =
     printerSocketStatus === "CONNECTED"
       ? printerName ?? "Nombre no disponible"
       : printerSocketStatus === "CONNECTING"
         ? "Conectando con el servicio de impresión"
         : "Revise el Peripheral Agent";
+  const printerHeader = isElectronRuntime
+    ? resolvePrinterHeaderState({
+        isElectron: true,
+        socketStatus: printerSocketStatus,
+        printerName,
+        config: peripheralConfig,
+        devices: peripheralDevices,
+        health: peripheralAgentHealth,
+      })
+    : {
+        status: legacyPrinterHeaderStatus,
+        tone: legacyPrinterHeaderTone,
+        detail: legacyPrinterHeaderDetail,
+      };
+  const scaleHeader = resolveScaleHeaderState({
+    config: peripheralConfig,
+    devices: peripheralDevices,
+    health: peripheralAgentHealth,
+  });
   const isNetworkOffline =
     connectivityState === "OFFLINE" || connectivityState === "SERVICE_UNAVAILABLE";
   const networkHeaderStatus =
@@ -329,6 +375,10 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   useAutoClearState(toastMessage, setToastMessage);
 
   useEffect(() => {
+    setIsElectronRuntime(isElectronTerminal());
+  }, []);
+
+  useEffect(() => {
     const handleConnectivityState = (event: Event) => {
       const nextState = (event as CustomEvent<{ state?: HeaderConnectivityState }>).detail?.state;
       if (nextState) {
@@ -341,6 +391,11 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    const flags = getPeripheralFeatureFlags();
+    if (!flags.peripheralsEnabled) {
+      setPrinterSocketStatus("DISCONNECTED");
+      return;
+    }
     return subscribePeripheralEvents(() => undefined, {
       onStatus: setPrinterSocketStatus,
     });
@@ -350,33 +405,41 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     let cancelled = false;
 
     const loadPrinterName = async () => {
-      if (!authUser?.tenantId) {
+      const flags = getPeripheralFeatureFlags();
+      if (!flags.peripheralsEnabled || !authUser?.tenantId) {
         setPrinterName(null);
         setPeripheralDevices([]);
+        setPeripheralConfig(null);
+        setPeripheralAgentHealth(null);
         return;
       }
 
       try {
-        const [configResult, devicesResult] = await Promise.all([
+        const [configResult, devicesResult, healthResult] = await Promise.all([
           resolveCurrentPosTerminalConfig({
             tenantId: authUser.tenantId,
             branchId: authUser.branchId,
           }),
           getPeripheralDevices(),
+          isElectronTerminal() ? getPeripheralAgentHealth() : Promise.resolve(null),
         ]);
 
         if (cancelled) {
           return;
         }
 
+        setPeripheralConfig(configResult);
+        setPeripheralAgentHealth(healthResult?.success ? healthResult.data : null);
+        setPeripheralDevices(devicesResult.success ? devicesResult.data : []);
         setPrinterName(
-          resolvePrinterDisplayName(configResult, devicesResult.data ?? [])
+          resolvePrinterDisplayName(configResult, devicesResult.success ? devicesResult.data : [])
         );
-        setPeripheralDevices(devicesResult.data ?? []);
       } catch {
         if (!cancelled) {
           setPrinterName(null);
           setPeripheralDevices([]);
+          setPeripheralConfig(null);
+          setPeripheralAgentHealth(null);
         }
       }
     };
@@ -438,6 +501,28 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
     setToastMessage(message);
     setToastVariant(variant);
   }, []);
+
+  const handleLogout = async () => {
+    if (!hasProtectedPosSale) {
+      await logout();
+      return;
+    }
+
+    try {
+      await confirm({
+        title: "Venta POS pendiente de verificación",
+        description:
+          "Hay una cuenta procesando o con una venta sin respuesta comprobable. Verifica la venta en el POS antes de cerrar sesión.",
+        confirmText: "Ir al POS y verificar",
+        cancelText: "Seguir aquí",
+      });
+      router.push(`/${tenantSlug}/pos`);
+    } catch (error) {
+      if (!isConfirmCancelledError(error)) {
+        showToast("No se pudo abrir la verificación del POS.", "error");
+      }
+    }
+  };
 
   const buildAuthHeaders = () => {
     const headers: Record<string, string> = {};
@@ -1399,21 +1484,19 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-              {!isPosRoute ? (
-                <Link
-                  href={`/${tenantSlug}/dashboard`}
-                  className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
-                  style={{
-                    borderColor: tenantTheme.header.iconButtonBorder,
-                    backgroundColor: tenantTheme.header.iconButtonBackground,
-                    color: tenantTheme.header.iconButtonText,
-                  }}
-                  aria-label="Ir al dashboard"
-                  title="Ir al dashboard"
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                </Link>
-              ) : null}
+              <Link
+                href={`/${tenantSlug}/dashboard`}
+                className="grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
+                style={{
+                  borderColor: tenantTheme.header.iconButtonBorder,
+                  backgroundColor: tenantTheme.header.iconButtonBackground,
+                  color: tenantTheme.header.iconButtonText,
+                }}
+                aria-label="Ir al dashboard"
+                title="Ir al dashboard"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Link>
               <button
                 type="button"
                 className="relative grid h-8 w-8 place-items-center rounded-lg border text-[var(--brand-header-text)] transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--brand-header-bg)]"
@@ -1445,35 +1528,32 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
               ) : null}
               {isPosRoute ? (
                 <HeaderPeripheralStatusGroup>
-                  <HeaderPeripheralStatus
-                    label="Balanza"
-                    Icon={Weight}
-                    status={peripheralStatusLabel(scaleDevice)}
-                    tone={peripheralStatusTone(scaleDevice)}
-                    detail={peripheralStatusDetail(scaleDevice)}
-                  />
+                  {isElectronRuntime || scaleDevice ? (
+                    <HeaderPeripheralStatus
+                      label="Balanza"
+                      Icon={Weight}
+                      status={isElectronRuntime ? scaleHeader.status : peripheralStatusLabel(scaleDevice)}
+                      tone={isElectronRuntime ? scaleHeader.tone : peripheralStatusTone(scaleDevice)}
+                      detail={isElectronRuntime ? scaleHeader.detail : peripheralStatusDetail(scaleDevice)}
+                    />
+                  ) : null}
                   <HeaderPeripheralStatus
                     label="Impresora"
                     Icon={Printer}
-                    status={printerHeaderStatus}
-                    tone={printerHeaderTone}
-                    detail={printerHeaderDetail}
+                    status={printerHeader.status}
+                    tone={printerHeader.tone}
+                    detail={printerHeader.detail}
                     pulse={printerSocketStatus === "CONNECTING"}
                   />
-                  <HeaderPeripheralStatus
-                    label="Escáner"
-                    Icon={ScanBarcode}
-                    status={peripheralStatusLabel(scannerDevice)}
-                    tone={peripheralStatusTone(scannerDevice)}
-                    detail={peripheralStatusDetail(scannerDevice)}
-                  />
-                  <HeaderPeripheralStatus
-                    label="Datáfono"
-                    Icon={CreditCard}
-                    status="Sin config."
-                    tone="idle"
-                    detail="No configurado en esta terminal"
-                  />
+                  {scannerDevice ? (
+                    <HeaderPeripheralStatus
+                      label="Escáner"
+                      Icon={ScanBarcode}
+                      status={peripheralStatusLabel(scannerDevice)}
+                      tone={peripheralStatusTone(scannerDevice)}
+                      detail={peripheralStatusDetail(scannerDevice)}
+                    />
+                  ) : null}
                   <HeaderPeripheralStatus
                     label="Red"
                     Icon={isNetworkOffline ? WifiOff : Wifi}
@@ -1672,7 +1752,7 @@ const TenantLayout = ({ children }: { children: ReactNode }) => {
                 }}
                 aria-label="Cerrar sesion"
                 title="Cerrar sesión"
-                onClick={() => logout()}
+                onClick={() => void handleLogout()}
               >
                 <LogOut className="h-4 w-4" />
               </button>

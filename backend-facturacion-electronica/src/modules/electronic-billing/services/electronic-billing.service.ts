@@ -281,16 +281,52 @@ export class ElectronicBillingService {
             client,
           );
 
-          const lines = await this.lineRepository.findByDocumentId(
-            providerContext.tenantId,
-            existing.id,
-            client,
+          await this.taxRepository.deleteByDocumentId(existing.id, client);
+          await this.lineRepository.deleteByDocumentId(existing.id, client);
+
+          const sourceLineType: ElectronicDocumentSourceType =
+            documentType === "INVOICE" ? "SALE" : "RETURN";
+
+          const lineInputs = command.lines.map((line, index) => ({
+            id: randomUUID(),
+            electronicDocumentId: existing.id,
+            sourceLineType,
+            sourceLineId: line.sourceLineId ?? null,
+            providerLineId: null,
+            sku: line.sku ?? null,
+            description: line.description,
+            quantity: line.quantity,
+            unitCode: line.unitCode ?? null,
+            unitPrice: line.unitPrice,
+            discountAmount: line.discountAmount ?? 0,
+            subtotalAmount: line.subtotalAmount,
+            taxAmount: line.taxAmount,
+            totalAmount: line.totalAmount,
+            taxTreatment: line.taxTreatment ?? null,
+            metadata: buildLineSnapshotMetadata(line),
+            createdAt: new Date(Date.now() + index),
+            updatedAt: new Date(Date.now() + index),
+          }));
+          const lines = await this.lineRepository.insertMany(lineInputs, client);
+
+          const taxInputs = command.lines.flatMap((line, lineIndex) =>
+            (line.taxes ?? []).map((tax) => ({
+              id: randomUUID(),
+              electronicDocumentId: existing.id,
+              electronicDocumentLineId: lines[lineIndex]?.id ?? null,
+              taxType: tax.type,
+              taxCode: tax.code ?? null,
+              taxSchemeId: tax.schemeId ?? null,
+              taxSchemeName: tax.schemeName ?? null,
+              rate: tax.rate,
+              taxableBase: tax.taxableBase,
+              taxAmount: tax.amount,
+              metadata: tax.metadata ?? {},
+              createdAt: new Date(),
+            })),
           );
-          const taxes = await this.taxRepository.findByDocumentId(
-            providerContext.tenantId,
-            existing.id,
-            client,
-          );
+          const taxes = await this.taxRepository.insertMany(taxInputs, client);
+
           const references = await this.referenceRepository.findByDocumentId(
             providerContext.tenantId,
             existing.id,

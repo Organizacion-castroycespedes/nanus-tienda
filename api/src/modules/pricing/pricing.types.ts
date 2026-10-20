@@ -5,6 +5,7 @@ export type CalculateLinePriceInput = {
   branchId: string;
   productId: string;
   quantity: number;
+  saleMode?: "UNIT" | "WEIGHT";
   channel: PricingChannel;
   customerId?: string;
   date?: string;

@@ -1,8 +1,8 @@
 {
-  "environment": "production",
-  "frontendUrl": "https://portal.emaus.centrivosoft.com/login",
+  "environment": "qa",
+  "frontendUrl": "https://www.apptiendamanus.space/login",
   "allowedOrigins": [
-    "https://portal.emaus.centrivosoft.com"
+    "https://www.apptiendamanus.space"
   ],
   "agentLoopbackOrigin": "http://127.0.0.1:4050"
 }

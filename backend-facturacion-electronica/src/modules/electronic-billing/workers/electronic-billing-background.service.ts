@@ -20,6 +20,8 @@ const DEFAULT_BATCH_SIZE = 10;
 const DEFAULT_MAX_RETRY_ATTEMPTS = 5;
 const DEFAULT_LEASE_MS = 300_000;
 const DEFAULT_MANUAL_REVIEW_DELAY_MS = 86_400_000;
+// Online (sync) emission can hold a document in PROCESSING up to the sync timeout.
+const IN_FLIGHT_PROCESSING_GRACE_MS = 120_000;
 
 const isAutomaticPreProviderRetryableCode = (code: string | null | undefined) => {
   const normalized = (code ?? "").toUpperCase();
@@ -51,7 +53,7 @@ const readBooleanEnv = (name: string, fallback: boolean) => {
 @Injectable()
 export class ElectronicBillingBackgroundService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ElectronicBillingBackgroundService.name);
-  private readonly enabled = readBooleanEnv("ELECTRONIC_BILLING_BACKGROUND_ENABLED", false);
+  private readonly enabled = readBooleanEnv("ELECTRONIC_BILLING_BACKGROUND_ENABLED", true);
   private readonly scanIntervalMs = readPositiveIntegerEnv(
     "ELECTRONIC_BILLING_BACKGROUND_SCAN_INTERVAL_MS",
     DEFAULT_SCAN_INTERVAL_MS,
@@ -142,6 +144,7 @@ export class ElectronicBillingBackgroundService implements OnModuleInit, OnModul
         dueBefore: now,
         limit: this.batchSize,
         leaseMs: this.leaseMs,
+        minStageAgeMs: IN_FLIGHT_PROCESSING_GRACE_MS,
       },
     );
     summary.processing += await this.processProcessingCandidates(processingCandidates, summary);

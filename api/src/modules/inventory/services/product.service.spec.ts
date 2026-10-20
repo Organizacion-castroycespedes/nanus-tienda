@@ -8,6 +8,7 @@ import { ProductService } from "./product.service";
 const tenantId = randomUUID();
 const secondTenantId = randomUUID();
 const unitId = randomUUID();
+const secondUnitId = randomUUID();
 const productId = randomUUID();
 const categoryId = randomUUID();
 const otherCategoryId = randomUUID();
@@ -63,12 +64,19 @@ type BuildServiceOptions = {
   products?: ProductEntity[];
   barcodes?: ProductBarcodeEntity[];
   stockByProduct?: Record<string, number>;
+  hasStockMovement?: boolean;
   barcodeProductIdCalls?: string[][];
   categories?: Array<{ id: string; tenantId: string }>;
   subcategories?: Array<{
     id: string;
     tenantId: string;
     categoryId: string;
+  }>;
+  findByIdCalls?: Array<{ id: string; tenantId: string }>;
+  updateCalls?: Array<{
+    id: string;
+    tenantId: string;
+    data: Partial<ProductProps>;
   }>;
 };
 
@@ -81,19 +89,34 @@ const buildService = (
     findBySku: async () => null,
     create: async (product: ProductProps) => ProductEntity.create(product),
     findAllByTenant: async () => products,
-    findById: async () => currentProduct,
+    findById: async (id: string, requestedTenantId: string) => {
+      options.findByIdCalls?.push({ id, tenantId: requestedTenantId });
+      return (
+        products.find(
+          (product) =>
+            product.id === id && product.tenantId === requestedTenantId
+        ) ?? null
+      );
+    },
+    findByIdForUpdate: async (id: string, requestedTenantId: string) =>
+      products.find(
+        (product) =>
+          product.id === id && product.tenantId === requestedTenantId
+      ) ?? null,
     update: async (
       id: string,
       productTenantId: string,
       data: Partial<ProductProps>
-    ) =>
-      ProductEntity.create({
+    ) => {
+      options.updateCalls?.push({ id, tenantId: productTenantId, data });
+      return ProductEntity.create({
         ...currentProduct,
         ...data,
         id,
         tenantId: productTenantId,
         updatedAt: new Date("2026-01-02T00:00:00.000Z"),
-      }),
+      });
+    },
     replaceProductTaxes: async () => undefined,
     findProductTaxes: async () => [],
     findProductTaxProfile: async () => null,
@@ -154,7 +177,21 @@ const buildService = (
 
   const db = {
     getClient: async () => ({
-      query: async () => ({ rows: [] }),
+      query: async (sql: string) => {
+        if (sql.includes("FROM stock_movements")) {
+          return {
+            rows: [
+              {
+                has_stock_movement: options.hasStockMovement ?? false,
+                has_balance: false,
+                has_active_lot: false,
+                has_null_branch_balance: false,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
       release: () => undefined,
     }),
   };
@@ -326,6 +363,64 @@ describe("ProductService enriched product rules", () => {
     assert.equal(product.imageUrl, null);
     assert.equal(product.imageStorageKey, null);
     assert.equal(product.imageUpdatedAt, null);
+  });
+
+  it("creates a non-inventory product without physical-rule validation", async () => {
+    const service = buildService();
+
+    const product = await service.createProduct({
+      ...baseCreateInput(),
+      isInventoryable: false,
+      isPerishable: true,
+      requiresExpiration: true,
+      requiresLot: false,
+    });
+
+    assert.equal(product.isInventoryable, false);
+    assert.equal(product.requiresExpiration, true);
+  });
+
+  it("requires an auditable reason for the TRUE to FALSE transition", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, tenantId, {
+          isInventoryable: false,
+        }),
+      /inventoryabilityChangeReason is required/
+    );
+  });
+
+  it("changes TRUE to FALSE with a reason and keeps the product history path", async () => {
+    const service = buildService();
+
+    const updated = await service.updateProduct(
+      productId,
+      tenantId,
+      { isInventoryable: false },
+      {
+        userId: "40000000-0000-0000-0000-000000000001",
+        inventoryabilityChangeReason: "Servicio",
+      }
+    );
+
+    assert.equal(updated.isInventoryable, false);
+  });
+
+  it("rejects TRUE to FALSE when stock movement balance is non-zero", async () => {
+    const service = buildService(buildProduct(), { hasStockMovement: true });
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(
+          productId,
+          tenantId,
+          { isInventoryable: false },
+          { inventoryabilityChangeReason: "Servicio" }
+        ),
+      /product must have zero stock, reservations and active lot balances in every branch/
+    );
   });
 
   it("creates a product with a valid category", async () => {
@@ -796,17 +891,80 @@ describe("ProductService enriched product rules", () => {
     );
   });
 
-  it("updates formal sale model fields without touching price", async () => {
+  it("creates a product with explicit structural configuration", async () => {
     const service = buildService();
 
-    const updated = await service.updateProduct(productId, tenantId, {
+    const created = await service.createProduct({
+      ...baseCreateInput(),
       saleType: "WEIGHT",
       measurementUnit: "KG",
+      isPerishable: true,
+      requiresLot: true,
+      requiresExpiration: true,
     });
 
-    assert.equal(updated.saleType, "WEIGHT");
-    assert.equal(updated.measurementUnit, "KG");
-    assert.equal(updated.price, 100);
+    assert.equal(created.saleType, "WEIGHT");
+    assert.equal(created.measurementUnit, "KG");
+    assert.equal(created.isPerishable, true);
+    assert.equal(created.requiresLot, true);
+    assert.equal(created.requiresExpiration, true);
+  });
+
+  it("rejects all structural changes even when the product has no movements", async () => {
+    const structuralChanges: Array<[keyof ProductProps, unknown]> = [
+      ["unitId", secondUnitId],
+      ["saleType", "WEIGHT"],
+      ["measurementUnit", "KG"],
+      ["isPerishable", true],
+      ["requiresLot", true],
+      ["requiresExpiration", true],
+    ];
+
+    for (const [field, value] of structuralChanges) {
+      const service = buildService();
+      await assert.rejects(
+        () =>
+          service.updateProduct(productId, tenantId, {
+            [field]: value,
+          } as any),
+        new RegExp(`blocked fields: ${field}`)
+      );
+    }
+  });
+
+  it("accepts identical structural values with an allowed commercial update", async () => {
+    const updateCalls: BuildServiceOptions["updateCalls"] = [];
+    const service = buildService(buildProduct(), { updateCalls });
+
+    const updated = await service.updateProduct(productId, tenantId, {
+      name: "Producto comercial actualizado",
+      unitId,
+      saleType: "UNIT",
+      measurementUnit: "UND",
+      isPerishable: false,
+      requiresLot: false,
+      requiresExpiration: false,
+    });
+
+    assert.equal(updated.name, "Producto comercial actualizado");
+    assert.equal(updateCalls?.length, 1);
+  });
+
+  it("uses tenant scope to read the structural baseline", async () => {
+    const findByIdCalls: BuildServiceOptions["findByIdCalls"] = [];
+    const service = buildService(buildProduct(), { findByIdCalls });
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, secondTenantId, {
+          name: "No autorizado",
+        }),
+      /product not found/
+    );
+
+    assert.deepEqual(findByIdCalls, [
+      { id: productId, tenantId: secondTenantId },
+    ]);
   });
 
   it("changes product price and stores applied history", async () => {

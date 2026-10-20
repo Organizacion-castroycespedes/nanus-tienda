@@ -1,10 +1,11 @@
 import { BadRequestException } from "@nestjs/common";
-import { DeviceType } from "../types/peripheral.types";
+import { ConnectionType, DeviceType } from "../types/peripheral.types";
 
 export const DeviceProfileId = {
   Thermal80mm: "THERMAL_80MM",
   Thermal58mm: "THERMAL_58MM",
   GenericText: "GENERIC_TEXT",
+  RochiA01e: "ROCHI_A01E",
 } as const;
 
 export type DeviceProfileId =
@@ -16,6 +17,15 @@ export type DeviceProfile = {
   paperWidthMm: number | null;
   supportsCut: boolean;
   supportsCashDrawerPulse: boolean;
+  deviceType?: DeviceType;
+  connectionType?: ConnectionType;
+  serial?: {
+    baudRate: number;
+    dataBits: 5 | 6 | 7 | 8;
+    stopBits: 1 | 2;
+    parity: "none" | "even" | "odd";
+    flowControl: "none" | "rtscts";
+  };
 };
 
 export const DEVICE_PROFILES: Record<DeviceProfileId, DeviceProfile> = {
@@ -39,6 +49,22 @@ export const DEVICE_PROFILES: Record<DeviceProfileId, DeviceProfile> = {
     paperWidthMm: null,
     supportsCut: false,
     supportsCashDrawerPulse: false,
+  },
+  ROCHI_A01E: {
+    id: DeviceProfileId.RochiA01e,
+    widthChars: 0,
+    paperWidthMm: null,
+    supportsCut: false,
+    supportsCashDrawerPulse: false,
+    deviceType: DeviceType.SCALE,
+    connectionType: ConnectionType.SERIAL,
+    serial: {
+      baudRate: 9600,
+      dataBits: 8,
+      stopBits: 1,
+      parity: "none",
+      flowControl: "none",
+    },
   },
 };
 

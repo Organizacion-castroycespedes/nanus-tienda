@@ -33,6 +33,22 @@ func emitCoreStep(sink installerCoreEventSink, sequence *uint64, eventType insta
 	sink.Emit(event)
 }
 
+func emitCoreStepMessage(sink installerCoreEventSink, sequence *uint64, eventType installerCoreEventType, step installerCoreStepID, message string) {
+	if sink == nil {
+		return
+	}
+	(*sequence)++
+	event := newCoreEvent(*sequence, eventType, step)
+	event.Message = message
+	sink.Emit(event)
+}
+
+func skipInteractiveDeviceSteps(sink installerCoreEventSink, sequence *uint64) {
+	message := "La deteccion y configuracion de perifericos continuan en la etapa visual posterior."
+	emitCoreStepMessage(sink, sequence, eventStepSkipped, stepDiscoverDevices, message)
+	emitCoreStepMessage(sink, sequence, eventStepSkipped, stepConfigureDevices, message)
+}
+
 func runCoreStep(sink installerCoreEventSink, sequence *uint64, step installerCoreStepID, operation func() error) error {
 	emitCoreStep(sink, sequence, eventStepStarted, step, nil)
 	err := operation()
@@ -186,9 +202,19 @@ func applyInstallerCoreEvent(state *installerCoreState, event installerCoreEvent
 		target.State = coreStepRunning
 		state.Phase, state.CurrentStep = coreRunning, string(target.ID)
 		state.CanCancel = false
-	case eventStepSucceeded, eventStepWarning, eventStepFailed:
+	case eventStepSucceeded, eventStepWarning, eventStepFailed, eventStepSkipped:
 		if target.State != coreStepRunning {
-			return false
+			if event.Type != eventStepSkipped || target.State != coreStepPending {
+				return false
+			}
+		}
+		if event.Type == eventStepSkipped {
+			target.State = coreStepSkipped
+			target.Message, target.DurationMs = event.Message, 0
+			state.Progress = completedProgress(state.Steps)
+			state.CurrentStep = ""
+			state.CanCancel = true
+			return true
 		}
 		target.State = mapEventState(event.Type)
 		target.Message, target.DurationMs = event.Message, 0
@@ -215,6 +241,8 @@ func mapEventState(event installerCoreEventType) installerCoreStepState {
 		return coreStepSuccess
 	case eventStepWarning:
 		return coreStepWarning
+	case eventStepSkipped:
+		return coreStepSkipped
 	default:
 		return coreStepError
 	}

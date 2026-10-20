@@ -3,6 +3,7 @@ import type {
   DeviceStatus,
   DeviceType,
   NetworkConnectionOptions,
+  SerialConnectionOptions,
   UsbPrinterConnectionOptions,
   PeripheralDevice,
 } from "../../shared/types/peripheral.types";
@@ -18,6 +19,7 @@ export type CreateMockDeviceRequest = {
   profileId?: string;
   network?: NetworkConnectionOptions;
   usb?: Partial<UsbPrinterConnectionOptions>;
+  serial?: Partial<SerialConnectionOptions>;
   metadata?: Record<string, unknown>;
 };
 
@@ -29,6 +31,7 @@ export type UpdateMockDeviceRequest = {
   profileId?: string;
   network?: NetworkConnectionOptions | null;
   usb?: Partial<UsbPrinterConnectionOptions> | null;
+  serial?: Partial<SerialConnectionOptions> | null;
   metadata?: Record<string, unknown>;
 };
 

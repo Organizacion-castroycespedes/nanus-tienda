@@ -28,10 +28,12 @@ import { useOperationalSaleDetail } from "../hooks/use-operational-sale-detail";
 import {
   isEligibleForElectronicBillingRequest,
   PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION,
+  resolveOperationalSaleVoidAvailability,
   shouldShowProviderCreateIntentRecovery,
 } from "../services/operational-sales.service";
 import { PreInvoiceWizardModal } from "./wizard/PreInvoiceWizardModal";
 import { EditSalePaymentsModal } from "./EditSalePaymentsModal";
+import { VoidSaleModal } from "./VoidSaleModal";
 import type { OperationalSaleDetail } from "../types";
 
 const saleTypeLabels: Record<string, string> = {
@@ -132,6 +134,7 @@ const BillingCard = ({ sale }: { sale: OperationalSaleDetail }) => {
 
 const ActionCard = ({
   sale,
+  tenantContext,
   onReload,
   onRefreshStatus,
   onRetry,
@@ -146,6 +149,7 @@ const ActionCard = ({
   onEditPayments,
 }: {
   sale: OperationalSaleDetail;
+  tenantContext: string;
   onReload: () => void;
   onRefreshStatus: () => Promise<void>;
   onRetry: () => Promise<void>;
@@ -162,11 +166,12 @@ const ActionCard = ({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
   const [recoveryConfirmOpen, setRecoveryConfirmOpen] = useState(false);
-  const [retryConfirmOpen, setRetryConfirmOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [localActionMessage, setLocalActionMessage] = useState<string | null>(null);
   const billing = sale.electronicBilling;
   const accepted = billing?.status === "ACCEPTED";
+  const voidAvailability = resolveOperationalSaleVoidAvailability(sale);
   const showElectronicBilling = sale.electronicBillingEnabled;
   const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
   const canRetry =
@@ -270,6 +275,24 @@ const ActionCard = ({
             {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
           </Button>
 
+          {voidAvailability.kind === "LOCAL" || voidAvailability.kind === "CREDIT_NOTE" ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setVoidModalOpen(true)}
+              className="flex items-center gap-2 border-rose-300 text-rose-700 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-rose-50"
+            >
+              <RotateCcw className="h-4 w-4 text-rose-600 shrink-0" />
+              {voidAvailability.kind === "CREDIT_NOTE" ? "Anular / Nota Crédito" : "Anular venta"}
+            </Button>
+          ) : null}
+
+          {voidAvailability.kind === "BLOCKED_ELECTRONIC" ? (
+            <div className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <strong>Anulación no disponible.</strong> {voidAvailability.message}
+            </div>
+          ) : null}
+
           {sale.status !== "CANCELLED" &&
           sale.status !== "REFUNDED" &&
           sale.electronicBilling?.status !== "ACCEPTED" &&
@@ -302,7 +325,11 @@ const ActionCard = ({
             <Button
               type="button"
               variant="outline"
-              onClick={() => setRetryConfirmOpen(true)}
+              onClick={() => {
+                if (window.confirm("¿Reintentar el procesamiento seguro de esta factura electrónica?")) {
+                  void onRetry();
+                }
+              }}
               disabled={refreshLoading}
               className="flex items-center gap-1.5 border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-semibold min-h-[44px] rounded-xl"
             >
@@ -347,21 +374,10 @@ const ActionCard = ({
         ) : null}
       </div>
       <ConfirmDialog
-        open={retryConfirmOpen}
-        onOpenChange={setRetryConfirmOpen}
-        title="Reintentar procesamiento"
-        description="¿Reintentar el procesamiento seguro de esta factura electrónica?"
-        confirmText="Reintentar"
-        cancelText="Cancelar"
-        variant="warning"
-        onConfirm={onRetry}
-        loading={refreshLoading}
-      />
-      <ConfirmDialog
         open={recoveryConfirmOpen}
         onOpenChange={setRecoveryConfirmOpen}
         title="Recuperar procesamiento de factura electrónica"
-        description={PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION}
+        description={`Venta: ${sale.id}. Tenant: ${tenantContext}. ${PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION}`}
         confirmText="Recuperar procesamiento"
         cancelText="Cancelar"
         variant="default"
@@ -374,6 +390,7 @@ const ActionCard = ({
         fileName={`factura-electronica-${sale.id}.pdf`}
         onClose={() => setPreviewOpen(false)}
         getPdf={getPdf}
+        variant="ticket"
       />
       <PdfPreviewModal
         isOpen={ticketPreviewOpen}
@@ -381,6 +398,7 @@ const ActionCard = ({
         fileName={`ticket-venta-${sale.id}.pdf`}
         onClose={() => setTicketPreviewOpen(false)}
         getPdf={() => getPosSaleTicket(sale.id)}
+        variant="ticket"
       />
       <PreInvoiceWizardModal
         open={wizardOpen}
@@ -388,6 +406,15 @@ const ActionCard = ({
         onClose={() => setWizardOpen(false)}
         onSuccess={(msg) => {
           if (msg) setLocalActionMessage(msg);
+          void onReload();
+        }}
+      />
+      <VoidSaleModal
+        sale={sale}
+        isOpen={voidModalOpen}
+        onClose={() => setVoidModalOpen(false)}
+        onSuccess={(_updated, message) => {
+          setLocalActionMessage(message);
           void onReload();
         }}
       />
@@ -499,6 +526,7 @@ export const OperationalSaleDetailPage = () => {
       {/* Action Toolbar placed at the TOP for maximum operator UX */}
       <ActionCard
         sale={sale}
+        tenantContext={tenant}
         onReload={reload}
         onRefreshStatus={refreshBillingStatus}
         onRetry={retryBilling}
