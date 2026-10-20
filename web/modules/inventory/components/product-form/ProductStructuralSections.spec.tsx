@@ -26,6 +26,8 @@ const values: ProductFormValues = {
   danePriceEffectiveFrom: "",
   danePriceEffectiveTo: "",
   isActive: true,
+  isInventoryable: true,
+  inventoryabilityChangeReason: "",
   isPerishable: false,
   requiresLot: false,
   requiresExpiration: false,

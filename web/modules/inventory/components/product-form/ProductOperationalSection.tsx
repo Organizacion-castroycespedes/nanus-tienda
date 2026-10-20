@@ -37,6 +37,47 @@ export const ProductOperationalSection = ({
     icon={<Settings2 className="h-5 w-5" />}
   >
     <div className="space-y-5">
+      <div className="space-y-1">
+        <Select
+          label="Tipo de producto"
+          value={values.isInventoryable ? "INVENTORYABLE" : "SERVICE"}
+          onChange={(event) =>
+            onOperationalChange(
+              "isInventoryable",
+              event.target.value === "INVENTORYABLE",
+            )
+          }
+          hint="Servicio no consulta existencias ni genera movimientos físicos."
+        >
+          <option value="INVENTORYABLE">Producto inventariable</option>
+          <option value="SERVICE">Servicio / no inventariable</option>
+        </Select>
+        {!values.isInventoryable ? (
+          <p className="text-xs text-amber-700">
+            Lote, vencimiento, reservas y stock físico quedan inactivos para este producto.
+          </p>
+        ) : null}
+      </div>
+      {structuralConfigurationLocked && !values.isInventoryable ? (
+        <div className="space-y-1">
+          <Input
+            label="Motivo del cambio a servicio"
+            value={values.inventoryabilityChangeReason}
+            onChange={(event) =>
+              onOperationalChange(
+                "inventoryabilityChangeReason",
+                event.target.value,
+              )
+            }
+            placeholder="Ej: servicio de impresión"
+          />
+          {errors.inventoryabilityChangeReason ? (
+            <p className="text-xs text-rose-600">
+              {errors.inventoryabilityChangeReason}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {structuralConfigurationLocked ? (
         <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900" role="note">
           Perecibilidad, lote y vencimiento se definen al crear el producto y
@@ -48,7 +89,7 @@ export const ProductOperationalSection = ({
           <input
             type="checkbox"
             checked={values.isPerishable}
-            disabled={structuralConfigurationLocked}
+            disabled={structuralConfigurationLocked || !values.isInventoryable}
             onChange={(event) =>
               onOperationalChange("isPerishable", event.target.checked)
             }
@@ -68,7 +109,7 @@ export const ProductOperationalSection = ({
           <input
             type="checkbox"
             checked={values.requiresLot}
-            disabled={structuralConfigurationLocked}
+            disabled={structuralConfigurationLocked || !values.isInventoryable}
             onChange={(event) =>
               onOperationalChange("requiresLot", event.target.checked)
             }
@@ -88,7 +129,7 @@ export const ProductOperationalSection = ({
           <input
             type="checkbox"
             checked={values.requiresExpiration}
-            disabled={structuralConfigurationLocked}
+            disabled={structuralConfigurationLocked || !values.isInventoryable}
             onChange={(event) =>
               onOperationalChange("requiresExpiration", event.target.checked)
             }
@@ -105,7 +146,7 @@ export const ProductOperationalSection = ({
         </label>
       </div>
 
-      {values.isPerishable ? (
+      {values.isInventoryable && values.isPerishable ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Producto perecedero
         </div>
@@ -168,6 +209,7 @@ export const ProductOperationalSection = ({
               onOperationalChange("minStock", event.target.value)
             }
             placeholder="Opcional"
+            disabled={!values.isInventoryable}
           />
           {errors.minStock ? (
             <p className="text-xs text-rose-600">{errors.minStock}</p>
@@ -185,6 +227,7 @@ export const ProductOperationalSection = ({
               onOperationalChange("maxStock", event.target.value)
             }
             placeholder="Opcional"
+            disabled={!values.isInventoryable}
           />
           {errors.maxStock ? (
             <p className="text-xs text-rose-600">{errors.maxStock}</p>

@@ -105,6 +105,8 @@ const createInitialValues = (
     danePriceEffectiveFrom: product?.taxProfile?.danePriceEffectiveFrom ?? "",
     danePriceEffectiveTo: product?.taxProfile?.danePriceEffectiveTo ?? "",
     isActive: product?.isActive ?? true,
+    isInventoryable: product?.isInventoryable ?? true,
+    inventoryabilityChangeReason: "",
     isPerishable: product?.isPerishable ?? false,
     requiresLot: product?.requiresLot ?? false,
     requiresExpiration: product?.requiresExpiration ?? false,
@@ -630,17 +632,27 @@ export const ProductForm = ({
     if (!values.unitId) {
       nextErrors.unitId = "Debes seleccionar una unidad.";
     }
-    if (values.requiresExpiration && !values.requiresLot) {
+    if (values.isInventoryable && values.requiresExpiration && !values.requiresLot) {
       nextErrors.requiresLot =
         "Requiere lote cuando el producto exige vencimiento.";
     }
     if (
+      values.isInventoryable &&
       values.isPerishable &&
       !values.requiresLot &&
       !values.requiresExpiration
     ) {
       nextErrors.isPerishable =
         "Marca lote o vencimiento para productos perecederos.";
+    }
+    if (
+      mode === "edit" &&
+      (product?.isInventoryable ?? true) &&
+      !values.isInventoryable &&
+      !values.inventoryabilityChangeReason.trim()
+    ) {
+      nextErrors.inventoryabilityChangeReason =
+        "Indica el motivo del cambio a servicio.";
     }
     if (!values.saleType) {
       nextErrors.saleType = "Debes seleccionar el modelo de venta.";
@@ -802,6 +814,7 @@ export const ProductForm = ({
       cost: Number(values.cost),
       unitId: values.unitId,
       isActive: values.isActive,
+      isInventoryable: values.isInventoryable,
       isPerishable: values.isPerishable,
       requiresLot: values.requiresLot,
       requiresExpiration: values.requiresExpiration,
@@ -846,6 +859,13 @@ export const ProductForm = ({
       delete editablePayload.isPerishable;
       delete editablePayload.requiresLot;
       delete editablePayload.requiresExpiration;
+      if (
+        mode === "edit" &&
+        (product?.isInventoryable ?? true) !== values.isInventoryable
+      ) {
+        editablePayload.inventoryabilityChangeReason =
+          values.inventoryabilityChangeReason.trim();
+      }
       const savedProduct =
         mode === "create"
           ? await createProduct(payload)

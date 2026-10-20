@@ -45,10 +45,13 @@ type Scenario = {
   itemCost?: number;
   productRequiresLot?: boolean;
   productRequiresExpiration?: boolean;
+  productIsInventoryable?: boolean;
+  product2IsInventoryable?: boolean;
   existingLotStatus?: "ACTIVE" | "BLOCKED" | "CANCELLED";
   existingLotExpirationDate?: string | null;
   locationBelongsToBranch?: boolean;
   invalidAuditContextUuid?: boolean;
+  auditBranchId?: string | null;
   terminalBranchId?: string | null;
   auditTerminalName?: string | null;
   purchaseItems?: FakePurchaseItem[];
@@ -85,6 +88,10 @@ class FakeClient {
   insertedPurchase: unknown[] | null = null;
   insertedItems: unknown[][] = [];
   purchaseItems: FakePurchaseItem[];
+  readonly receiptIdempotency = new Map<
+    string,
+    { requestHash: string; status: "PENDING" | "COMPLETED"; result: unknown }
+  >();
   released = false;
 
   constructor(readonly scenario: Scenario = {}) {
@@ -128,6 +135,53 @@ class FakeClient {
       }
       return { rows: [buildPurchaseRow(this.scenario)] };
     }
+    if (trimmed.startsWith("INSERT INTO purchase_receipt_idempotency")) {
+      const key = String(params[2]);
+      if (this.receiptIdempotency.has(key)) {
+        return { rows: [] };
+      }
+      this.receiptIdempotency.set(key, {
+        requestHash: String(params[3]),
+        status: "PENDING",
+        result: null,
+      });
+      return {
+        rows: [
+          {
+            request_hash: params[3],
+            status: "PENDING",
+            result: null,
+            operation_reference: null,
+          },
+        ],
+      };
+    }
+    if (trimmed.startsWith("SELECT request_hash, status, result")) {
+      const key = String(params[2]);
+      const entry = this.receiptIdempotency.get(key);
+      return {
+        rows: entry
+          ? [
+              {
+                request_hash: entry.requestHash,
+                status: entry.status,
+                result: entry.result,
+                operation_reference: null,
+              },
+            ]
+          : [],
+      };
+    }
+    if (trimmed.startsWith("UPDATE purchase_receipt_idempotency")) {
+      const key = String(params[2]);
+      const entry = this.receiptIdempotency.get(key);
+      if (entry && entry.requestHash === String(params[5]) && entry.status === "PENDING") {
+        entry.status = "COMPLETED";
+        entry.result = JSON.parse(String(params[3]));
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    }
     if (trimmed.includes("FROM auditoria_eventos") && trimmed.includes("PURCHASE_CREATED")) {
       if (
         this.scenario.invalidAuditContextUuid &&
@@ -142,7 +196,12 @@ class FakeClient {
       return {
         rows: [
           {
-            branch_id: this.scenario.invalidAuditContextUuid ? null : ids.branch,
+            branch_id:
+              this.scenario.auditBranchId !== undefined
+                ? this.scenario.auditBranchId
+                : this.scenario.invalidAuditContextUuid
+                  ? null
+                  : ids.branch,
             branch_name: this.scenario.invalidAuditContextUuid ? null : "Principal",
             terminal_id: null,
             terminal_name: null,
@@ -168,6 +227,9 @@ class FakeClient {
     if (trimmed.includes("FROM tenant_branches")) {
       return { rows: [{ id: params[0] }] };
     }
+    if (trimmed.includes("public.inventory_lock_stock_scope")) {
+      return { rows: [{ inventory_lock_stock_scope: null }] };
+    }
     if (trimmed.includes("requires_lot") && trimmed.includes("FROM products")) {
       const requestedProductIds = Array.isArray(params[1])
         ? (params[1] as string[])
@@ -177,6 +239,10 @@ class FakeClient {
           id: productId,
           requires_lot: this.scenario.productRequiresLot ?? false,
           requires_expiration: this.scenario.productRequiresExpiration ?? false,
+          is_inventoryable:
+            productId === ids.product2
+              ? this.scenario.product2IsInventoryable ?? true
+              : this.scenario.productIsInventoryable ?? true,
         })),
       };
     }
@@ -917,6 +983,200 @@ test("PurchaseService.receivePurchase: producto no loteado recibe compra como an
   assert.equal(inventoryLotService.calls.length, 0);
 });
 
+test("PurchaseService.receivePurchase: servicio recibe cantidad comercial sin movimiento", async () => {
+  const { service, db, stockMovementService, inventoryLotService } = buildService({
+    status: "PENDING",
+    productIsInventoryable: false,
+    productRequiresLot: true,
+  });
+
+  const result = await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2 }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(result.status, "PARTIAL");
+  assert.equal(result.items[0].receivedQuantity, 9);
+  assert.equal(stockMovementService.movements.length, 0);
+  assert.equal(inventoryLotService.calls.length, 0);
+  assert.equal(
+    db.client.queries.some((query) => query.startsWith("INSERT INTO stock_movements")),
+    false
+  );
+});
+
+test("PurchaseService.receivePurchase: compra mixta crea IN solo para linea inventariable", async () => {
+  const { service, stockMovementService, inventoryLotService } = buildService({
+    status: "PENDING",
+    purchaseItems: [
+      {
+        id: ids.purchaseItem,
+        productId: ids.product,
+        orderedQuantity: 10,
+        receivedQuantity: 0,
+        cost: 100,
+        subtotal: 1000,
+      },
+      {
+        id: ids.purchaseItem2,
+        productId: ids.product2,
+        orderedQuantity: 5,
+        receivedQuantity: 0,
+        cost: 200,
+        subtotal: 1000,
+      },
+    ],
+    productIsInventoryable: false,
+    product2IsInventoryable: true,
+  });
+
+  const result = await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [
+      { purchaseItemId: ids.purchaseItem2, productId: ids.product2, quantity: 2 },
+      { purchaseItemId: ids.purchaseItem, productId: ids.product, quantity: 3 },
+    ],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  assert.equal(result.status, "PARTIAL");
+  assert.equal(stockMovementService.movements.length, 1);
+  assert.equal((stockMovementService.movements[0] as any).productId, ids.product2);
+  assert.equal(inventoryLotService.calls.length, 0);
+  assert.equal(result.items[0].receivedQuantity, 3);
+  assert.equal(result.items[1].receivedQuantity, 2);
+});
+
+test("PurchaseService.receivePurchase: exige purchaseItemId para producto repetido", async () => {
+  const { service, db, stockMovementService } = buildService({
+    status: "PENDING",
+    purchaseItems: [
+      {
+        id: ids.purchaseItem,
+        productId: ids.product,
+        orderedQuantity: 10,
+        receivedQuantity: 0,
+      },
+      {
+        id: ids.purchaseItem2,
+        productId: ids.product,
+        orderedQuantity: 5,
+        receivedQuantity: 0,
+      },
+    ],
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 2 }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /purchaseItemId is required when a purchase repeats a product/
+  );
+
+  assert.equal(stockMovementService.movements.length, 0);
+  assert.equal(
+    db.client.queries.some((query) => query.startsWith("UPDATE purchase_items")),
+    false
+  );
+});
+
+test("PurchaseService.receivePurchase: rechaza branchId nulo antes de cualquier lock físico", async () => {
+  const { service, db, stockMovementService } = buildService({
+    status: "PENDING",
+    auditBranchId: null,
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 2 }],
+        { tenantId: ids.tenant, userId: ids.user },
+        actor
+      ),
+    /branchId is required for purchase receipt/
+  );
+
+  assert.equal(stockMovementService.movements.length, 0);
+  assert.equal(
+    db.client.queries.some((query) => query.includes("inventory_lock_stock_scope")),
+    false
+  );
+});
+
+test("PurchaseService.receivePurchase: error en linea fisica fuerza rollback atomico", async () => {
+  const { service, db } = buildService({
+    status: "PENDING",
+    productRequiresLot: true,
+    locationBelongsToBranch: false,
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 2, lotCode: "L-ROLLBACK", locationId: ids.location }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /locationId is invalid/
+  );
+
+  assert.equal(db.client.queries.includes("ROLLBACK"), true);
+  assert.equal(db.client.queries.includes("COMMIT"), false);
+});
+
+test("PurchaseService.receivePurchase: adquiere locks de productos en orden ascendente", async () => {
+  const { service, db } = buildService({
+    status: "PENDING",
+    purchaseItems: [
+      {
+        id: ids.purchaseItem,
+        productId: ids.product2,
+        orderedQuantity: 10,
+        receivedQuantity: 0,
+      },
+      {
+        id: ids.purchaseItem2,
+        productId: ids.product,
+        orderedQuantity: 10,
+        receivedQuantity: 0,
+      },
+    ],
+  });
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [
+      { purchaseItemId: ids.purchaseItem, productId: ids.product2, quantity: 1 },
+      { purchaseItemId: ids.purchaseItem2, productId: ids.product, quantity: 1 },
+    ],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  const lockParams = db.client.params.filter((params, index) =>
+    db.client.queries[index].includes("inventory_lock_stock_scope")
+  );
+  assert.deepEqual(
+    lockParams.map((params) => params[2]),
+    [ids.product, ids.product2]
+  );
+});
+
 test("PurchaseService.receivePurchase: persists supplier invoice document atomically", async () => {
   const { service, db } = buildService({ status: "PENDING" });
 
@@ -1371,6 +1631,76 @@ test("PurchaseService.receivePurchase: no toca flujo de pagos o caja", async () 
   );
 });
 
+test("PurchaseService.receivePurchase: reintento idéntico recupera el resultado sin duplicar efectos", async () => {
+  const { service, stockMovementService } = buildService({
+    status: "PENDING",
+  });
+  const request = [{ productId: ids.product, quantity: 2 }];
+  const context = {
+    tenantId: ids.tenant,
+    userId: ids.user,
+    branchId: ids.branch,
+  };
+
+  const first = await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    request,
+    context,
+    actor,
+    undefined,
+    "receipt-001"
+  );
+  const replay = await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    request,
+    context,
+    actor,
+    undefined,
+    "receipt-001"
+  );
+
+  assert.deepEqual(replay, JSON.parse(JSON.stringify(first)));
+  assert.equal(stockMovementService.movements.length, 1);
+});
+
+test("PurchaseService.receivePurchase: misma clave con payload distinto da conflicto", async () => {
+  const { service, stockMovementService } = buildService({
+    status: "PENDING",
+  });
+  const context = {
+    tenantId: ids.tenant,
+    userId: ids.user,
+    branchId: ids.branch,
+  };
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2 }],
+    context,
+    actor,
+    undefined,
+    "receipt-002"
+  );
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 3 }],
+        context,
+        actor,
+        undefined,
+        "receipt-002"
+      ),
+    ConflictException
+  );
+  assert.equal(stockMovementService.movements.length, 1);
+});
+
 test("PurchaseService.getPurchaseById mapping: expone flags operativos del producto", () => {
   const service = new PurchaseService(
     {} as any,
@@ -1387,9 +1717,10 @@ test("PurchaseService.getPurchaseById mapping: expone flags operativos del produ
       id: ids.purchaseItem,
       purchase_id: ids.purchase,
       product_id: ids.product,
-      product_name: "Producto loteado",
-      product_sku: "LOT-001",
-      is_perishable: true,
+       product_name: "Producto loteado",
+       product_sku: "LOT-001",
+       is_inventoryable: false,
+       is_perishable: true,
       requires_lot: true,
       requires_expiration: true,
       ordered_quantity: 10,
@@ -1399,8 +1730,9 @@ test("PurchaseService.getPurchaseById mapping: expone flags operativos del produ
     },
   ]);
 
-  assert.equal(detail.items[0].productSku, "LOT-001");
-  assert.equal(detail.items[0].isPerishable, true);
+   assert.equal(detail.items[0].productSku, "LOT-001");
+   assert.equal(detail.items[0].isInventoryable, false);
+   assert.equal(detail.items[0].isPerishable, true);
   assert.equal(detail.items[0].requiresLot, true);
   assert.equal(detail.items[0].requiresExpiration, true);
 });

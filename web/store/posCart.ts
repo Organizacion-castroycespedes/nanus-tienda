@@ -48,6 +48,8 @@ export type PosCartItem = {
   quantity: number;
   price: number;
   stock: number;
+  /** Missing in legacy persisted carts means the original physical-product behavior. */
+  isInventoryable?: boolean;
   taxId: string | null;
   priceWithoutTax: number;
   pricingStatus?: PosCartPricingStatus;
@@ -238,6 +240,16 @@ const isValidCartItem = (item: unknown): item is PosCartItem =>
     (item as PosCartItem).taxId === null) &&
   typeof (item as PosCartItem).priceWithoutTax === "number";
 
+const normalizeCartItems = (items: unknown): PosCartItem[] =>
+  Array.isArray(items)
+    ? items
+        .filter(isValidCartItem)
+        .map((item) => ({
+          ...item,
+          isInventoryable: item.isInventoryable !== false,
+        }))
+    : [];
+
 const isValidPayment = (payment: unknown): payment is PaymentDraft =>
   Boolean(payment) &&
   typeof (payment as PaymentDraft).id === "string" &&
@@ -259,9 +271,7 @@ const normalizePersistedPosCartState = (value: unknown) => {
         const acc = (rawAcc && typeof rawAcc === "object"
           ? rawAcc
           : {}) as Partial<PosCartAccount>;
-        const items = Array.isArray(acc.items)
-          ? acc.items.filter(isValidCartItem)
-          : [];
+        const items = normalizeCartItems(acc.items);
         const payments = Array.isArray(acc.payments)
           ? acc.payments.filter(isValidPayment)
           : [];
@@ -328,9 +338,7 @@ const normalizePersistedPosCartState = (value: unknown) => {
   }
 
   // Legacy single-cart payload
-  const items = Array.isArray(candidate.items)
-    ? candidate.items.filter(isValidCartItem)
-    : [];
+  const items = normalizeCartItems(candidate.items);
   const payments = Array.isArray(candidate.payments)
     ? candidate.payments.filter(isValidPayment)
     : [];

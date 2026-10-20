@@ -64,6 +64,7 @@ type BuildServiceOptions = {
   products?: ProductEntity[];
   barcodes?: ProductBarcodeEntity[];
   stockByProduct?: Record<string, number>;
+  hasStockMovement?: boolean;
   barcodeProductIdCalls?: string[][];
   categories?: Array<{ id: string; tenantId: string }>;
   subcategories?: Array<{
@@ -97,6 +98,11 @@ const buildService = (
         ) ?? null
       );
     },
+    findByIdForUpdate: async (id: string, requestedTenantId: string) =>
+      products.find(
+        (product) =>
+          product.id === id && product.tenantId === requestedTenantId
+      ) ?? null,
     update: async (
       id: string,
       productTenantId: string,
@@ -171,7 +177,21 @@ const buildService = (
 
   const db = {
     getClient: async () => ({
-      query: async () => ({ rows: [] }),
+      query: async (sql: string) => {
+        if (sql.includes("FROM stock_movements")) {
+          return {
+            rows: [
+              {
+                has_stock_movement: options.hasStockMovement ?? false,
+                has_balance: false,
+                has_active_lot: false,
+                has_null_branch_balance: false,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
       release: () => undefined,
     }),
   };
@@ -343,6 +363,64 @@ describe("ProductService enriched product rules", () => {
     assert.equal(product.imageUrl, null);
     assert.equal(product.imageStorageKey, null);
     assert.equal(product.imageUpdatedAt, null);
+  });
+
+  it("creates a non-inventory product without physical-rule validation", async () => {
+    const service = buildService();
+
+    const product = await service.createProduct({
+      ...baseCreateInput(),
+      isInventoryable: false,
+      isPerishable: true,
+      requiresExpiration: true,
+      requiresLot: false,
+    });
+
+    assert.equal(product.isInventoryable, false);
+    assert.equal(product.requiresExpiration, true);
+  });
+
+  it("requires an auditable reason for the TRUE to FALSE transition", async () => {
+    const service = buildService();
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(productId, tenantId, {
+          isInventoryable: false,
+        }),
+      /inventoryabilityChangeReason is required/
+    );
+  });
+
+  it("changes TRUE to FALSE with a reason and keeps the product history path", async () => {
+    const service = buildService();
+
+    const updated = await service.updateProduct(
+      productId,
+      tenantId,
+      { isInventoryable: false },
+      {
+        userId: "40000000-0000-0000-0000-000000000001",
+        inventoryabilityChangeReason: "Servicio",
+      }
+    );
+
+    assert.equal(updated.isInventoryable, false);
+  });
+
+  it("rejects TRUE to FALSE when stock movement balance is non-zero", async () => {
+    const service = buildService(buildProduct(), { hasStockMovement: true });
+
+    await assert.rejects(
+      () =>
+        service.updateProduct(
+          productId,
+          tenantId,
+          { isInventoryable: false },
+          { inventoryabilityChangeReason: "Servicio" }
+        ),
+      /product must have zero stock, reservations and active lot balances in every branch/
+    );
   });
 
   it("creates a product with a valid category", async () => {

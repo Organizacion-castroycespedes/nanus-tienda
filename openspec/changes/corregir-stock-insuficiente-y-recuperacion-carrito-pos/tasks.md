@@ -10,6 +10,11 @@
 - [x] 2.2 Restore safe draft editing after definitive stock rejection without changing quantities automatically.
 - [x] 2.3 Refresh branch availability before payment and prevent known aggregate overstock.
 - [x] 2.4 Preserve account, attempt, tenant, branch, terminal, and callback isolation.
+- [x] 2.5 Present `is_inventoryable=false` as `Servicio` in the catalog and
+  cart, allow zero-stock service lines, and keep physical products on the
+  existing stock path.
+- [x] 2.6 Preserve legacy carts as inventoryable by default and avoid applying
+  visual stock limits to service quantities.
 
 ## 3. Tests
 
