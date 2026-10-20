@@ -46,6 +46,24 @@ puede autorizar ni fabricar inventario.
    `accountId`, `attemptId` y `contextKey` de la operación que falló. Un callback
    tardío no puede desbloquear otra cuenta ni modificar otro tenant o terminal.
 
+## Corrección de feedback y fase fiscal
+
+- Comprobar `accountId`, `attemptId` y `contextKey` antes del reducer de
+  rechazo. Capturar si el origen está activo antes de borrar el intento;
+  comprobar de nuevo cuenta/contexto al notificar, sin exigir un intento ya
+  eliminado. No modificar el predicado compartido ni la clasificación estricta.
+- El rechazo muestra el mismo diagnóstico de producto, cantidad solicitada y
+  disponibilidad en `serverError` y en el toast existente. No altera cantidades.
+- Ignorar callbacks de intentos/contextos obsoletos antes de tocar metadatos de
+  recuperación. Una cuenta origen inactiva recibe su transición, sin aviso cruzado.
+- Durante el POST, el cobro conserva su indicador comercial de registro.
+  El modal FE depende solo de `isBillingProcessing` del workflow que se inicia
+  después de confirmar la venta. No se agrega polling ni otro estado comercial.
+- Probar componentes y hook reales con servicios externos simulados. Verificar
+  ausencia de modal antes de respuesta, feedback visible, UNKNOWN, reconciliación
+  y fallos fiscales posteriores sin repetir el POST comercial.
+- La ampliación no completa por sí sola las tareas históricas 3.1-3.3.
+
 ## Non-Goals
 
 La redefinición forward-only de `inventory_create_sale_v2` queda coordinada

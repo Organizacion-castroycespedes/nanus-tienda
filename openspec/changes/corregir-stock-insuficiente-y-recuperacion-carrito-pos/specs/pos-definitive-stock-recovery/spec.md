@@ -49,6 +49,45 @@ item removal, cart cancellation, and a later deliberate retry.
 - **THEN** the requested action succeeds without verification of an UNKNOWN sale
   and no duplicate sale or payment is created
 
+### Requirement: definitive stock feedback survives attempt cleanup
+
+The POS SHALL validate the result's account, attempt and context before clearing
+the attempt, and SHALL show the existing payment error and toast with product,
+requested quantity and available quantity when the origin is active.
+
+#### Scenario: aggregate or FEFO rejection while the origin is active
+
+- **WHEN** a structured HTTP `409` stock rejection belongs to the active attempt
+- **THEN** the payment dialog shows the diagnostic and the toast repeats it,
+  items and quantities remain intact, the attempt is cleared, and no fiscal
+  workflow or automatic commercial retry starts
+
+#### Scenario: late rejection belongs to another account or context
+
+- **WHEN** a rejection returns after account switch, attempt replacement or
+  context change
+- **THEN** only a still-matching origin may transition to draft, and the active
+  unrelated account receives no error or toast and loses no recovery metadata
+
+### Requirement: commercial submission and fiscal processing have separate indicators
+
+The POS SHALL show only commercial registration progress while the sale POST
+is pending. The fiscal modal SHALL depend on the existing fiscal workflow,
+which starts only after a successful commercial result has been confirmed.
+
+#### Scenario: POST is pending with any billing configuration
+
+- **WHEN** the sale POST is pending with automatic billing, disabled billing
+  or on-demand billing
+- **THEN** the payment action remains busy, no fiscal modal is shown, and no
+  fiscal request is started by the frontend
+
+#### Scenario: fiscal failure after commercial confirmation
+
+- **WHEN** a confirmed sale's fiscal workflow rejects or fails
+- **THEN** the existing fiscal notice is shown, the sale remains `CONFIRMED`,
+  its cart stays cleared, and no second commercial POST is made
+
 ### Requirement: current availability is checked before payment
 
 The POS SHALL refresh the active branch catalog before opening the payment
