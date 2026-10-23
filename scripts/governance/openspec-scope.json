@@ -93,8 +93,11 @@
       "paths": [
         "api/.env.example",
         "api/src/modules/integration-outbox/contracts/electronic-billing-outcome.ts",
+        "api/src/modules/operational-sales/operational-sales.repository.spec.ts",
+        "api/src/modules/operational-sales/operational-sales.repository.ts",
         "api/src/modules/operational-sales/operational-sales.service.spec.ts",
         "web/modules/operational-sales/components/OperationalSaleDetailPage.tsx",
+        "web/modules/operational-sales/components/OperationalSalesPage.tsx",
         "web/modules/operational-sales/components/VoidSaleModal.tsx",
         "web/modules/operational-sales/services/operational-sales.service.spec.ts",
         "web/modules/operational-sales/services/operational-sales.service.ts",
