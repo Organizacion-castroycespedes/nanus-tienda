@@ -27,6 +27,7 @@ import { useAppSelector } from "../../../store/hooks";
 import { useOperationalSaleDetail } from "../hooks/use-operational-sale-detail";
 import {
   isEligibleForElectronicBillingRequest,
+  operationalSalePaymentDisplayStatus,
   PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION,
   resolveOperationalSaleVoidAvailability,
   shouldShowProviderCreateIntentRecovery,
@@ -53,6 +54,7 @@ const labels: Record<string, string> = {
   PARTIAL: "Parcial",
   PROCESSING: "Procesando",
   ACCEPTED: "Aceptada",
+  VOIDED: "Anulada",
   REJECTED: "Rechazada",
   TECHNICAL_ERROR: "Error técnico",
   COMPLETED: "Completado",
@@ -513,7 +515,7 @@ export const OperationalSaleDetailPage = () => {
               {label(sale.status)}
             </span>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
-              {label(sale.paymentStatus)}
+              {label(operationalSalePaymentDisplayStatus(sale))}
             </span>
           </div>
         </div>
@@ -547,7 +549,7 @@ export const OperationalSaleDetailPage = () => {
             <DetailValue name="Estado de venta" value={label(sale.status)} />
             <DetailValue name="Tipo" value={saleTypeLabels[sale.saleType?.toUpperCase()] ?? sale.saleType} />
             <DetailValue name="Fecha" value={date(sale.createdAt)} />
-            <DetailValue name="Pago" value={label(sale.paymentStatus)} />
+            <DetailValue name="Pago" value={label(operationalSalePaymentDisplayStatus(sale))} />
             <DetailValue name="Total" value={money(sale.total)} />
             <DetailValue name="Pagado" value={money(sale.totalPaid)} />
             <DetailValue name="Saldo" value={money(sale.balanceDue)} />

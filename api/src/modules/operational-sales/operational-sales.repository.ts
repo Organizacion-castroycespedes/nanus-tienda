@@ -235,15 +235,17 @@ export class OperationalSalesRepository {
       c.name AS customer_name, c.document_number AS customer_document_number, branch.nombre AS branch_name,
       operator.email AS operator_email,
       payment_context.cash_session_id,
-      document.id AS billing_document_id, document.status AS billing_status,
-      COALESCE(document.full_number,
-        CONCAT(COALESCE(document.prefix, ''), document.number::text)) AS billing_document_number,
-      document.cufe AS billing_cufe, document.provider_document_id AS billing_provider_document_id,
-      document.provider_status AS billing_provider_status,
-      document.last_error_code AS billing_error_code,
-      document.last_error_message AS billing_error_message,
-      document.created_at AS billing_created_at, document.updated_at AS billing_updated_at,
-      COALESCE(document.document_count, 0)::text AS billing_document_count,
+      invoice_document.id AS billing_document_id, invoice_document.status AS billing_status,
+      COALESCE(invoice_document.full_number,
+        CONCAT(COALESCE(invoice_document.prefix, ''), invoice_document.number::text)) AS billing_document_number,
+      invoice_document.cufe AS billing_cufe,
+      invoice_document.provider_document_id AS billing_provider_document_id,
+      invoice_document.provider_status AS billing_provider_status,
+      invoice_document.last_error_code AS billing_error_code,
+      invoice_document.last_error_message AS billing_error_message,
+      invoice_document.created_at AS billing_created_at,
+      invoice_document.updated_at AS billing_updated_at,
+      COALESCE(invoice_document.document_count, 0)::text AS billing_document_count,
       CASE
         WHEN to_regprocedure('public.resolve_parameter_value(text, uuid, uuid, uuid)') IS NOT NULL
         THEN COALESCE(public.resolve_parameter_value(
@@ -269,8 +271,12 @@ export class OperationalSalesRepository {
         SELECT d.*, COUNT(*) OVER () AS document_count
         FROM electronic_documents AS d
         WHERE d.tenant_id = s.tenant_id AND d.source_type = 'SALE' AND d.source_id = s.id
-        ORDER BY d.created_at DESC LIMIT 1
-      ) AS document ON TRUE`;
+          AND d.document_type = 'INVOICE'
+        ORDER BY CASE WHEN d.status = 'ACCEPTED' THEN 0 ELSE 1 END,
+          CASE WHEN d.status = 'ACCEPTED' THEN COALESCE(d.accepted_at, d.created_at) ELSE d.created_at END DESC,
+          d.created_at DESC, d.id DESC
+        LIMIT 1
+      ) AS invoice_document ON TRUE`;
   }
 
   private buildQueryParts(scope: OperationalSaleScope, query: Partial<NormalizedOperationalSalesQuery>): QueryParts {

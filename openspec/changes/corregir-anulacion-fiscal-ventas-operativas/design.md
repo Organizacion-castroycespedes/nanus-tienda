@@ -20,6 +20,17 @@ Usar `ELECTRONIC_BILLING_STATUSES.ACCEPTED` como única condición compartida pa
 
 `SALE_VOID_REQUEST_WORKER_ENABLED=true` se documenta como valor habilitado en `api/.env.example`, porque el flujo de solicitudes diferidas forma parte de la funcionalidad entregada.
 
+## Completed-void visual projection
+
+- Keep the original fiscal invoice in the `INVOICE` projection so other document types cannot replace its status or number.
+- `payment_status` remains untouched. The list and detail derive the visual label `Anulada` from terminal sale status (`CANCELLED` or `REFUNDED`) only.
+- Sale status remains visible as `Devuelta` or `Cancelada`; the label `Anulada` is an operational payment-display label and does not assert DIAN acceptance.
+- A completed local void without an electronic invoice may display `Anulada`.
+
+## Deferred fiscal-note traceability
+
+The void flow receives accepted credit-note metadata transiently from FactuCore but does not persist a durable MANUS sale-to-note association for the normal immediate-success path. Recovering and displaying the actual accepted note number is explicitly deferred. It requires a separate, tenant-safe design and verification against an authorized QA source. This change does not claim that an accepted credit note exists when its association is absent.
+
 ## Compatibility
 
 No cambia el esquema de base de datos ni ejecuta migraciones nuevas. Se conservan los contratos existentes y se centralizan únicamente las constantes de estado usadas por este flujo.

@@ -25,6 +25,12 @@ export const isEligibleForElectronicBillingRequest = (
   ["PAID", "OVERPAID"].includes(sale.paymentStatus) &&
   Boolean(sale.customer?.id);
 
+export const operationalSalePaymentDisplayStatus = (
+  sale: Pick<OperationalSaleListItem, "status" | "paymentStatus">,
+) => ["CANCELLED", "REFUNDED"].includes(sale.status.toUpperCase())
+  ? "VOIDED"
+  : sale.paymentStatus;
+
 export const fetchOperationalSales = (request: OperationalSalesRequest) => {
   const params = new URLSearchParams({
     page: String(request.page),
