@@ -24,6 +24,7 @@ import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoic
 import { printReporteriaSaleTicket } from "../../reporteria/direct-print";
 import {
   isEligibleForElectronicBillingRequest,
+  operationalSalePaymentDisplayStatus,
   requestOperationalSaleElectronicBilling,
 } from "../services/operational-sales.service";
 import { PreInvoiceWizardModal } from "./wizard/PreInvoiceWizardModal";
@@ -45,6 +46,7 @@ const labels: Record<string, string> = {
   PARTIAL: "Parcial",
   PROCESSING: "Procesando",
   ACCEPTED: "Aceptada",
+  VOIDED: "Anulada",
   REJECTED: "Rechazada",
   TECHNICAL_ERROR: "Error técnico",
 };
@@ -162,7 +164,7 @@ export const OperationalSalesPage = () => {
       {
         key: "payment",
         header: "Pago",
-        render: (sale) => statusLabel(sale.paymentStatus),
+        render: (sale) => statusLabel(operationalSalePaymentDisplayStatus(sale)),
       },
       {
         key: "branch",

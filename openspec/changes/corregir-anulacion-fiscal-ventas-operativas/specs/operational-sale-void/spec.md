@@ -36,3 +36,20 @@ The UI SHALL show whether void is hidden, local, credit-note based, or blocked b
 #### Scenario: user opens void modal
 - **WHEN** the sale detail is loaded
 - **THEN** the action and explanatory message match the sale status and electronic billing status
+
+### Requirement: completed void visual projection
+The operational sales list and detail SHALL preserve sale status and the original invoice projection while presenting completed voids consistently. The UI SHALL display `Anulada` as an operational payment-display label for terminal sales without changing persisted payment state. This label MUST NOT assert that DIAN accepted a credit note. Presentation MUST NOT mutate financial or fiscal state.
+
+#### Scenario: terminal sale with an electronic invoice
+- **WHEN** a sale is terminal (`REFUNDED` or `CANCELLED`) and has an electronic invoice
+- **THEN** the list and detail keep `Devuelta` or `Cancelada`, display payment as `Anulada`, and retain the original `INVOICE` status and fiscal number
+- **AND** the payment display does not claim that a credit note was accepted
+- **AND** persisted `payment_status`, payments, cash, inventory, and electronic documents remain unchanged by display
+
+#### Scenario: local void has no credit note
+- **WHEN** a sale without an electronic invoice is terminal and has no credit note
+- **THEN** the sale state remains visible and payment is displayed as `Anulada`
+
+#### Scenario: invoice display data is absent
+- **WHEN** a sale has no persisted invoice document data
+- **THEN** the UI retains the available sale and payment values and does not invent an invoice status or number

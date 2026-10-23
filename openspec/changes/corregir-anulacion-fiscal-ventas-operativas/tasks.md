@@ -8,3 +8,8 @@
 - [x] 6. Mostrar decisiones, estados y mensajes fiscales en la interfaz.
 - [x] 7. Cubrir los casos de backend y frontend con pruebas.
 - [x] 8. Habilitar el worker de solicitudes de anulación en `api/.env.example`.
+- [x] 9. Mantener la factura original en la proyeccion `INVOICE`, sin reemplazarla por otro tipo de documento.
+- [x] 10. Mostrar `Anulada` visualmente para ventas terminales en listado y detalle, sin mutar estados persistidos.
+- [x] 11. Cubrir venta normal, void local, venta terminal con factura y datos ausentes.
+- [x] 12. Ejecutar validacion OpenSpec estricta, pruebas focalizadas, lint, typecheck y build pertinentes.
+- [x] 13. Documentar como pendiente separado la asociacion durable y visualizacion del numero real de nota credito aceptada.
