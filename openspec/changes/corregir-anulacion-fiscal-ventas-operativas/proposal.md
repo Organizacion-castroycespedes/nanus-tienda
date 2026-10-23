@@ -15,7 +15,13 @@ La anulación de una venta operativa debe respetar el estado fiscal de su factur
 
 ## Impact
 
+- API: keep the original invoice projection scoped to `INVOICE` documents.
+- Web: show completed-void status consistently in the sales list and detail without changing persisted payment or fiscal state.
 - API: contrato de estados de facturación y servicio/pruebas de ventas operativas.
 - Web: servicio, modal y detalle de venta operativa, con sus pruebas.
 - Runtime config: `api/.env.example`.
 - No se agregan ni modifican migraciones en este cambio funcional.
+
+## Deferred follow-up
+
+Durable association and display of the actual accepted credit-note number are not part of this certified scope. The current void flow does not persist that association in MANUS, and no live credit-note number was verified. Track that work separately; do not treat this change as evidence of fiscal-note traceability.
