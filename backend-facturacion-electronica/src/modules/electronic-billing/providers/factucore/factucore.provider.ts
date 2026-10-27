@@ -31,7 +31,11 @@ import {
   FactuCoreMissingCredentialsError,
 } from "./factucore.errors";
 import { FactuCoreClient } from "./factucore.client";
-import { FactuCoreMapper } from "./factucore.mapper";
+import {
+  FactuCoreMapper,
+  isFactuCorePendingReconciliation,
+  isFactuCoreReusedTransmission,
+} from "./factucore.mapper";
 import {
   FACTUCORE_DEFAULT_SYNC_TIMEOUT_MS,
   FACTUCORE_DEFAULT_TIMEOUT_MS,
@@ -189,7 +193,21 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
     }
 
     const currentDoc = await this.client.getStatus(runtime, id);
-    const docStatus = currentDoc.status?.toUpperCase();
+    const docStatus = (currentDoc.status ?? currentDoc.providerStatus)?.toUpperCase();
+
+    if (
+      isFactuCorePendingReconciliation(currentDoc)
+      || docStatus === "SENT"
+      || docStatus === "ACCEPTED"
+      || docStatus === "REJECTED"
+    ) {
+      return buildDocumentResult(
+        this.mapper,
+        command.documentId,
+        currentDoc,
+        currentDoc.status ?? currentDoc.providerStatus ?? "SIGNED",
+      );
+    }
 
     let generated: FactuCoreDocumentResponse | null = null;
     let signed: FactuCoreDocumentResponse | null = null;
@@ -213,7 +231,9 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
 
     await command.onStage?.("TRANSMISSION_INTENT", id);
     transmitted = await this.client.transmit(runtime, id);
-    await command.onStage?.("TRANSMITTED", id);
+    if (!isFactuCoreReusedTransmission(transmitted)) {
+      await command.onStage?.("TRANSMITTED", id);
+    }
 
     return buildDocumentResult(
       this.mapper,
@@ -248,7 +268,9 @@ export class FactuCoreProvider implements ElectronicBillingProvider {
       await command.onStage?.("SIGNED", createdDocumentId);
       await command.onStage?.("TRANSMISSION_INTENT", createdDocumentId);
       const transmitted = await this.client.transmit(runtime, createdDocumentId);
-      await command.onStage?.("TRANSMITTED", createdDocumentId);
+      if (!isFactuCoreReusedTransmission(transmitted)) {
+        await command.onStage?.("TRANSMITTED", createdDocumentId);
+      }
       const merged = mergeDocumentResponses(created, generated, signed, transmitted);
 
       return buildDocumentResult(this.mapper, command.documentId, merged, transmitted.status ?? transmitted.providerStatus ?? "SENT");

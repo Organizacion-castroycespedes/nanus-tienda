@@ -11,6 +11,7 @@ import {
   FactuCoreAuthenticationError,
   FactuCoreValidationError,
 } from "../src/modules/electronic-billing/providers/factucore/factucore.errors";
+import { FactuCoreMapper } from "../src/modules/electronic-billing/providers/factucore/factucore.mapper";
 
 const ids = {
   tenant: "00000000-0000-0000-0000-000000000501",
@@ -132,7 +133,11 @@ const buildState = (overrides: Partial<typeof baseDocument> = {}) => ({
   ],
 });
 
-const buildHarness = (state = buildState(), advisoryLockAvailable = true) => {
+const buildHarness = (
+  state = buildState(),
+  advisoryLockAvailable = true,
+  providerCode = "FAKE_PROVIDER",
+) => {
   const clientCalls: string[] = [];
   const client = {
     query: async (text: string) => {
@@ -280,7 +285,7 @@ const buildHarness = (state = buildState(), advisoryLockAvailable = true) => {
     },
   };
 
-  const provider = new FakeElectronicBillingProvider("FAKE_PROVIDER");
+  const provider = new FakeElectronicBillingProvider(providerCode);
   const providerResolver = {
     resolve: async () => ({
       provider,
@@ -585,6 +590,215 @@ test("repeated accepted reconciliation preserves fiscal metadata without provide
   assert.equal(result.document.metadata.providerResponse.code, "100");
   assert.equal(harness.provider.received.issueInvoice.length, 0);
   assert.equal(harness.provider.received.retryDocument.length, 0);
+});
+
+test("five pending-reconciliation refresh cycles perform zero provider resume calls", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: "FACTUCORE-PENDING-1",
+    provider_status: "SIGNED",
+    processing_stage: "RECONCILIATION_REQUIRED",
+  }), true, "FACTUCORE");
+  const provider = harness.provider as any;
+  const mapper = new FactuCoreMapper();
+  let statusCalls = 0;
+  let resumeCalls = 0;
+  provider.getDocumentStatus = async () => {
+    statusCalls += 1;
+    return mapper.mapStatusResult(ids.document, {
+      id: "FACTUCORE-PENDING-1",
+      status: "SIGNED",
+      failureClass: "PENDING",
+      reason: "PENDING_RECONCILIATION",
+    });
+  };
+  provider.resumeInvoice = async () => {
+    resumeCalls += 1;
+    throw new Error("resumeInvoice must not run");
+  };
+
+  for (let cycle = 0; cycle < 5; cycle += 1) {
+    const result = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+    assert.equal(result.document.status, "PROCESSING");
+    assert.equal(result.document.processing_stage, "RECONCILIATION_REQUIRED");
+  }
+
+  assert.equal(statusCalls, 5);
+  assert.equal(resumeCalls, 0);
+  assert.equal(harness.state.document.metadata.providerResponse.queued, undefined);
+  assert.equal(harness.state.document.metadata.providerResponse.reusedExisting, undefined);
+  assert.equal(harness.state.document.metadata.providerResponse.pendingReconciliation, true);
+});
+
+test("processing restart consumes exact FactuCore GET detail without provider resume", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: "FACTUCORE-PENDING-RESTART",
+    provider_status: "SIGNED",
+    processing_stage: "RECONCILIATION_REQUIRED",
+  }), true, "FACTUCORE");
+  const provider = harness.provider as any;
+  const mapper = new FactuCoreMapper();
+  let detailCalls = 0;
+  let statusCalls = 0;
+  let resumeCalls = 0;
+  provider.getDocument = async () => {
+    detailCalls += 1;
+    return mapper.mapDocumentResult(ids.document, {
+      id: "FACTUCORE-PENDING-RESTART",
+      status: "SIGNED",
+      failureClass: "PENDING",
+      reason: "PENDING_RECONCILIATION",
+    });
+  };
+  provider.getDocumentStatus = async () => {
+    statusCalls += 1;
+    throw new Error("GET status fallback must not run");
+  };
+  provider.resumeInvoice = async () => {
+    resumeCalls += 1;
+    throw new Error("resumeInvoice must not run");
+  };
+
+  const result = await harness.service.recoverProcessing(ids.tenant, ids.document);
+
+  assert.equal(detailCalls, 1);
+  assert.equal(statusCalls, 0);
+  assert.equal(resumeCalls, 0);
+  assert.equal(result.document.status, "PROCESSING");
+  assert.equal(result.document.processing_stage, "RECONCILIATION_REQUIRED");
+  assert.equal(result.resultCode, "EXISTING_PROVIDER_RECONCILED");
+});
+
+test("five SENT test-set cycles and restart stay PROCESSING without resume", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: "FACTUCORE-TEST-SET-1",
+    provider_status: "SENT",
+    processing_stage: "RECONCILIATION_REQUIRED",
+  }), true, "FACTUCORE");
+  const provider = harness.provider as any;
+  const mapper = new FactuCoreMapper();
+  const exactResponse = {
+    id: "FACTUCORE-TEST-SET-1",
+    status: "SENT",
+    failureClass: "PENDING",
+    reason: "TEST_SET_ACCEPTED",
+    normalizedStatus: "ACCEPTED",
+    latestTransmissionAttempt: { fiscalFinal: false },
+  };
+  let statusCalls = 0;
+  let detailCalls = 0;
+  let resumeCalls = 0;
+  provider.getDocumentStatus = async () => {
+    statusCalls += 1;
+    return mapper.mapStatusResult(ids.document, exactResponse);
+  };
+  provider.getDocument = async () => {
+    detailCalls += 1;
+    return mapper.mapDocumentResult(ids.document, exactResponse);
+  };
+  provider.resumeInvoice = async () => {
+    resumeCalls += 1;
+    throw new Error("resumeInvoice must not run");
+  };
+
+  for (let cycle = 0; cycle < 5; cycle += 1) {
+    const result = await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+    assert.equal(result.document.status, "PROCESSING");
+    assert.equal(result.document.provider_status, "SENT");
+    assert.equal(result.document.processing_stage, "RECONCILIATION_REQUIRED");
+  }
+
+  const restarted = await harness.service.recoverProcessing(ids.tenant, ids.document);
+
+  assert.equal(statusCalls, 5);
+  assert.equal(detailCalls, 1);
+  assert.equal(resumeCalls, 0);
+  assert.equal(restarted.document.status, "PROCESSING");
+  assert.equal(restarted.document.provider_status, "SENT");
+  assert.equal(restarted.document.processing_stage, "RECONCILIATION_REQUIRED");
+});
+
+test("pending reconciliation retryability is immediate after exact GET status response", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: "FACTUCORE-PENDING-RETRYABILITY",
+    provider_status: "SIGNED",
+    processing_stage: "RECONCILIATION_REQUIRED",
+  }), true, "FACTUCORE");
+  const mapper = new FactuCoreMapper();
+  const provider = harness.provider as any;
+  let resumeCalls = 0;
+  provider.getDocumentStatus = async () => mapper.mapStatusResult(ids.document, {
+    id: "FACTUCORE-PENDING-RETRYABILITY",
+    status: "SIGNED",
+    failureClass: "PENDING",
+    reason: "PENDING_RECONCILIATION",
+  });
+  provider.resumeInvoice = async () => {
+    resumeCalls += 1;
+    throw new Error("resumeInvoice must not run");
+  };
+
+  await harness.service.refreshDocumentStatus(ids.tenant, ids.document);
+
+  const decision = await harness.service.evaluateRetryability(ids.tenant, ids.document);
+
+  assert.equal(resumeCalls, 0);
+  assert.equal(decision.canRetry, false);
+  assert.equal(decision.retryClass, "RECONCILE_ONLY");
+  assert.equal(decision.requiresReconciliation, true);
+  assert.equal(decision.requiredAction, "RECONCILE_PROVIDER");
+});
+
+test("timeout recovery by external reference links pending document without resume", async () => {
+  const harness = buildHarness(buildState({
+    status: "TECHNICAL_ERROR",
+    last_error_code: "FACTUCORE_TIMEOUT",
+    processing_stage: "PROVIDER_CREATE_INTENT",
+    provider_document_id: null,
+  }), true, "FACTUCORE");
+  const provider = harness.provider as any;
+  let resumeCalls = 0;
+  provider.getDocumentStatus = async () => ({
+    documentId: ids.document,
+    providerDocumentId: "FACTUCORE-FOUND-BY-REFERENCE",
+    providerStatus: "SIGNED",
+    normalizedStatus: "PROCESSING",
+    failureClass: "PENDING",
+    failureReason: "PENDING_RECONCILIATION",
+    metadata: { pendingReconciliation: true },
+  });
+  provider.resumeInvoice = async () => {
+    resumeCalls += 1;
+    throw new Error("resumeInvoice must not run");
+  };
+
+  const result = await harness.service.recoverAfterConfirmedProviderAbsence(ids.tenant, ids.document);
+
+  assert.equal(resumeCalls, 0);
+  assert.equal(result.document.provider_document_id, "FACTUCORE-FOUND-BY-REFERENCE");
+  assert.equal(result.document.status, "PROCESSING");
+  assert.equal(result.document.processing_stage, "RECONCILIATION_REQUIRED");
+});
+
+test("manual recovery denied by document lock cannot resume pending transmission", async () => {
+  const harness = buildHarness(buildState({
+    status: "PROCESSING",
+    provider_document_id: "FACTUCORE-LOCKED-PENDING",
+    provider_status: "SIGNED",
+    processing_stage: "RECONCILIATION_REQUIRED",
+  }), false, "FACTUCORE");
+  const provider = harness.provider as any;
+  let resumeCalls = 0;
+  provider.resumeInvoice = async () => { resumeCalls += 1; };
+
+  await assert.rejects(
+    () => harness.service.recoverProcessing(ids.tenant, ids.document),
+    ElectronicDocumentAlreadyProcessingError,
+  );
+  assert.equal(resumeCalls, 0);
 });
 
 test("processDocument returns idempotent result when already accepted", async () => {
