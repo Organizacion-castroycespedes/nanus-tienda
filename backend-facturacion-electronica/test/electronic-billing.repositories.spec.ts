@@ -412,15 +412,17 @@ test("attachment repository stores metadata only", async () => {
   assert.match(calls[0].text, /INSERT INTO electronic_document_attachments/);
 });
 
-test("delivery repository marks failures without touching document state", async () => {
+test("delivery repository keeps DELIVERY_UNKNOWN 502 separate from fiscal document state", async () => {
   const { calls, db } = buildDb([{ id: ids.delivery }]);
   const repository = new ElectronicDocumentDeliveryRepository(db as never);
 
-  await repository.markFailed(ids.tenant, ids.delivery, "boom");
+  await repository.markFailed(ids.tenant, ids.delivery, "DELIVERY_UNKNOWN 502");
 
   assert.equal(calls.length, 1);
   assert.match(calls[0].text, /UPDATE electronic_document_deliveries/);
   assert.match(calls[0].text, /last_error = \$3/);
+  assert.equal(calls[0].params[2], "DELIVERY_UNKNOWN 502");
+  assert.doesNotMatch(calls[0].text, /UPDATE electronic_documents\s/);
 });
 
 test("repository methods use transaction client when provided", async () => {

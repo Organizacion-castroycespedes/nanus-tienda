@@ -439,6 +439,17 @@ export class ElectronicBillingProcessingService {
       })
       : await this.getProviderStatus(resolved, aggregate);
     const currentStatus = currentProvider.providerStatus?.toUpperCase() ?? "";
+    if (this.isFactuCorePendingReconciliation(resolved, currentProvider)) {
+      return this.persistProviderResult(
+        tenantId,
+        aggregate,
+        currentProvider,
+        resolved,
+        "STATUS_CHANGED",
+        true,
+        this.nextAttemptFromEvents(aggregate.events),
+      );
+    }
     const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
     if (!isResumable) {
       return this.persistProviderResult(
@@ -563,6 +574,7 @@ export class ElectronicBillingProcessingService {
       const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
       if (
         isResumable
+        && !this.isFactuCorePendingReconciliation(resolved, providerResult)
         && persisted.document.provider_document_id
         && resolved.provider.resumeInvoice
       ) {
@@ -900,6 +912,28 @@ export class ElectronicBillingProcessingService {
       };
     }
 
+    if (
+      aggregate.document.status === "PROCESSING"
+      && aggregate.document.processing_stage === "RECONCILIATION_REQUIRED"
+      && aggregate.document.provider_status?.trim().toUpperCase() === "SIGNED"
+      && this.hasPendingReconciliationEvidence(aggregate.document)
+    ) {
+      return {
+        canRetry: false,
+        canRecoverProviderCreateIntent,
+        canRecoverExistingProvider,
+        retryClass: "RECONCILE_ONLY",
+        decision: "RECONCILE_FIRST",
+        reason: "PROVIDER_STATE_MUST_BE_RECONCILED",
+        requiredAction: "RECONCILE_PROVIDER",
+        requiresReconciliation: true,
+        providerDocumentExists: Boolean(aggregate.document.provider_document_id),
+        processingStage: aggregate.document.processing_stage,
+        transmissionState: "UNKNOWN",
+        safeUserMessage: "Se debe reconciliar el proveedor antes de continuar.",
+      };
+    }
+
     if (aggregate.document.status === "PROCESSING") {
       return {
         canRetry: false,
@@ -974,6 +1008,26 @@ export class ElectronicBillingProcessingService {
       transmissionState: "UNKNOWN",
       safeUserMessage: "No existe un reintento seguro para este documento.",
     };
+  }
+
+  private isFactuCorePendingReconciliation(
+    resolved: ResolvedElectronicBillingProvider,
+    providerResult: ElectronicBillingProviderDocumentResult | ElectronicBillingProviderStatusResult,
+  ): boolean {
+    return resolved.provider.code.toUpperCase() === "FACTUCORE"
+      && providerResult.providerStatus.trim().toUpperCase() === "SIGNED"
+      && providerResult.failureClass === "PENDING"
+      && providerResult.failureReason?.trim().toUpperCase() === "PENDING_RECONCILIATION";
+  }
+
+  private hasPendingReconciliationEvidence(document: ElectronicDocumentRecord): boolean {
+    const providerResponse = document.metadata?.providerResponse;
+    return Boolean(
+      providerResponse
+      && typeof providerResponse === "object"
+      && !Array.isArray(providerResponse)
+      && (providerResponse as Record<string, unknown>).pendingReconciliation === true,
+    );
   }
 
   async retryRecoverableDocument(
@@ -1073,6 +1127,7 @@ export class ElectronicBillingProcessingService {
       const isResumable = ["VALIDATED_INTERNAL", "XML_GENERATED", "SIGNED", "READY_TO_SEND"].includes(currentStatus);
       if (
         isResumable
+        && !this.isFactuCorePendingReconciliation(resolved, providerResult)
         && persisted.document.provider_document_id
         && resolved.provider.resumeInvoice
       ) {

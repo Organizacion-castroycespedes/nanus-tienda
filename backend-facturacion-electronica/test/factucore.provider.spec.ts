@@ -347,6 +347,69 @@ test("issueInvoice uses FactuCore's single issue endpoint", async () => {
   assert.deepEqual(stages, ["PROVIDER_LINKED"]);
 });
 
+test("issueInvoice preserves P0 pending-reconciliation disposition without fiscal acceptance", async () => {
+  const client = new RecordingFactuCoreClient();
+  client.issueInvoice = async (context, request) => {
+    client.calls.push({ op: "issueInvoice", context, request });
+    return buildDoc({
+      id: "factu-pending-1",
+      providerDocumentId: "factu-pending-1",
+      status: "SIGNED",
+      providerStatus: null,
+      failureClass: "PENDING",
+      reason: "PENDING_RECONCILIATION",
+      queued: false,
+      stages: {
+        transmission: {
+          status: "SIGNED",
+          reusedExisting: true,
+        },
+      },
+    });
+  };
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+
+  const result = await provider.issueInvoice(makeInvoiceCommand());
+
+  assert.equal(result.providerStatus, "SIGNED");
+  assert.equal(result.normalizedStatus, "PROCESSING");
+  assert.equal(result.failureClass, "PENDING");
+  assert.equal(result.failureReason, "PENDING_RECONCILIATION");
+  assert.deepEqual(result.metadata, {
+    queued: false,
+    reason: "PENDING_RECONCILIATION",
+    pendingReconciliation: true,
+  });
+});
+
+test("mapper recognizes queued issue reconciliation only from top-level contract fields", () => {
+  const result = new FactuCoreMapper().mapDocumentResult("manus-queued-1", {
+    id: "factu-queued-1",
+    documentId: "factu-queued-1",
+    transmissionMode: "queued",
+    status: "SIGNED",
+    queued: false,
+    failureClass: "PENDING",
+    reason: "PENDING_RECONCILIATION",
+    stages: {
+      transmission: {
+        status: "SIGNED",
+        queued: false,
+        reusedExisting: true,
+      },
+    },
+  });
+
+  assert.equal(result.providerStatus, "SIGNED");
+  assert.equal(result.normalizedStatus, "PROCESSING");
+  assert.equal(result.failureClass, "PENDING");
+  assert.equal(result.failureReason, "PENDING_RECONCILIATION");
+  assert.equal(result.metadata?.queued, false);
+  assert.equal(result.metadata?.reusedExisting, undefined);
+  assert.equal(result.metadata?.pendingReconciliation, true);
+});
+
 test("resumeInvoice continues a validated provider document without create", async () => {
   const client = new RecordingFactuCoreClient();
   const { resolver } = buildResolver();
@@ -390,8 +453,160 @@ test("resumeInvoice continues a SIGNED provider document by skipping generateXml
   assert.deepEqual(stages, ["XML_GENERATED", "SIGNED", "TRANSMISSION_INTENT", "TRANSMITTED"]);
 });
 
+test("resumeInvoice treats SIGNED pending reconciliation as query-only", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
+  client.getStatus = async (context, documentId) => {
+    client.calls.push({ op: "getStatus", context, documentId });
+    return buildStatusDoc({
+      id: documentId,
+      providerDocumentId: documentId,
+      status: "SIGNED",
+      providerStatus: null,
+      failureClass: "PENDING",
+      reason: "PENDING_RECONCILIATION",
+    });
+  };
+
+  const result = await provider.resumeInvoice(command, "factu-pending-1");
+
+  assert.deepEqual(client.calls.map((call) => call.op), ["getStatus"]);
+  assert.deepEqual(stages, []);
+  assert.equal(result.normalizedStatus, "PROCESSING");
+  assert.equal(result.metadata?.pendingReconciliation, true);
+});
+
+test("resumeInvoice treats SENT test-set acceptance as query-only", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
+  client.getStatus = async (context, documentId) => {
+    client.calls.push({ op: "getStatus", context, documentId });
+    return buildStatusDoc({
+      id: documentId,
+      providerDocumentId: documentId,
+      status: "SENT",
+      providerStatus: null,
+      normalizedStatus: "ACCEPTED",
+      failureClass: "PENDING",
+      reason: "TEST_SET_ACCEPTED",
+      latestTransmissionAttempt: { fiscalFinal: false },
+    });
+  };
+
+  const result = await provider.resumeInvoice(command, "factu-test-set-1");
+
+  assert.deepEqual(client.calls.map((call) => call.op), ["getStatus"]);
+  assert.deepEqual(stages, []);
+  assert.equal(result.providerStatus, "SENT");
+  assert.equal(result.normalizedStatus, "PROCESSING");
+});
+
+test("resumeInvoice does not record TRANSMITTED when FactuCore reuses a pending claim", async () => {
+  const client = new RecordingFactuCoreClient();
+  const { resolver } = buildResolver();
+  const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+  const stages: string[] = [];
+  const command = makeInvoiceCommand();
+  command.onStage = async (stage) => { stages.push(stage); };
+  client.getStatus = async (context, documentId) => {
+    client.calls.push({ op: "getStatus", context, documentId });
+    return buildStatusDoc({ id: documentId, providerDocumentId: documentId, status: "SIGNED", providerStatus: "SIGNED" });
+  };
+  client.transmit = async (context, documentId) => {
+    client.calls.push({ op: "transmit", context, documentId });
+    return buildDoc({
+      id: documentId,
+      providerDocumentId: documentId,
+      status: "SIGNED",
+      providerStatus: "SIGNED",
+      failureClass: "PENDING",
+      reason: "PENDING_RECONCILIATION",
+      queued: false,
+      reusedExisting: true,
+    });
+  };
+
+  const result = await provider.resumeInvoice(command, "factu-race-1");
+
+  assert.deepEqual(client.calls.map((call) => call.op), ["getStatus", "transmit"]);
+  assert.deepEqual(stages, ["XML_GENERATED", "SIGNED", "TRANSMISSION_INTENT"]);
+  assert.equal(result.normalizedStatus, "PROCESSING");
+  assert.equal(result.metadata?.reusedExisting, true);
+});
+
+test("mapper trusts contractual status and ignores contradictory normalizedStatus", () => {
+  const mapper = new FactuCoreMapper();
+  const setResult = mapper.mapDocumentResult("doc-set", {
+    status: "SENT",
+    providerStatus: null,
+    normalizedStatus: "ACCEPTED",
+    failureClass: "PENDING",
+    reason: "TEST_SET_ACCEPTED",
+    providerStatusCode: "2",
+    cufe: "different-cufe",
+    latestTransmissionAttempt: { fiscalFinal: false },
+  });
+  const malformed = mapper.mapDocumentResult("doc-malformed", {});
+  const contradictoryPendingStatus = mapper.mapStatusResult("doc-pending", {
+    status: "SIGNED",
+    providerStatus: "SIGNED",
+    normalizedStatus: "ACCEPTED",
+    failureClass: "PENDING",
+    reason: "PENDING_RECONCILIATION",
+  });
+  const accepted = mapper.mapDocumentResult("doc-accepted", {
+    status: "ACCEPTED",
+    providerStatus: null,
+    normalizedStatus: "PROCESSING",
+    failureClass: "ACCEPTED",
+    latestTransmissionAttempt: { fiscalFinal: true },
+  });
+  const administrativeAcceptedWithoutEvidence = mapper.mapDocumentResult("doc-admin-accepted", {
+    status: "ACCEPTED",
+    providerStatus: null,
+    normalizedStatus: "ACCEPTED",
+    failureClass: "ACCEPTED",
+    latestTransmissionAttempt: { fiscalFinal: false },
+  });
+  const contractualStatusWins = mapper.mapDocumentResult("doc-status-wins", {
+    status: "SENT",
+    providerStatus: "ACCEPTED",
+    normalizedStatus: "ACCEPTED",
+  });
+
+  assert.equal(setResult.normalizedStatus, "PROCESSING");
+  assert.equal(setResult.providerStatusCode, "2");
+  assert.equal(setResult.cufe, "different-cufe");
+  assert.equal(malformed.providerStatus, "SENT");
+  assert.equal(malformed.normalizedStatus, "PROCESSING");
+  assert.equal(contradictoryPendingStatus.normalizedStatus, "PROCESSING");
+  assert.equal(accepted.normalizedStatus, "ACCEPTED");
+  assert.equal(administrativeAcceptedWithoutEvidence.normalizedStatus, "PROCESSING");
+  assert.equal(contractualStatusWins.providerStatus, "SENT");
+  assert.equal(contractualStatusWins.normalizedStatus, "PROCESSING");
+});
+
 test("getDocument reads the linked provider document by id", async () => {
   const client = new RecordingFactuCoreClient();
+  client.getDocument = async (context, documentId) => {
+    client.calls.push({ op: "getDocument", context, documentId });
+    return buildStatusDoc({
+      id: documentId,
+      providerDocumentId: documentId,
+      status: "SIGNED",
+      providerStatus: null,
+      failureClass: "PENDING",
+      reason: "PENDING_RECONCILIATION",
+    });
+  };
   const { resolver } = buildResolver();
   const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
 
@@ -404,6 +619,13 @@ test("getDocument reads the linked provider document by id", async () => {
   });
 
   assert.equal(result.providerDocumentId, "factu-existing-1");
+  assert.equal(result.providerStatus, "SIGNED");
+  assert.equal(result.normalizedStatus, "PROCESSING");
+  assert.equal(result.failureClass, "PENDING");
+  assert.equal(result.failureReason, "PENDING_RECONCILIATION");
+  assert.equal(result.metadata?.queued, undefined);
+  assert.equal(result.metadata?.reusedExisting, undefined);
+  assert.equal(result.metadata?.pendingReconciliation, true);
   assert.deepEqual(client.calls.map((call) => call.op), ["getDocument"]);
 });
 
@@ -429,6 +651,31 @@ const makeRuntimeContext = (tenantId: string): FactuCoreRuntimeContext => ({
   baseUrl: "https://factucore.test",
   credentials: { clientKey: "test-key", clientSecret: "test-secret" },
   timeoutMs: 25,
+});
+
+test("FactuCore client preserves pending POST transmit fields from HTTP 201 and fails closed on malformed 201", async () => {
+  const responses = [
+    new Response(JSON.stringify({
+      id: "factu-201-pending",
+      status: "SIGNED",
+      failureClass: "PENDING",
+      reason: "PENDING_RECONCILIATION",
+      queued: false,
+      reusedExisting: true,
+    }), { status: 201, headers: { "content-type": "application/json" } }),
+    new Response("not-json", { status: 201, headers: { "content-type": "application/json" } }),
+  ];
+  const client = new FactuCoreClient(async () => responses.shift()!);
+
+  const pending = await client.transmit(makeRuntimeContext("tenant-a"), "factu-201-pending");
+  const malformed = await client.transmit(makeRuntimeContext("tenant-a"), "factu-201-malformed");
+
+  assert.equal(pending.status, "SIGNED");
+  assert.equal(pending.reason, "PENDING_RECONCILIATION");
+  assert.equal(pending.queued, false);
+  assert.equal(pending.reusedExisting, true);
+  assert.deepEqual(malformed, {});
+  assert.equal(new FactuCoreMapper().mapDocumentResult("doc-malformed-201", malformed).normalizedStatus, "PROCESSING");
 });
 
 test("FactuCore client preserves nested sanitized validation details", async () => {
@@ -907,10 +1154,15 @@ test("issueCreditNote queued mode maps origin fields and provider line identity"
     const client = new RecordingFactuCoreClient();
     const { resolver } = buildResolver();
     const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+    const stages: string[] = [];
+    const command = makeCreditNoteCommand();
+    command.onStage = async (stage) => { stages.push(stage); };
 
-    const result = await provider.issueCreditNote(makeCreditNoteCommand());
+    const result = await provider.issueCreditNote(command);
 
     assert.equal(result.providerStatus, "SENT");
+    assert.equal(client.calls.filter((call) => call.op === "transmit").length, 1);
+    assert.equal(stages.filter((stage) => stage === "TRANSMITTED").length, 1);
     const createCall = client.calls.find((call) => call.op === "createCreditNote");
     const request = createCall?.request as Record<string, unknown>;
     assert.equal(request.originDocumentId, "factu-origin-tenant-a");
@@ -919,6 +1171,58 @@ test("issueCreditNote queued mode maps origin fields and provider line identity"
     assert.equal(request.customerId, null);
     const firstLine = (request.lines as Array<Record<string, unknown>>)[0];
     assert.equal(firstLine.originLineId, "factu-line-tenant-a");
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.FACTUCORE_TRANSMISSION_MODE;
+    } else {
+      process.env.FACTUCORE_TRANSMISSION_MODE = previousMode;
+    }
+  }
+});
+
+test("issueCreditNote queued mode does not record TRANSMITTED when FactuCore reuses a pending claim", async () => {
+  const previousMode = process.env.FACTUCORE_TRANSMISSION_MODE;
+  process.env.FACTUCORE_TRANSMISSION_MODE = "queued";
+  try {
+    const client = new RecordingFactuCoreClient();
+    client.transmit = async (context, documentId) => {
+      client.calls.push({ op: "transmit", context, documentId });
+      return buildDoc({
+        id: documentId,
+        providerDocumentId: documentId,
+        status: "SIGNED",
+        providerStatus: null,
+        failureClass: "PENDING",
+        reason: "PENDING_RECONCILIATION",
+        queued: false,
+        reusedExisting: true,
+      });
+    };
+    const { resolver } = buildResolver();
+    const provider = new FactuCoreProvider(client as never, resolver, new FactuCoreMapper());
+    const stages: string[] = [];
+    const command = makeCreditNoteCommand();
+    command.onStage = async (stage) => { stages.push(stage); };
+
+    const result = await provider.issueCreditNote(command);
+
+    assert.deepEqual(client.calls.map((call) => call.op), ["createCreditNote", "generateXml", "sign", "transmit"]);
+    assert.equal(client.calls.filter((call) => call.op === "transmit").length, 1);
+    assert.deepEqual(stages, [
+      "PROVIDER_LINKED",
+      "XML_GENERATE_INTENT",
+      "XML_GENERATED",
+      "SIGN_INTENT",
+      "SIGNED",
+      "TRANSMISSION_INTENT",
+    ]);
+    assert.equal(result.providerStatus, "SIGNED");
+    assert.equal(result.normalizedStatus, "PROCESSING");
+    assert.equal(result.failureClass, "PENDING");
+    assert.equal(result.failureReason, "PENDING_RECONCILIATION");
+    assert.equal(result.metadata?.queued, false);
+    assert.equal(result.metadata?.reusedExisting, true);
+    assert.equal(result.metadata?.pendingReconciliation, true);
   } finally {
     if (previousMode === undefined) {
       delete process.env.FACTUCORE_TRANSMISSION_MODE;

@@ -200,6 +200,7 @@ export type FactuCoreDocumentResponse = {
   providerStatusMessage?: string | null;
   trackingId?: string | null;
   queued?: boolean | null;
+  reusedExisting?: boolean | null;
   lines?: Array<{
     id?: string | null;
     lineNumber?: number | string | null;

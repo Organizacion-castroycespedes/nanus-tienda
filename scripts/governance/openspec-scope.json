@@ -142,6 +142,20 @@
       "exemptions": []
     },
     {
+      "change_id": "hu-manus-fe-pending-reconciliation-001",
+      "paths": [
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.mapper.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.provider.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.types.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/services/electronic-billing-processing.service.ts",
+        "backend-facturacion-electronica/test/electronic-billing.processing.service.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing.repositories.spec.ts",
+        "backend-facturacion-electronica/test/factucore.provider.spec.ts",
+        "openspec/changes/hu-manus-fe-pending-reconciliation-001/**"
+      ],
+      "exemptions": []
+    },
+    {
       "change_id": "fix-invoice-line-base-rounding",
       "paths": [
         "api/src/modules/inventory/services/sale.service.spec.ts",
@@ -431,6 +445,19 @@
     }
   ],
   "current_ownership": [
+    {
+      "change_id": "hu-manus-fe-pending-reconciliation-001",
+      "paths": [
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.mapper.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.provider.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.types.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/services/electronic-billing-processing.service.ts",
+        "backend-facturacion-electronica/test/electronic-billing.processing.service.spec.ts",
+        "backend-facturacion-electronica/test/electronic-billing.repositories.spec.ts",
+        "backend-facturacion-electronica/test/factucore.provider.spec.ts"
+      ],
+      "reason": "Current PR #375 implements the pending DIAN reconciliation consumer contract; historical electronic-billing and liquor-rounding associations remain unchanged."
+    },
     {
       "change_id": "corregir-stock-insuficiente-y-recuperacion-carrito-pos",
       "paths": [
