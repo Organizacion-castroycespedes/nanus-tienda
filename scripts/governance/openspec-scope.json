@@ -442,6 +442,15 @@
         "openspec/changes/bloquear-tipo-producto-edicion/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "habilitar-fiscal-avanzado-productos-admin",
+      "paths": [
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/ProductForm.spec.tsx",
+        "openspec/changes/habilitar-fiscal-avanzado-productos-admin/**"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
@@ -512,7 +521,6 @@
     {
       "change_id": "bloquear-tipo-producto-edicion",
       "paths": [
-        "web/modules/inventory/components/ProductForm.tsx",
         "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
         "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
         "web/modules/inventory/components/product-form/payload.ts",
@@ -520,6 +528,15 @@
         "openspec/changes/bloquear-tipo-producto-edicion/**"
       ],
       "reason": "Follow-up frontend ownership for immutable product type during edit; creation and backend transition contracts remain owned by suportar-productos-no-inventariables."
+    },
+    {
+      "change_id": "habilitar-fiscal-avanzado-productos-admin",
+      "paths": [
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/ProductForm.spec.tsx",
+        "openspec/changes/habilitar-fiscal-avanzado-productos-admin/**"
+      ],
+      "reason": "Current branch fixes the ADMIN-only frontend regression for advanced product fiscal configuration while preserving backend authorization, tenant scope and fiscal calculation contracts."
     },
     {
       "change_id": "evolucionar-gobernanza-openspec-ownership-windows",
