@@ -148,7 +148,7 @@ export const ProductForm = ({
     (state) => state.auth.user?.role ?? state.auth.role ?? "",
   );
   const canViewFiscalAdvanced =
-    role === "SUPER_ADMIN" || role === "SUPER_USER";
+    role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN";
   const imagePanelId = "product-form-image-panel";
 
   const [values, setValues] = useState<ProductFormValues>(
@@ -826,7 +826,7 @@ export const ProductForm = ({
       }),
     };
 
-    // Solo Super Admin / Super User definen impuestos y DANE.
+    // Solo roles con gestion de productos definen impuestos y DANE.
     // Al editar, el resto no envia taxes/taxId para no pisar la config fiscal en BD.
     const payload: CreateProductPayload = canViewFiscalAdvanced
       ? {
