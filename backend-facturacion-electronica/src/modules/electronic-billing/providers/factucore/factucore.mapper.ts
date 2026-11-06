@@ -63,6 +63,52 @@ const normalizeNullableString = (value: unknown) => {
   return normalized.length > 0 ? normalized : null;
 };
 
+type FactuCorePendingReconciliationSignal = {
+  status?: unknown;
+  providerStatus?: unknown;
+  failureClass?: unknown;
+  reason?: unknown;
+  failureReason?: unknown;
+};
+
+const resolveFactuCoreContractStatus = (
+  value: Pick<FactuCorePendingReconciliationSignal, "status" | "providerStatus">,
+  fallbackStatus?: unknown,
+): string => (
+  normalizeString(value.status)
+  || normalizeString(value.providerStatus)
+  || normalizeString(fallbackStatus)
+  || "SENT"
+);
+
+const hasExplicitNonFinalAcceptanceEvidence = (
+  response: FactuCoreDocumentResponse | FactuCoreStatusResponse,
+  providerStatus: string,
+): boolean => {
+  if (providerStatus.toUpperCase() !== "ACCEPTED") {
+    return false;
+  }
+  const attempt = response.latestTransmissionAttempt;
+  return Boolean(
+    attempt
+    && typeof attempt === "object"
+    && !Array.isArray(attempt)
+    && (attempt as Record<string, unknown>).fiscalFinal === false,
+  );
+};
+
+export const isFactuCorePendingReconciliation = (
+  value: FactuCorePendingReconciliationSignal,
+): boolean => (
+  resolveFactuCoreContractStatus(value).toUpperCase() === "SIGNED"
+  && normalizeString(value.failureClass).toUpperCase() === "PENDING"
+  && normalizeString(value.failureReason ?? value.reason).toUpperCase() === "PENDING_RECONCILIATION"
+);
+
+export const isFactuCoreReusedTransmission = (
+  value: Pick<FactuCoreDocumentResponse, "queued" | "reusedExisting">,
+): boolean => value.queued === false && value.reusedExisting === true;
+
 const FAILURE_CLASSES = new Set<ElectronicFailureClass>([
   "ACCEPTED",
   "PENDING",
@@ -678,11 +724,12 @@ export class FactuCoreMapper {
     response: FactuCoreDocumentResponse | FactuCoreStatusResponse,
     fallbackStatus?: string | null,
   ): ElectronicBillingProviderDocumentResult {
-    const providerStatus = normalizeString(response.providerStatus ?? response.status ?? fallbackStatus ?? "SENT") || "SENT";
-    const normalizedStatus = this.normalizeStatus(
-      providerStatus,
-      typeof response.normalizedStatus === "string" ? response.normalizedStatus : null,
-    );
+    const providerStatus = resolveFactuCoreContractStatus(response, fallbackStatus);
+    const pendingReconciliation = isFactuCorePendingReconciliation(response);
+    const explicitNonFinalAcceptance = hasExplicitNonFinalAcceptanceEvidence(response, providerStatus);
+    const normalizedStatus = pendingReconciliation || explicitNonFinalAcceptance
+      ? "PROCESSING"
+      : this.normalizeStatus(providerStatus);
     const lineResults = Array.isArray(response.lines)
       ? response.lines.map((line, index) => ({
           index,
@@ -720,6 +767,10 @@ export class FactuCoreMapper {
       metadata: {
         ...(response.metadata ?? {}),
         ...(lineResults ? { lineResults } : {}),
+        ...(typeof response.queued === "boolean" ? { queued: response.queued } : {}),
+        ...(typeof response.reusedExisting === "boolean" ? { reusedExisting: response.reusedExisting } : {}),
+        ...(response.reason ? { reason: response.reason } : {}),
+        ...(pendingReconciliation ? { pendingReconciliation: true } : {}),
       } as Record<string, unknown>,
     };
   }
@@ -728,14 +779,12 @@ export class FactuCoreMapper {
     documentId: string,
     response: FactuCoreStatusResponse,
   ): ElectronicBillingProviderStatusResult {
-    const providerStatus = normalizeString(response.providerStatus ?? response.status ?? "SENT") || "SENT";
+    const providerStatus = resolveFactuCoreContractStatus(response);
+    const documentResult = this.mapDocumentResult(documentId, response, providerStatus);
     return {
-      ...this.mapDocumentResult(documentId, response, providerStatus),
+      ...documentResult,
       providerStatus,
-      normalizedStatus: this.normalizeStatus(
-        providerStatus,
-        typeof response.normalizedStatus === "string" ? response.normalizedStatus : null,
-      ),
+      normalizedStatus: documentResult.normalizedStatus ?? "PROCESSING",
       providerStatusCode: normalizeNullableString(response.providerStatusCode),
       providerStatusMessage: normalizeNullableString(response.providerStatusMessage),
       trackingId: normalizeNullableString(response.trackingId),
@@ -788,14 +837,7 @@ export class FactuCoreMapper {
     };
   }
 
-  normalizeStatus(
-    providerStatus: string,
-    normalizedStatus?: string | ElectronicDocumentStatus | null,
-  ): ElectronicDocumentStatus {
-    if (normalizedStatus) {
-      return normalizedStatus as ElectronicDocumentStatus;
-    }
-
+  normalizeStatus(providerStatus: string): ElectronicDocumentStatus {
     const mapped = DOCUMENT_STATUS_MAP[providerStatus.toUpperCase()];
     return mapped ?? "PROCESSING";
   }
