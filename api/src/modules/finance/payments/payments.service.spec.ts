@@ -18,6 +18,7 @@ const user = randomUUID();
 const party = randomUUID();
 const cash = randomUUID();
 const transfer = randomUUID();
+const institution = randomUUID();
 const actor = { tenantId: tenant, userId: user, roles: ["ADMIN"] };
 const payload = (amounts: number[], type: "PURCHASE" | "SALES_ORDER" = "PURCHASE") => ({
   branchId: branch, referenceType: type, referenceId: source, cashSessionId: session,
@@ -25,7 +26,12 @@ const payload = (amounts: number[], type: "PURCHASE" | "SALES_ORDER" = "PURCHASE
 });
 
 test("document DTO rejects replacement party/direction/balance and accepts decimals", async () => {
-  const valid = plainToInstance(CreateDocumentPaymentDto, payload([0.29, 0.01]));
+  const validPayload = payload([0.29, 0.01]);
+  validPayload.payments[1] = {
+    ...validPayload.payments[1],
+    financialInstitutionId: institution,
+  } as typeof validPayload.payments[number];
+  const valid = plainToInstance(CreateDocumentPaymentDto, validPayload);
   assert.equal((await validate(valid, { whitelist: true, forbidNonWhitelisted: true })).length, 0);
   for (const forbidden of ["customerId", "supplierId", "partyId", "paidByPersonId", "direction", "pendingBalance"]) {
     const dto = plainToInstance(CreateDocumentPaymentDto, { ...payload([10]), [forbidden]: party });
@@ -34,6 +40,14 @@ test("document DTO rejects replacement party/direction/balance and accepts decim
   for (const amounts of [[], [0], [-1], [0.001]]) {
     assert.ok((await validate(plainToInstance(CreateDocumentPaymentDto, payload(amounts)))).length > 0);
   }
+  const invalidInstitution = payload([10]);
+  invalidInstitution.payments[0] = {
+    ...invalidInstitution.payments[0],
+    financialInstitutionId: "not-a-uuid",
+  } as typeof invalidInstitution.payments[number];
+  assert.ok(
+    (await validate(plainToInstance(CreateDocumentPaymentDto, invalidInstitution))).length > 0
+  );
 });
 
 // Opt-in real PostgreSQL test. Uses an isolated random schema, never application tables.

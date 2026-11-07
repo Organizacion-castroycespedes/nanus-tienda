@@ -727,7 +727,7 @@ const OrdersPage = () => {
       {!isActionMode ? (
       <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
         <div
-          className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6"
         >
           <Input
             label="Buscar"
@@ -827,21 +827,39 @@ const OrdersPage = () => {
 
       {!isActionMode ? (
       <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
-        <div className="w-full max-w-full overflow-x-auto">
-          <table className="min-w-[1120px] divide-y divide-slate-200 text-sm">
+        <div
+          className="w-full max-w-full overflow-x-auto rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          role="region"
+          aria-label="Tabla de pedidos con desplazamiento horizontal"
+          tabIndex={0}
+        >
+          <table className="w-full min-w-[1360px] table-fixed divide-y divide-slate-200 text-sm">
+            <colgroup>
+              <col className="w-[17%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[6%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
+              <col className="w-[72px]" />
+            </colgroup>
             <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-medium">Cliente</th>
                 <th className="px-4 py-3 font-medium">Sucursal</th>
                 <th className="px-4 py-3 font-medium">Terminal</th>
-                <th className="px-4 py-3 font-medium">Total</th>
-                <th className="px-4 py-3 font-medium">Pagado</th>
-                <th className="px-4 py-3 font-medium">Saldo</th>
+                <th className="px-4 py-3 text-right font-medium">Total</th>
+                <th className="px-4 py-3 text-right font-medium">Pagado</th>
+                <th className="px-4 py-3 text-right font-medium">Saldo</th>
                 <th className="px-4 py-3 font-medium">Tipo</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Pago</th>
                 <th className="px-4 py-3 font-medium">Fecha</th>
-                <th className="px-4 py-3 text-right font-medium">Acciones</th>
+                <th className="sticky right-0 z-10 border-l border-slate-200 bg-slate-50 px-4 py-3 text-right font-medium dark:border-slate-700 dark:bg-slate-800">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -865,28 +883,28 @@ const OrdersPage = () => {
                 </tr>
               ) : (
                 paginatedOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td className="px-4 py-3 text-slate-900 dark:text-white">
+                  <tr key={order.id} className="group hover:bg-slate-50/70 dark:hover:bg-slate-700/40">
+                    <td className="break-words px-4 py-3 font-medium leading-5 text-slate-900 dark:text-white">
                       {order.customerName || order.customerId}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.branchName ?? "-"}</td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.terminalName ?? "-"}</td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                    <td className="break-words px-4 py-3 leading-5 text-slate-700 dark:text-slate-200">{order.branchName ?? "-"}</td>
+                    <td className="break-words px-4 py-3 leading-5 text-slate-700 dark:text-slate-200">{order.terminalName ?? "-"}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
                       {formatCurrency(Number(order.total))}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
                       {formatCurrency(Number(order.totalPaid))}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
                       {formatCurrency(Number(order.balanceDue))}
                     </td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.type}</td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.status}</td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{order.paymentStatus}</td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-200">{order.type}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-200">{order.status}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-200">{order.paymentStatus}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatDate(order.createdAt)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="sticky right-0 z-[1] border-l border-slate-200 bg-white px-4 py-3 text-right group-hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:group-hover:bg-slate-700">
                       <div className="flex items-center justify-end">
                         <RowActionsMenu
                           items={[

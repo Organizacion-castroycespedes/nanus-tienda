@@ -540,6 +540,7 @@ export type CreateDocumentPaymentPayload = {
   referenceId: string;
   payments: Array<{
     paymentMethodId: string;
+    financialInstitutionId?: string;
     amount: number;
     referenceNumber?: string;
     notes?: string;
