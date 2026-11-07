@@ -719,6 +719,7 @@ export class PaymentsService {
     const lines = [...payload.payments]
       .map((line) => ({
         paymentMethodId: line.paymentMethodId,
+        financialInstitutionId: line.financialInstitutionId ?? null,
         amount: Number(line.amount).toFixed(2),
         referenceNumber: this.normalizeOptional(line.referenceNumber) ?? null,
         notes: this.normalizeOptional(line.notes) ?? null,
@@ -815,6 +816,7 @@ export class PaymentsService {
           referenceType: payload.referenceType, referenceId: payload.referenceId,
           direction: payload.referenceType === "PURCHASE" ? "OUT" : "IN", status: "COMPLETED",
           paymentMethodId: line.paymentMethodId, amount: line.amount,
+          financialInstitutionId: line.financialInstitutionId,
           referenceNumber: line.referenceNumber, notes: line.notes,
           allocations: [{ referenceType: payload.referenceType, referenceId: payload.referenceId, allocatedAmount: line.amount }],
         }, actor, client, true));

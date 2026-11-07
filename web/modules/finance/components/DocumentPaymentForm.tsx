@@ -7,11 +7,13 @@ import { Input } from "../../../components/design-system/Input";
 import {
   createDocumentPayment,
   getCurrentCashSession,
+  listFinancialInstitutions,
   listPaymentMethods,
 } from "../services/finance.service";
 import type {
   CashSession,
   FinancePaymentStatus,
+  FinancialInstitution,
   Payment,
   PaymentDirection,
   PaymentMethod,
@@ -20,10 +22,17 @@ import type {
 import { PaymentMethodSelector } from "../../shared/payments/PaymentMethodSelector";
 import { PaymentDialog } from "../../shared/payments/PaymentDialog";
 import { parseDocumentPaymentAmount } from "../../shared/payments/payment-allocation.helper";
+import { FinancialInstitutionSelector } from "../../pos/components/payment/FinancialInstitutionSelector";
+import { getRequiresFinancialInstitutionForPos } from "../../pos/utils/pos-payment-rules";
+import {
+  isActiveFinancialInstitutionAvailable,
+  loadActiveFinancialInstitutions,
+} from "../utils/active-financial-institutions";
 
 type PaymentDraft = {
   id: string;
   paymentMethodId: string;
+  financialInstitutionId: string | null;
   amount: string;
   referenceNumber: string;
   notes: string;
@@ -36,6 +45,7 @@ export type DocumentPaymentSuccessContext = {
   direction: PaymentDirection;
   payments: Array<{
     paymentMethodId: string;
+    financialInstitutionId?: string | null;
     methodName?: string | null;
     methodType?: string | null;
     cashSessionId?: string | null;
@@ -95,6 +105,7 @@ const buildDraftId = () =>
 const createEmptyDraft = (paymentMethodId = "", amount = "", automatic = false): PaymentDraft => ({
   id: buildDraftId(),
   paymentMethodId,
+  financialInstitutionId: null,
   amount,
   referenceNumber: "",
   notes: "",
@@ -126,6 +137,7 @@ export const DocumentPaymentForm = ({
   onError,
 }: DocumentPaymentFormProps) => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [financialInstitutions, setFinancialInstitutions] = useState<FinancialInstitution[]>([]);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
   const [payments, setPayments] = useState<PaymentDraft[]>([createEmptyDraft()]);
   const [loading, setLoading] = useState(true);
@@ -141,9 +153,10 @@ export const DocumentPaymentForm = ({
       setLoading(true);
       setLoadError(null);
       try {
-        const [methods, currentSession] = await Promise.all([
+        const [methods, currentSession, institutions] = await Promise.all([
           listPaymentMethods({ active: true }),
           getCurrentCashSession(),
+          loadActiveFinancialInstitutions(listFinancialInstitutions),
         ]);
 
         if (!active) {
@@ -152,6 +165,7 @@ export const DocumentPaymentForm = ({
 
         const activeMethods = methods.filter((method) => method.active);
         setPaymentMethods(activeMethods);
+        setFinancialInstitutions(institutions);
         setCashSession(currentSession);
         setPayments((current) =>
           current.map((payment, index) =>
@@ -216,12 +230,28 @@ export const DocumentPaymentForm = ({
   const isFullyPaid = paymentStatus === "PAID" || paymentStatus === "OVERPAID";
   const cashSessionMatchesBranch = !cashSession || cashSession.branchId === branchId;
 
-  const updatePayment = (id: string, field: keyof PaymentDraft, value: string) => {
+  const updatePayment = (
+    id: string,
+    field:
+      | "paymentMethodId"
+      | "financialInstitutionId"
+      | "amount"
+      | "referenceNumber"
+      | "notes",
+    value: string | null
+  ) => {
     setSubmitError(null);
     setPayments((current) =>
       current.map((payment) =>
         payment.id === id
-          ? { ...payment, [field]: value, automatic: field === "amount" ? false : payment.automatic }
+          ? {
+              ...payment,
+              [field]: value,
+              ...(field === "paymentMethodId"
+                ? { financialInstitutionId: null }
+                : {}),
+              automatic: field === "amount" ? false : payment.automatic,
+            }
           : payment
       )
     );
@@ -278,6 +308,27 @@ export const DocumentPaymentForm = ({
     ) {
       return "Los metodos que exigen referencia deben llevar numero de referencia.";
     }
+    if (
+      parsedPayments.some(
+        (payment) =>
+          getRequiresFinancialInstitutionForPos(payment.method) &&
+          !payment.financialInstitutionId
+      )
+    ) {
+      return "Los metodos que exigen entidad financiera deben llevar banco o billetera.";
+    }
+    if (
+      parsedPayments.some(
+        (payment) =>
+          payment.financialInstitutionId &&
+          !isActiveFinancialInstitutionAvailable(
+            financialInstitutions,
+            payment.financialInstitutionId
+          )
+      )
+    ) {
+      return "La entidad financiera seleccionada no esta activa o disponible para el tenant.";
+    }
     if (!cashSession?.id) {
       return "Debes tener una caja abierta para registrar pagos.";
     }
@@ -318,6 +369,7 @@ export const DocumentPaymentForm = ({
         referenceId,
         payments: parsedPayments.map((payment) => ({
           paymentMethodId: payment.paymentMethodId,
+          financialInstitutionId: payment.financialInstitutionId ?? undefined,
           amount: payment.numericAmount,
           referenceNumber: payment.referenceNumber.trim() || undefined,
           notes: payment.notes.trim() || undefined,
@@ -325,6 +377,7 @@ export const DocumentPaymentForm = ({
       });
       const submittedPayments = parsedPayments.map((payment) => ({
           paymentMethodId: payment.paymentMethodId,
+          financialInstitutionId: payment.financialInstitutionId,
           methodName: payment.method?.nombre,
           methodType: payment.method?.tipo,
           cashSessionId: cashSession.id,
@@ -434,6 +487,8 @@ export const DocumentPaymentForm = ({
           <section className="space-y-3">
             {payments.map((payment, index) => {
               const method = methodById[payment.paymentMethodId];
+              const requiresFinancialInstitution =
+                getRequiresFinancialInstitutionForPos(method);
 
               return (
                 <div
@@ -466,6 +521,33 @@ export const DocumentPaymentForm = ({
                         onChange={(value) => updatePayment(payment.id, "paymentMethodId", value)}
                       />
                     </div>
+
+                    {requiresFinancialInstitution ? (
+                      <fieldset
+                        className="md:col-span-2"
+                        disabled={submitting}
+                        aria-required="true"
+                      >
+                        <FinancialInstitutionSelector
+                          institutions={financialInstitutions}
+                          selectedInstitutionId={payment.financialInstitutionId}
+                          onSelectInstitution={(institutionId) =>
+                            updatePayment(
+                              payment.id,
+                              "financialInstitutionId",
+                              institutionId
+                            )
+                          }
+                          error={
+                            submitError && !payment.financialInstitutionId
+                              ? financialInstitutions.length === 0
+                                ? "No hay entidades financieras activas disponibles."
+                                : "Selecciona el banco o billetera."
+                              : null
+                          }
+                        />
+                      </fieldset>
+                    ) : null}
 
                     <Input
                       label="Valor a pagar"
