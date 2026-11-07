@@ -451,6 +451,35 @@
         "openspec/changes/habilitar-fiscal-avanzado-productos-admin/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "homologar-pagos-compras-pedidos-pos",
+      "paths": [
+        "api/src/modules/finance/financial-institutions/financial-institutions.repository.spec.ts",
+        "api/src/modules/finance/payment-methods/payment-methods.repository.ts",
+        "api/src/modules/finance/payments/document-payment-transaction.spec.ts",
+        "api/src/modules/finance/payments/dto/create-document-payment.dto.ts",
+        "api/src/modules/finance/payments/payments.service.spec.ts",
+        "api/src/modules/finance/payments/payments.service.ts",
+        "scripts/governance/openspec-scope.json",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/components/OrderForm.tsx",
+        "web/modules/inventory/components/OrderInvoiceForm.tsx",
+        "web/modules/finance/components/DocumentPaymentForm.financial-institutions.spec.ts",
+        "web/modules/finance/components/DocumentPaymentForm.tsx",
+        "web/modules/finance/utils/active-financial-institutions.spec.ts",
+        "web/modules/finance/utils/active-financial-institutions.ts",
+        "web/modules/finance/types.ts",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/components/PosScreen.financial-institutions.spec.ts",
+        "web/modules/pos/components/payment/FinancialInstitutionSelector.spec.tsx",
+        "web/modules/pos/components/payment/FinancialInstitutionSelector.tsx",
+        "web/modules/pos/components/payment/PaymentDialog.tsx",
+        "openspec/changes/homologar-pagos-compras-pedidos-pos/**"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
@@ -478,8 +507,6 @@
         "web/modules/pos/components/cart/CartSaleModal.tsx",
         "web/modules/pos/components/PosScreen.integration.test.tsx",
         "web/modules/pos/hooks/useSalePrintWorkflow.spec.ts",
-        "web/modules/pos/components/payment/PaymentDialog.tsx",
-        "web/modules/pos/components/PosScreen.tsx",
         "web/modules/pos/hooks/usePosCartStore.ts",
         "web/modules/pos/utils/sale-recovery.ts",
         "web/modules/pos/utils/sale-recovery.spec.ts",
@@ -542,12 +569,40 @@
       "change_id": "evolucionar-gobernanza-openspec-ownership-windows",
       "paths": [
         "scripts/governance/openspec_governance_diagnostic.py",
-        "scripts/governance/openspec-scope.json",
         "scripts/governance/test_openspec_governance_diagnostic.py",
         "scripts/governance/README.md",
         "openspec/changes/evolucionar-gobernanza-openspec-ownership-windows/**"
       ],
       "reason": "Current branch diff evolves the repository-owned governance contract and documents the Windows runtime limitation."
+    },
+    {
+      "change_id": "homologar-pagos-compras-pedidos-pos",
+      "paths": [
+        "api/src/modules/finance/financial-institutions/financial-institutions.repository.spec.ts",
+        "api/src/modules/finance/payment-methods/payment-methods.repository.ts",
+        "api/src/modules/finance/payments/document-payment-transaction.spec.ts",
+        "api/src/modules/finance/payments/dto/create-document-payment.dto.ts",
+        "api/src/modules/finance/payments/payments.service.spec.ts",
+        "api/src/modules/finance/payments/payments.service.ts",
+        "scripts/governance/openspec-scope.json",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/components/OrderForm.tsx",
+        "web/modules/inventory/components/OrderInvoiceForm.tsx",
+        "web/modules/finance/components/DocumentPaymentForm.financial-institutions.spec.ts",
+        "web/modules/finance/components/DocumentPaymentForm.tsx",
+        "web/modules/finance/utils/active-financial-institutions.spec.ts",
+        "web/modules/finance/utils/active-financial-institutions.ts",
+        "web/modules/finance/types.ts",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/components/PosScreen.financial-institutions.spec.ts",
+        "web/modules/pos/components/payment/FinancialInstitutionSelector.spec.tsx",
+        "web/modules/pos/components/payment/FinancialInstitutionSelector.tsx",
+        "web/modules/pos/components/payment/PaymentDialog.tsx",
+        "openspec/changes/homologar-pagos-compras-pedidos-pos/**"
+      ],
+      "reason": "Current branch lets purchase and order document payments select active tenant-owned or global institutions without method mappings and improves the authorized orders-only responsive UX, while preserving required-institution, tenant isolation, persistence, idempotency, business behavior and the unchanged POS source contract."
     }
   ]
 }

@@ -101,3 +101,225 @@ Existing durable mechanism before this change: **NO** for document-payment opera
 Exactly-once implementation status: **IMPLEMENTED, REAL DB CERTIFICATION PENDING**. The operation row is claimed and locked in the same transaction as document locking, balance validation and all financial writes. A failed operation rolls back its operation claim, so a later controlled retry can reuse the key safely.
 
 Real PostgreSQL certification: **BLOCKED BY ENVIRONMENT**. Docker is unavailable, local credentials do not authenticate, and current env points to non-local QA; remote destructive/concurrency tests were not run.
+
+## Financial institution homologation - 2026-11-06
+
+Branch: `feature/develop/fix-document-payment-financial-institution`. Starting `develop` HEAD: `eda7cfe807a8aac1d0c6818c8f8edb22abb7f6e1`. Worktree was clean before branch creation; no foreign changes were present.
+
+### Automated evidence
+
+- PASS: `api/npm.cmd exec -- tsx --test src/modules/finance/payments/document-payment-transaction.spec.ts src/modules/finance/payments/payments.service.spec.ts`: 11 passed, 1 skipped. The skipped test is the opt-in local PostgreSQL integration; no QA/PRD write was attempted.
+- PASS: focused transaction coverage includes cash without institution, required institution, unassociated/foreign institution rejection, required reference, mixed cash/transfer for purchase and order, full rollback, same-key replay, changed-institution conflict and older-client omission.
+- PASS: `api/npm.cmd run build`.
+- PASS: `web/npm.cmd run lint` with no warnings or errors.
+- PASS: `web/npm.cmd run build`, including Next.js compile, lint/type validation and purchase/order/POS routes.
+- PARTIAL: standalone `web/npx.cmd tsc --noEmit` failed on pre-existing unrelated `*.spec.ts` type debt and an unwritable `tsconfig.tsbuildinfo`; it reported no changed-file error. Canonical Next.js build type validation passed.
+- PASS: `npx.cmd --yes @fission-ai/openspec@latest validate homologar-pagos-compras-pedidos-pos --strict` using OpenSpec 1.16.0.
+- PASS: scope manifest parses and the repository diagnostic reports `manifest_valid: true`, exact current ownership for this OpenSpec, no migration regression, no database access and no historical SQL replay.
+- BLOCKED: the strict governance wrapper cannot execute the OpenSpec child from Python in this Windows sandbox (`WINDOWS_CHILD_PROCESS_ACCESS_DENIED` / inaccessible npm cache). It therefore reports `STRICT_REJECTED` even though the same strict OpenSpec command passes directly. This is tooling/environment evidence, not a runtime test failure.
+- PASS: `git -c core.whitespace=cr-at-eol diff --check`. The option is required because `payments.service.ts` is a repository CRLF file and default Git treats added CR characters as trailing whitespace.
+
+### Contract and persistence evidence
+
+- `CreateDocumentPaymentPayload.payments[]` and `DocumentPaymentLineDto` accept optional `financialInstitutionId`.
+- `DocumentPaymentForm` reuses `FinancialInstitutionSelector`, `listFinancialInstitutions(paymentMethodId, true)` and `getRequiresFinancialInstitutionForPos`; method change clears stale institution selection.
+- The server requires the institution for configured methods and validates an active mapping joined to an active tenant-visible or global institution through the existing transaction client.
+- The canonical operation fingerprint includes the institution. Persistence continues through existing `PaymentsRepository.createPayment` and `payments.financial_institution_id`; no migration is needed.
+
+### Manual QA still required
+
+- Purchase: cash-only payment without institution, then transfer/bank payment with selector and persisted institution.
+- Order: same two flows, plus mixed cash and transfer lines in one confirmation.
+- Confirm method change clears the prior institution, keyboard selection remains usable, required-reference messaging still appears, and refreshed document balances/status are correct.
+- Inspect created payment read-only to confirm `financialInstitutionId`; repeat one controlled request only in an isolated authorized fixture to verify same-key recovery. Do not test against shared or production documents.
+
+## Method-associated catalog parity follow-up - 2026-11-06
+
+### Demonstrated root cause
+
+- POS called `GET /api/finance/financial-institutions?active=true` through `listFinancialInstitutions()` and supplied all active tenant-visible/global institutions to every method.
+- Purchase/order document payments called `GET /api/finance/financial-institutions?paymentMethodId=<method-id>&active=true`.
+- `FinancialInstitutionsRepository.list` only joins `payment_method_financial_institutions` when `paymentMethodId` is present. `PaymentsService` always validates a submitted institution against an active mapping and an active tenant-visible/global institution.
+- Therefore the POS global list was not a list of allowed institutions. It could show an institution later rejected by the backend. The document list was strict and correctly exposed missing configuration.
+
+### Read-only database evidence
+
+Source: configured `scripts/config/db.env`, `ENVIRONMENT=local`, `DB_HOST=localhost`, database `manus_tienda_qa`. Only `SELECT` statements were executed.
+
+Tenant `00000000-0000-0000-0000-000000000001`:
+
+| Method | ID | Requires institution | Active mappings | Allowed active institutions |
+|---|---|---:|---:|---:|
+| Débito | `ecada333-f8ef-4647-8998-de48f66e3d81` | yes | 0 | 0 |
+| Transferencias | `93c2be97-fd47-4429-a4a6-92d2608455a3` | yes | 0 | 0 |
+| QR Bre-B | `e6643a9b-e205-4adb-8c1d-16aac3e7eb45` | yes | 0 | 0 |
+
+The other inspected tenants have the same zero-mapping condition:
+
+- Tenant `921f4ebf-6767-4ea6-8dc4-896951e0ee7d`: Débito `c3756230-8982-4259-87a8-318850389853`, Transferencias `775e7b05-3773-43d1-ab86-9fcb33d90c78`, QR Bre-B `97ddd520-4c5e-4a1e-bfdf-94e2bccc57a4`.
+- Tenant `b159d683-4648-4bb2-9496-d3e3f84867e9`: Débito `8e1fbf69-4832-44b9-9ac5-ea77552f63f1`, Transferencias `70a5b3bd-fa55-47a2-936c-faccbf5cb089`, QR Bre-B `936652f4-c071-41ce-98b3-f8dce100da27`.
+
+There are 12 active global institutions and no tenant-specific active institution in this database. Their IDs were reported read-only for operator selection. No code can decide which institutions the business permits for each method. Configuration must be performed per tenant through the existing administrative contract `PUT /api/finance/financial-institutions/mappings/:paymentMethodId` with an explicit `financialInstitutionIds` array. No mapping, migration or database row was created here.
+
+Active global candidates: Bancolombia `ee29d060-5095-45b0-a509-96e21b6b631f`, Nequi `95fce336-b7c5-4387-818e-798c8f181d34`, Daviplata `c3d3fd5b-8e49-487c-8e93-f564a8625f26`, Davivienda `90213fb7-b454-4ac7-bba2-e80381f3a4ba`, Banco de Bogotá `abf091e7-5f72-4cbb-8b1b-9f02a50bc7bb`, BBVA `ee5dbe32-66c4-4ca0-81dd-6b8c5f14f28a`, Banco Popular `74c4f241-68e9-4bd3-ae17-dcd27c0ffc69`, Banco AV Villas `31d1d547-3627-4543-8995-7c8dc35d2187`, Scotiabank Colpatria `d2157dd5-9704-461f-ad02-7f913257619c`, Itaú `da6420c2-81f5-459c-850b-6fdb53a1aaaa`, Banco Agrario `93b65399-0dd7-41e4-a797-56adedb9c9b9`, Otro banco o entidad `2f8bbdc2-7c6a-4b71-afd4-3a577c405dd7`.
+
+### Implementation evidence
+
+- `PosScreen` now loads the same active per-method endpoint as `DocumentPaymentForm` through `loadFinancialInstitutionsByPaymentMethod`.
+- `PaymentDialog` resolves institutions independently for each payment row, clears the institution on method change, rejects a stale/unallowed selection, and blocks a required method with zero mappings using a configuration message.
+- `FinancialInstitutionSelector` distinguishes a truly empty method catalog from a search with no results.
+- No sale total, change, customer, reference, cash-session, idempotency, atomicity or persistence logic changed. Backend validation was not relaxed.
+
+### Verification status
+
+- PASS: frontend focused Vitest, 6/6. Covers QR Bre-B empty catalog, debit/transfer filtered loading, cash omission, inactive results, global/tenant records as returned by the strict endpoint, search, selection and empty configuration text.
+- PASS: API focused Node tests, 13 passed and 1 optional local PostgreSQL integration skipped. Covers general versus method-filtered repository SQL, tenant/global visibility clauses, active mapping/institution clauses, invalid/foreign/unassociated rejection, references, mixed purchase/order payments, rollback and idempotent replay/conflict.
+- PASS: `web/npm.cmd run lint`, no warnings or errors.
+- PASS: `web/npm.cmd run build`, including compile, lint and Next.js type validation.
+- PASS: `api/npm.cmd run build`.
+- PASS: direct strict OpenSpec validation with OpenSpec 1.16.0.
+- PASS: governance manifest is valid after assigning each changed path one current owner; no ambiguous current ownership, no migration regression, no governance DB access and no historical SQL replay.
+- PARTIAL: the governance Python wrapper still cannot invoke its OpenSpec child on this Windows environment (`TOOL_UNAVAILABLE`) although the same strict command passes directly. Its default `git diff --check` also reports CRLF additions in the pre-existing CRLF `payments.service.ts`; the repository-compatible `git -c core.whitespace=cr-at-eol diff --check` is the applicable check.
+- BLOCKED BY CONFIGURATION: real QR Bre-B, debit and transfer selection cannot pass until an authorized operator creates explicit mappings. No QA/PRD write was attempted.
+
+### Manual QA pending after configuration
+
+- In one authorized tenant, map an approved subset of banks/wallets to QR Bre-B, Débito and Transferencias through the existing admin UI/API.
+- Open POS, purchase payment and order payment. Confirm each method shows the identical allowed subset, not all 12 global institutions.
+- Search one bank and one wallet, select independently on two mixed lines, change one method and confirm only that line's institution clears.
+- Confirm required reference still blocks when empty. Confirm cash needs no institution.
+- Submit one authorized purchase and one order payment, then inspect `payments.financial_institution_id` read-only. Confirm an unassociated institution sent directly receives HTTP 400 and the complete document operation rolls back.
+
+## POS non-regression correction - 2026-11-06
+
+The previous method-associated POS follow-up is superseded. It was a regression because it changed the established POS catalog and shared payment validation instead of limiting the document-payment adaptation to purchases/orders.
+
+### Pre-branch contract evidence
+
+- `PosScreen` calls `listFinancialInstitutions()` with no method ID, catches catalog failure independently, filters active entities, and passes the global tenant-visible catalog to `PaymentDialog`.
+- `PaymentDialog` filters active entries once and gives the same catalog to each row requiring an institution. It requires a selection only when that active catalog is non-empty. Changing a row's method clears that row's institution.
+- Before this branch, `PaymentsService.createInternal` required an institution for configured methods and validated only `active = TRUE` plus `(tenant_id = current tenant OR tenant_id IS NULL)`.
+- POS sale creation passes `financialInstitutionId` through `PaymentsService.createInTransaction`. `SaleRepository.assignFinancialInstitutionsToSalePayments` also validates active tenant/global visibility, not `payment_method_financial_institutions`.
+- Therefore POS historically displayed and persisted an active tenant-visible/global institution even when the method had zero mappings. Display was not merely cosmetic.
+
+### Restored frontend
+
+- PASS: tracked `PosScreen.tsx`, `PaymentDialog.tsx` and `FinancialInstitutionSelector.tsx` now match branch `HEAD` exactly; no unrelated sale or recovery code changed.
+- PASS: focused Vitest, 9/9. Source-contract assertions prove the no-argument global call, active filtering, original dialog prop and absence of the method-map helper in POS. Selector coverage expands and renders all 12 active institutions, filters an inactive thirteenth entry, preserves search and selection, and restores the original empty-result text.
+- PASS: document helper tests still cover per-method catalog loading, cash omission, QR Bre-B empty mapping, debit/transfer results and inactive filtering. These are unit tests, not real QA persistence.
+
+### Backend and persistence evidence
+
+- PASS: finance/document unit suites, 13 passed and 1 opt-in PostgreSQL integration skipped. They cover document mixed payments, required references, per-line institution persistence, invalid/foreign/unassociated rejection, complete rollback and idempotent replay/conflict.
+- PASS: POS sale repository/service unit suites, 47/47. They prove sale payload transmission, selected institution assignment, order delivery, idempotency and sale behavior.
+- PARTIAL: POS sale unit doubles do not execute the production `PaymentsService.isFinancialInstitutionAllowed` query. Production code inspection proves that the branch-level shared validation now applies to POS and will reject the inspected no-mapping methods. A real POS sale without mappings is therefore not claimed PASS.
+- PASS: frontend lint and production build, including TypeScript validation.
+- PASS: API production build.
+- PASS: strict OpenSpec validation; all four planning artifacts are complete.
+- PASS: repository-compatible whitespace validation with `git -c core.whitespace=cr-at-eol diff --check`.
+- PARTIAL: the repository governance wrapper reports `TECHNICAL_FAILURE` because authoritative enforcement and environment-source verification are unavailable in this Windows run. Its useful checks passed: OpenSpec strict validation is available and passed, the scope manifest is valid, ownership is unambiguous, migration validation is clean, and it performed no database access or historical SQL replay.
+
+### Backend decision required before implementation
+
+Proposed policy split:
+
+1. Default and POS/legacy `POST /finance/payments` paths keep the pre-branch `TENANT_ACTIVE` rule: selected institution must be active and owned by the tenant or global.
+2. `POST /finance/payments/document` explicitly uses `METHOD_ASSOCIATED`: selected institution must additionally have one active mapping for the current tenant and payment method.
+3. Both policies run through the existing transaction client. Required-institution, reference, cash-session, balance, allocation, idempotency and atomicity checks stay unchanged.
+4. No cross-tenant access is introduced. Global institutions remain visible to every tenant under the existing contract; tenant-owned institutions remain isolated. Mapping strictness remains document-only.
+
+Impact: this restores real POS compatibility while preserving the stricter document contract already tested. It does not decide which institutions should be mapped and creates no database row or migration. Per the stop condition, the policy split is proposed but not implemented without explicit business/owner approval.
+
+### Manual QA pending
+
+- POS UI: open Cobrar venta and confirm all 12 active banks/wallets appear for QR Bre-B, Débito and Transferencias; verify search, selection, method change clearing, required reference, mixed payment and customer behavior.
+- POS persistence: after the backend policy decision, submit one authorized sale using a method with zero mappings and inspect the created `payments.financial_institution_id` read-only.
+- Purchase/order: verify independent per-line selection, method clearing, mixed cash plus financial method, required reference, persisted institution, replay safety and full rollback for an invalid institution.
+- No QA/PRD write was performed during this correction.
+
+## Authorized TENANT_ACTIVE document payments - 2026-11-06
+
+This section supersedes the earlier method-associated document-payment decision. The owner explicitly authorized purchase and order payments to use active tenant-owned/global institutions without requiring `payment_method_financial_institutions` rows. POS source files remain outside this implementation.
+
+### Root cause and correction
+
+- `DocumentPaymentForm` loaded `listFinancialInstitutions(paymentMethodId, true)`, so QR Bre-B, debit and transfer showed zero entities when their mapping table had no active rows even though 12 global institutions were active.
+- The branch-added shared `isFinancialInstitutionAllowed` check also rejected those selections before persistence.
+- The form now loads `listFinancialInstitutions(undefined, true)` once, filters stale inactive records, and gives the same tenant-scoped API catalog to every line that requires an institution.
+- `PaymentsService.createInternal` now uses the pre-branch server-authoritative query through the current transaction client: selected institution must be active and either owned by the current tenant or global. No method mapping is consulted.
+- Required institution, DTO UUID validation, required reference, branch/cash-session scope, live balance, allocation, transaction rollback, `financialInstitutionId` persistence, operation fingerprint and replay behavior remain unchanged.
+- `api/src/modules/finance/payment-methods/payment-methods.repository.ts` matches `HEAD`; the temporary payment-authorization mapping method was removed. No association-management endpoint or table was changed.
+- `PosScreen.tsx`, `PaymentDialog.tsx` and `FinancialInstitutionSelector.tsx` match `HEAD` exactly.
+
+### Automated evidence
+
+- PASS: frontend focused Vitest, 11/11. Covers unfiltered active catalog loading, global and tenant records, inactive filtering, per-line state, method-change clearing, required selection, selector search and the original 12-entity POS catalog contract.
+- PASS: API focused Node tests, 15 passed and 1 opt-in isolated PostgreSQL test skipped. Covers purchase and order cash, debit, transfer, QR Bre-B with active institutions and no mappings, active tenant institution, inactive/foreign rejection, required reference, mixed and partial payments, persistence, rollback and idempotent replay/conflict.
+- PASS: POS sale repository/service regression suites, 47/47. Sale payload, selected institution persistence and sale idempotency remain green without modifying POS production files.
+- PASS: web lint, no warnings or errors.
+- PASS: web production build, including TypeScript validation and purchase/order/POS routes.
+- PASS: API production build.
+- PASS: strict OpenSpec validation.
+- PASS: repository-compatible whitespace check and exact no-diff checks for the three POS source files.
+- PARTIAL: repository governance wrapper reports `TECHNICAL_FAILURE` because authoritative enforcement/environment verification is unavailable. Its scoped checks pass: OpenSpec tool available and strict-valid, manifest valid, no ambiguous ownership, migration validation clean, no database access and no historical SQL replay.
+
+### Manual QA pending
+
+- Purchase: select cash plus QR Bre-B/debit/transfer using one active bank or wallet that has no mapping; verify independent line selections, method-change clearing, mandatory reference and partial payment.
+- Order: repeat the mixed/partial flow and confirm direction remains IN while purchase remains OUT.
+- Inspect the created payments read-only and confirm each financial line stores the selected `financial_institution_id`; cash remains null.
+- Send an inactive and a foreign-tenant institution through an isolated authorized request and confirm HTTP 400 with complete rollback.
+- Replay one committed `operationKey` with the same payload and then a changed institution; confirm recovery followed by conflict without duplicate effects.
+- No QA or PRD write was performed by this implementation.
+
+## Final closure evidence - financial institutions and orders UX (2026-11-06)
+
+Branch: `feature/develop/fix-document-payment-financial-institution`. HEAD: `eda7cfe807a8aac1d0c6818c8f8edb22abb7f6e1`. This section is the current closure summary. Earlier method-associated sections remain as historical evidence and are superseded by the authorized `TENANT_ACTIVE` policy above.
+
+### Human QA reported by the operator
+
+- PASS: manual purchase/order payment QA. This is operator-reported evidence. No additional unreported payment combination, direct API rejection or PostgreSQL rollback is inferred.
+- PASS: visual QA of the Purchases payment surface from the supplied capture/report. The exact viewport was not supplied, so no resolution is inferred.
+- PASS: visual QA of the Orders table at approximately 1050 px and 1370 px from the supplied captures/report. The table uses the available width and remains readable at those observed widths.
+- PARTIAL: the requested orders matrix is not complete. 1920, 1440, 1180, 1024, 768 and 390 px were not individually evidenced as real browser QA. The approximately 1050/1370 observations are not relabelled as those exact widths.
+- PARTIAL: long product names, multiple-product edit/delivery/invoice forms, filter combinations, action-menu keyboard navigation, pagination and horizontal scrolling were not each separately demonstrated by the supplied human evidence. They remain covered only by source-contract tests, lint/build and code review where applicable.
+- BLOCKED: Computer Use could not be used for additional visual QA because the browser access host was unavailable and Windows URL confidence enforcement stopped browser control. Closure does not depend on Computer Use.
+
+### Automated closure matrix
+
+| Area | Status | Evidence |
+|---|---|---|
+| Frontend finance, POS catalog and orders layout focused tests | PASS | Vitest: 5 files, 15/15 tests. |
+| Backend document payments | PASS | Node test runner: 15 passed, 1 opt-in PostgreSQL integration SKIPPED. |
+| POS sale regression | PASS | Node test runner: 49/49 tests. |
+| Web lint | PASS | `npm.cmd run lint`: no warnings or errors. |
+| Web production build | PASS | Next.js compile, production type validation and `/[tenant]/orders`, purchases and POS routes generated. |
+| API production build | PASS | `npm.cmd run build`. |
+| Standalone global web typecheck | FAIL (pre-existing) | `npx.cmd tsc -p tsconfig.json --noEmit --incremental false` repeats the prior errors in 12 unchanged test files. `git diff --exit-code HEAD -- <those files>` is clean. No error names a changed financial or orders file. |
+| OpenSpec strict | PASS | Direct cached OpenSpec CLI: change is valid. |
+| Scope manifest JSON | PASS | JSON parse succeeds; current ownership includes both financial and orders UX paths. |
+| Governance Python wrapper | BLOCKED / TECHNICAL_FAILURE | STRICT reports `WINDOWS_CHILD_PROCESS_ACCESS_DENIED`, then treats the otherwise valid change as unavailable/invalid. The same OpenSpec strict command passes directly. Manifest validation and migration validation are clean; no database access or historical SQL replay occurred. |
+| Default `git diff --check` | FAIL (line-ending policy) | Reports the two added `payments.service.ts` lines because the tracked file uses CRLF. Repository-compatible `git -c core.whitespace=cr-at-eol diff --check` is the applicable companion check. |
+| POS production source diff | PASS | `PosScreen.tsx`, `PaymentDialog.tsx` and `FinancialInstitutionSelector.tsx` have no diff against HEAD. |
+| Database/migration diff | PASS | No changed or untracked SQL/migration path exists in this worktree. |
+| Sensitive/config file diff | PASS | No `.env`, credential, secret or key path is present in the diff. |
+
+### Contract review
+
+- PASS: document payment lines accept optional UUID `financialInstitutionId`; cash remains compatible with omission.
+- PASS: methods configured to require an institution still require one.
+- PASS: server validation remains active and tenant-scoped: the institution must be active and tenant-owned or global. Cross-tenant and inactive institutions are rejected.
+- PASS: no method-to-institution mapping is consulted for purchase/order document creation, as explicitly authorized.
+- PASS: institution identity is included in the canonical operation fingerprint and passed to the existing transactional persistence path.
+- PASS: document locking, cash-session validation, allocations, cash movements, full rollback, operation completion and same-key replay/conflict remain in the existing transaction.
+- PASS: orders UX changes are class/markup-only and do not change API calls, calculations, permissions, order state, pagination logic or action callbacks.
+
+### Residual risks and skipped evidence
+
+- SKIPPED: opt-in real PostgreSQL integration test. It requires an isolated local database and was not run against QA/PRD.
+- BLOCKED: real concurrent PostgreSQL certification and destructive rollback injection remain unavailable without an isolated authorized fixture.
+- PARTIAL: standalone global typecheck remains red because of unchanged test debt even though production builds pass.
+- PENDING: OpenSpec task 6.1 remains open because the available human statement does not enumerate every POS open/select/amount/reference/add/summary/customer/confirm/close step.
+- PENDING: OpenSpec task 11.4 remains open until the exact responsive matrix and the product/detail interaction cases are manually evidenced.
+
+Closure recommendation: **NO-GO for an unconditional merge/deploy** because strict governance wrapper execution is technically blocked, standalone global typecheck is red, and tasks 6.1/11.4 remain open. **GO for owner review and preparation of a commit/PR** if repository policy accepts the documented pre-existing typecheck debt and Windows governance-tool limitation; no commit, push, merge or deployment was performed here.
