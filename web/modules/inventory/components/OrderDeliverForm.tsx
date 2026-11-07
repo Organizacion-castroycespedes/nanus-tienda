@@ -248,7 +248,7 @@ export const OrderDeliverForm = ({
       ) : order ? (
         <form className="grid gap-5" onSubmit={handleSubmit}>
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <div className="grid gap-3 md:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Cliente</p>
                 <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
@@ -285,26 +285,38 @@ export const OrderDeliverForm = ({
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <div
+              className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
+              role="region"
+              aria-label="Productos del pedido para entregar"
+              tabIndex={0}
+            >
+              <table className="w-full min-w-[800px] table-fixed divide-y divide-slate-200 text-sm">
+                <colgroup>
+                  <col className="w-[40%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[17%]" />
+                </colgroup>
                 <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                   <tr>
                     <th className="px-4 py-3 font-medium">Producto</th>
-                    <th className="px-4 py-3 font-medium">Cantidad pedida</th>
-                    <th className="px-4 py-3 font-medium">Cantidad entregada</th>
-                    <th className="px-4 py-3 font-medium">Pendiente</th>
-                    <th className="px-4 py-3 font-medium">Entregar ahora</th>
+                    <th className="px-4 py-3 text-right font-medium">Cantidad pedida</th>
+                    <th className="px-4 py-3 text-right font-medium">Cantidad entregada</th>
+                    <th className="px-4 py-3 text-right font-medium">Pendiente</th>
+                    <th className="px-4 py-3 text-right font-medium">Entregar ahora</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {rows.map(({ item, index, pending }) => (
                     <tr key={item.id}>
-                      <td className="px-4 py-3 text-slate-900 dark:text-white">
+                      <td className="break-words px-4 py-3 leading-5 text-slate-900 dark:text-white">
                         {item.productName || item.productId}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.orderedQuantity}</td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.deliveredQuantity}</td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{pending}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{item.orderedQuantity}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{item.deliveredQuantity}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{pending}</td>
                       <td className="px-4 py-3">
                         <Input
                           label=""

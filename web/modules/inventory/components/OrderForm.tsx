@@ -622,25 +622,32 @@ export const OrderForm = ({
               return (
                 <div
                   key={`${index}-${item.productId}`}
-                  className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_1fr_auto] dark:bg-slate-800 dark:border-slate-700"
+                  className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,2fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_minmax(9rem,1fr)_minmax(11rem,1fr)] dark:bg-slate-800 dark:border-slate-700"
                 >
-                  <Select
-                    label="Producto"
-                    value={item.productId}
-                    disabled={catalogLoading || products.length === 0}
-                    onChange={(event) =>
-                      handleItemChange(index, "productId", event.target.value)
-                    }
-                  >
-                    <option value="">
-                      {catalogLoading ? "Cargando..." : "Selecciona un producto"}
-                    </option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name}
+                  <div className="min-w-0 sm:col-span-2 xl:col-span-1">
+                    <Select
+                      label="Producto"
+                      value={item.productId}
+                      disabled={catalogLoading || products.length === 0}
+                      onChange={(event) =>
+                        handleItemChange(index, "productId", event.target.value)
+                      }
+                    >
+                      <option value="">
+                        {catalogLoading ? "Cargando..." : "Selecciona un producto"}
                       </option>
-                    ))}
-                  </Select>
+                      {products.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name}
+                        </option>
+                      ))}
+                    </Select>
+                    {selectedProduct ? (
+                      <p className="mt-1 break-words text-xs leading-5 text-slate-500 dark:text-slate-400">
+                        {selectedProduct.name}
+                      </p>
+                    ) : null}
+                  </div>
 
                   <Input
                     label="Cantidad pedida"
@@ -679,7 +686,7 @@ export const OrderForm = ({
                     ) : null}
                   </div>
 
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-end gap-2 sm:col-span-2 xl:col-span-1">
                     <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
                       <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Subtotal
