@@ -480,6 +480,34 @@
         "openspec/changes/homologar-pagos-compras-pedidos-pos/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "habilitar-plataforma-control-center",
+      "paths": [
+        "openspec/changes/habilitar-plataforma-control-center/**",
+        "scripts/governance/openspec-scope.json",
+        "api/.env.example",
+        "api/src/common/guards/platform-tenant.guard.spec.ts",
+        "api/src/common/guards/platform-tenant.guard.ts",
+        "api/src/modules/app.module.ts",
+        "api/src/modules/control-center/**",
+        "docs/runbook-control-center-db-role.md",
+        "scripts/database/migrations/V111__control_center_foundation.sql",
+        "scripts/database/rollbacks/V111__control_center_foundation_rollback.sql",
+        "scripts/database/tests/test_v111_control_center_foundation_migration.py",
+        "web/.env.example",
+        "web/app/[tenant]/control-center/**",
+        "web/domains/control-center/**",
+        "web/domains/menu/constants.ts",
+        "web/lib/route-permissions.ts",
+        "docs/evidencia-control-center-foundation.md"
+      ]
+    },
+    {
+      "change_id": "crear-control-center-cuentas-contratos",
+      "paths": [
+        "openspec/changes/crear-control-center-cuentas-contratos/**"
+      ]
     }
   ],
   "current_ownership": [
@@ -584,7 +612,6 @@
         "api/src/modules/finance/payments/dto/create-document-payment.dto.ts",
         "api/src/modules/finance/payments/payments.service.spec.ts",
         "api/src/modules/finance/payments/payments.service.ts",
-        "scripts/governance/openspec-scope.json",
         "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
         "web/app/[tenant]/orders/page.tsx",
         "web/modules/inventory/components/OrderDeliverForm.tsx",
@@ -603,6 +630,36 @@
         "openspec/changes/homologar-pagos-compras-pedidos-pos/**"
       ],
       "reason": "Current branch lets purchase and order document payments select active tenant-owned or global institutions without method mappings and improves the authorized orders-only responsive UX, while preserving required-institution, tenant isolation, persistence, idempotency, business behavior and the unchanged POS source contract."
+    },
+    {
+      "change_id": "habilitar-plataforma-control-center",
+      "paths": [
+        "openspec/changes/habilitar-plataforma-control-center/**",
+        "scripts/governance/openspec-scope.json",
+        "api/.env.example",
+        "api/src/common/guards/platform-tenant.guard.spec.ts",
+        "api/src/common/guards/platform-tenant.guard.ts",
+        "api/src/modules/app.module.ts",
+        "api/src/modules/control-center/**",
+        "docs/runbook-control-center-db-role.md",
+        "scripts/database/migrations/V111__control_center_foundation.sql",
+        "scripts/database/rollbacks/V111__control_center_foundation_rollback.sql",
+        "scripts/database/tests/test_v111_control_center_foundation_migration.py",
+        "web/.env.example",
+        "web/app/[tenant]/control-center/**",
+        "web/domains/control-center/**",
+        "web/domains/menu/constants.ts",
+        "web/lib/route-permissions.ts",
+        "docs/evidencia-control-center-foundation.md"
+      ],
+      "reason": "Implementacion de la fase 0.5 del Control Center: esquema control_center, rol dedicado, PlatformTenantGuard, auditoria administrativa, readiness y ruta web."
+    },
+    {
+      "change_id": "crear-control-center-cuentas-contratos",
+      "paths": [
+        "openspec/changes/crear-control-center-cuentas-contratos/**"
+      ],
+      "reason": "Registro de la propuesta OpenSpec del Control Center (fase 1: cuentas y contratos); sin cambios ejecutables."
     }
   ]
 }
