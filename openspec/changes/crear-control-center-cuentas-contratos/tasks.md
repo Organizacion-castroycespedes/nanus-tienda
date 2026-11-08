@@ -24,12 +24,12 @@
 
 ## 4. Web
 
-- [ ] 4.1 Pantallas de directorio, cuentas, planes y contratos (asistente y detalle con historial).
-- [ ] 4.2 Formularios con montos como string decimal y formato COP; motivo obligatorio en acciones críticas.
-- [ ] 4.3 Pruebas Vitest de formularios y visibilidad.
+- [x] 4.1 Pantallas de directorio, cuentas, planes y contratos (asistente y detalle con historial).
+- [x] 4.2 Formularios con montos como string decimal y formato COP; motivo obligatorio en acciones críticas.
+- [x] 4.3 Pruebas de visibilidad, rutas y formato (`node:test`, patrón de la web): 9/9.
 
 ## 5. Verificación
 
-- [ ] 5.1 Pasar `openspec validate crear-control-center-cuentas-contratos --strict`.
-- [ ] 5.2 QA en LOCAL: registrar la propuesta actual (plan anual de $850.000 IVA incluido con 1 terminal, extras y certificación de $119.000), validar el desglose de IVA, la prueba de 1 mes, el corte por día de inicio (incluido el caso del día 31) y simular la renovación mensual y anual con bono.
-- [ ] 5.3 Documentar la evidencia en `docs/evidencia-control-center-cuentas-contratos.md`.
+- [x] 5.1 Pasar `openspec validate crear-control-center-cuentas-contratos --strict`.
+- [x] 5.2 QA en LOCAL: registrar la propuesta actual (plan anual de $850.000 IVA incluido con 1 terminal, extras y certificación de $119.000), validar el desglose de IVA, la prueba de 1 mes, el corte por día de inicio (incluido el caso del día 31) y simular la renovación mensual y anual con bono.
+- [x] 5.3 Documentar la evidencia en `docs/evidencia-control-center-cuentas-contratos.md`.

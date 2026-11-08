@@ -1,22 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
+import { CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { Button } from "../../components/design-system/Button";
-import { ReportLayout } from "../../components/design-system/ReportLayout";
 import { ReportSummary } from "../../components/design-system/ReportSummary";
 import { Toast } from "../../components/design-system/Toast";
 import { ApiError } from "../../lib/request";
-import { hasMenuAccess } from "../../lib/permissions";
-import { useAppSelector } from "../../store/hooks";
-import { MENU_KEYS } from "../menu/constants";
 import { getControlCenterReadiness } from "./api";
-import {
-  READINESS_ISSUE_LABELS,
-  canSeeControlCenter,
-  classifyControlCenterError,
-  type ControlCenterLoadError,
-} from "./access";
+import { READINESS_ISSUE_LABELS, classifyControlCenterError, type ControlCenterLoadError } from "./access";
+import { AccessRestricted, ControlCenterShell, useControlCenterAccess } from "./components/ControlCenterShell";
 import type { ControlCenterReadiness as Readiness } from "./types";
 
 const errorMessages: Record<ControlCenterLoadError, string> = {
@@ -38,14 +30,7 @@ const CheckRow = ({ label, ok }: { label: string; ok: boolean }) => (
 );
 
 export const ControlCenterReadiness = () => {
-  const role = useAppSelector((state) => state.auth.user?.role ?? state.auth.role ?? "");
-  const tenantId = useAppSelector((state) => state.auth.user?.tenantId ?? state.auth.tenantId);
-  const permissionsLoaded = useAppSelector((state) => state.auth.permissionsLoaded);
-  const visible = canSeeControlCenter({
-    role,
-    tenantId,
-    hasReadAccess: hasMenuAccess(MENU_KEYS.CONTROL_CENTER, "READ"),
-  });
+  const { permissionsLoaded, visible } = useControlCenterAccess();
 
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [error, setError] = useState<ControlCenterLoadError | null>(null);
@@ -77,33 +62,19 @@ export const ControlCenterReadiness = () => {
     return () => controller.abort();
   }, [load, permissionsLoaded, visible]);
 
-  if (!permissionsLoaded) {
-    return <p className="p-6 text-sm text-slate-500 dark:text-slate-400">Cargando permisos…</p>;
-  }
-
-  if (!visible || error === "UNAUTHORIZED") {
-    return (
-      <section className="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        <ShieldAlert className="mx-auto h-10 w-10 text-slate-400" aria-hidden />
-        <h1 className="mt-3 text-lg font-semibold text-slate-900 dark:text-white">Acceso restringido</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{errorMessages.UNAUTHORIZED}</p>
-      </section>
-    );
-  }
+  if (error === "UNAUTHORIZED") return <AccessRestricted />;
 
   const ready = readiness?.status === "READY";
 
   return (
-    <ReportLayout
-      title="MANUS Control Center"
+    <ControlCenterShell
+      section="overview"
       description="Estado de la plataforma de administración comercial"
       toolbar={
-        <div className="flex justify-end">
-          <Button variant="outline" size="sm" onClick={() => void load()} isLoading={loading}>
-            <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
-            Actualizar
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => void load()} isLoading={loading}>
+          <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
+          Actualizar
+        </Button>
       }
       summary={
         readiness ? (
@@ -155,6 +126,6 @@ export const ControlCenterReadiness = () => {
           </>
         ) : null}
       </div>
-    </ReportLayout>
+    </ControlCenterShell>
   );
 };

@@ -511,7 +511,10 @@
         "scripts/governance/openspec-scope.json",
         "scripts/database/migrations/V112__control_center_accounts_contracts.sql",
         "scripts/database/rollbacks/V112__control_center_accounts_contracts_rollback.sql",
-        "scripts/database/tests/test_v112_control_center_accounts_contracts_migration.py"
+        "scripts/database/tests/test_v112_control_center_accounts_contracts_migration.py",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "docs/evidencia-control-center-cuentas-contratos.md"
       ]
     }
   ],
@@ -649,8 +652,6 @@
         "scripts/database/rollbacks/V111__control_center_foundation_rollback.sql",
         "scripts/database/tests/test_v111_control_center_foundation_migration.py",
         "web/.env.example",
-        "web/app/[tenant]/control-center/**",
-        "web/domains/control-center/**",
         "web/domains/menu/constants.ts",
         "web/lib/route-permissions.ts",
         "docs/evidencia-control-center-foundation.md"
@@ -665,7 +666,10 @@
         "scripts/governance/openspec-scope.json",
         "scripts/database/migrations/V112__control_center_accounts_contracts.sql",
         "scripts/database/rollbacks/V112__control_center_accounts_contracts_rollback.sql",
-        "scripts/database/tests/test_v112_control_center_accounts_contracts_migration.py"
+        "scripts/database/tests/test_v112_control_center_accounts_contracts_migration.py",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "docs/evidencia-control-center-cuentas-contratos.md"
       ],
       "reason": "Implementacion de la fase 1 del Control Center: directorio de tenants, cuentas comerciales, planes con precios versionados y contratos."
     }
