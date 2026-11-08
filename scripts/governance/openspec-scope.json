@@ -499,7 +499,8 @@
         "web/app/[tenant]/control-center/**",
         "web/domains/control-center/**",
         "web/domains/menu/constants.ts",
-        "web/lib/route-permissions.ts"
+        "web/lib/route-permissions.ts",
+        "docs/evidencia-control-center-foundation.md"
       ]
     },
     {
@@ -648,7 +649,8 @@
         "web/app/[tenant]/control-center/**",
         "web/domains/control-center/**",
         "web/domains/menu/constants.ts",
-        "web/lib/route-permissions.ts"
+        "web/lib/route-permissions.ts",
+        "docs/evidencia-control-center-foundation.md"
       ],
       "reason": "Implementacion de la fase 0.5 del Control Center: esquema control_center, rol dedicado, PlatformTenantGuard, auditoria administrativa, readiness y ruta web."
     },

@@ -10,9 +10,9 @@
 - [x] 2.1 Crear `V###__control_center_foundation.sql`: verificar el rol, crear el esquema, `REVOKE` a `PUBLIC`, grants al grupo, `SELECT` por columnas en `public` y la tabla `admin_audit_events` con un trigger de inmutabilidad. Sin `BEGIN`/`COMMIT`.
 - [x] 2.2 Incluir el seed del ítem de menú del Control Center solo para el tenant plataforma, de forma idempotente.
 - [x] 2.3 Crear el rollback en `scripts/database/rollbacks/`.
-- [ ] 2.4 Dry-run en LOCAL y diagnóstico de gobernanza en modo STRICT. Si falla por el esquema no-`public`, detener el trabajo y escalar.
+- [ ] 2.4 Dry-run en LOCAL y diagnóstico de gobernanza en modo STRICT. Si falla por el esquema no-`public`, detener el trabajo y escalar. Estado 2026-11-08: gobernanza STRICT PASS; por decisión del propietario V111 se aplicó directamente sobre `manus_prd_local_test` (el guard LOCAL del runner exige `manus_tienda_qa`). El dry-run y la aplicación con el runner oficial quedan para QA.
 - [x] 2.5 Agregar la prueba de contrato `scripts/database/tests/test_v111_control_center_foundation_migration.py` (privilegios por columna, auditoría solo inserción, chequeo transaccional del runner).
-- [ ] 2.6 Verificar privilegios contra PostgreSQL real tras aplicar V111: el usuario operativo es denegado, el dedicado es permitido y las columnas bancarias son denegadas (readiness `READY`).
+- [x] 2.6 Verificar privilegios contra PostgreSQL real tras aplicar V111: el usuario operativo es denegado, el dedicado es permitido y las columnas bancarias son denegadas (readiness `READY`).
 
 ## 3. API
 
@@ -32,5 +32,5 @@
 
 - [x] 5.1 Pasar `openspec validate habilitar-plataforma-control-center --strict`.
 - [x] 5.2 Ejecutar las pruebas de la API (`npx tsx --test`) y de la web (lint y pruebas de visibilidad). Resultado 2026-11-07: API typecheck OK, 980/983 pruebas OK (1 falla preexistente por dependencia de `web/node_modules`), lint web OK; los errores `tsc` de la web son preexistentes en otros `*.spec.ts`.
-- [ ] 5.3 QA manual en LOCAL con cuatro perfiles (SUPER_ADMIN plataforma, SUPER_ADMIN de otro tenant, ADMIN, USER) y el flag apagado/encendido.
-- [ ] 5.4 Documentar la evidencia en `docs/evidencia-control-center-foundation.md`.
+- [x] 5.3 QA manual en LOCAL con cuatro perfiles (SUPER_ADMIN plataforma, SUPER_ADMIN de otro tenant, ADMIN, USER) y el flag apagado/encendido.
+- [x] 5.4 Documentar la evidencia en `docs/evidencia-control-center-foundation.md`.

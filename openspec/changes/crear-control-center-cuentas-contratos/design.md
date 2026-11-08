@@ -39,7 +39,7 @@ Al crear o enmendar un contrato, el servicio copia los montos de la versión de 
 
 ### D2b. Impuestos, prueba y día de corte
 
-- **Impuesto:** se reutiliza el modelo de MANUS. La versión de precio apunta a un impuesto de `public.taxes` del tenant plataforma (hoy IVA 19% con `is_included=true`). El contrato guarda un snapshot del nombre, la tasa y el indicador de inclusión, para que un cambio posterior del impuesto no altere contratos firmados. El desglose se calcula como `base = total / (1 + tasa/100)` cuando el precio incluye el impuesto, y como `total = base × (1 + tasa/100)` cuando no; redondeo a pesos, mitad hacia arriba. La Fase 1 solo lo muestra; el cobro llega en la Fase 2.
+- **Impuesto:** se reutiliza el modelo de MANUS. La versión de precio apunta a un impuesto de `public.taxes` del tenant plataforma (hoy IVA 19% con `is_included=true`). El contrato guarda un snapshot del nombre, la tasa y el indicador de inclusión, para que un cambio posterior del impuesto no altere contratos firmados. `public.taxes.rate` se guarda como fracción (`0.1900` = 19%, verificado en la base local el 2026-11-08). El desglose se calcula como `base = total / (1 + rate)` cuando el precio incluye el impuesto, y como `total = base × (1 + rate)` cuando no; redondeo a pesos, mitad hacia arriba. `tax_rate_snapshot` guarda la fracción tal como viene de `taxes`. La Fase 1 solo lo muestra; el cobro llega en la Fase 2.
 - **Prueba:** al crear el contrato, `trial_ends_on = start_date + default_trial_months` (hoy 1 mes). El SUPER_ADMIN puede cambiarlo o quitarlo con motivo.
 - **Día de corte:** `billing_anchor_day` = día de `start_date`. En meses que no tienen ese día (29, 30 o 31), el corte cae en el último día del mes. La regla se aplica en la Fase 2.
 

@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Building2, CheckCircle2, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
+import { CheckCircle2, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
 import { Button } from "../../components/design-system/Button";
+import { ReportLayout } from "../../components/design-system/ReportLayout";
+import { ReportSummary } from "../../components/design-system/ReportSummary";
+import { Toast } from "../../components/design-system/Toast";
 import { ApiError } from "../../lib/request";
 import { hasMenuAccess } from "../../lib/permissions";
 import { useAppSelector } from "../../store/hooks";
@@ -24,12 +27,12 @@ const errorMessages: Record<ControlCenterLoadError, string> = {
 };
 
 const CheckRow = ({ label, ok }: { label: string; ok: boolean }) => (
-  <li className="flex items-center justify-between gap-3 border-b border-slate-100 py-2 last:border-b-0">
-    <span className="text-sm text-slate-700">{label}</span>
+  <li className="flex items-center justify-between gap-3 px-5 py-3">
+    <span className="text-sm text-slate-700 dark:text-slate-200">{label}</span>
     {ok ? (
-      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-label="Correcto" />
+      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" aria-label="Correcto" />
     ) : (
-      <XCircle className="h-5 w-5 shrink-0 text-red-600" aria-label="Con problema" />
+      <XCircle className="h-5 w-5 shrink-0 text-rose-500" aria-label="Con problema" />
     )}
   </li>
 );
@@ -75,83 +78,83 @@ export const ControlCenterReadiness = () => {
   }, [load, permissionsLoaded, visible]);
 
   if (!permissionsLoaded) {
-    return <p className="p-6 text-sm text-slate-500">Cargando permisos…</p>;
+    return <p className="p-6 text-sm text-slate-500 dark:text-slate-400">Cargando permisos…</p>;
   }
 
   if (!visible || error === "UNAUTHORIZED") {
     return (
-      <section className="mx-auto max-w-xl p-6 text-center">
+      <section className="mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <ShieldAlert className="mx-auto h-10 w-10 text-slate-400" aria-hidden />
-        <h1 className="mt-3 text-lg font-semibold text-slate-900">Acceso restringido</h1>
-        <p className="mt-1 text-sm text-slate-600">{errorMessages.UNAUTHORIZED}</p>
+        <h1 className="mt-3 text-lg font-semibold text-slate-900 dark:text-white">Acceso restringido</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{errorMessages.UNAUTHORIZED}</p>
       </section>
     );
   }
 
+  const ready = readiness?.status === "READY";
+
   return (
-    <section className="mx-auto w-full max-w-3xl space-y-4 p-4 sm:p-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <Building2 className="h-7 w-7 text-blue-600" aria-hidden />
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900">MANUS Control Center</h1>
-            <p className="text-sm text-slate-600">Estado de la plataforma de administración comercial</p>
-          </div>
+    <ReportLayout
+      title="MANUS Control Center"
+      description="Estado de la plataforma de administración comercial"
+      toolbar={
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => void load()} isLoading={loading}>
+            <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
+            Actualizar
+          </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void load()} isLoading={loading}>
-          <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
-          Actualizar
-        </Button>
-      </header>
+      }
+      summary={
+        readiness ? (
+          <ReportSummary
+            items={[
+              { label: "Estado", value: ready ? "Listo" : "Requiere atención" },
+              { label: "Problemas", value: readiness.issues.length },
+              { label: "Usuario BD", value: <span className="font-mono text-base">{readiness.database.user}</span> },
+              { label: "Verificado", value: new Date(readiness.checkedAt).toLocaleTimeString("es-CO") },
+            ]}
+          />
+        ) : null
+      }
+    >
+      <div className="space-y-4">
+        {error ? <Toast variant="warning" message={errorMessages[error]} /> : null}
 
-      {error ? (
-        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {errorMessages[error]}
-        </div>
-      ) : null}
-
-      {readiness ? (
-        <>
-          <div
-            className={`rounded-lg border p-4 ${
-              readiness.status === "READY"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                : "border-red-200 bg-red-50 text-red-900"
-            }`}
-          >
-            <p className="text-sm font-semibold">
-              {readiness.status === "READY" ? "Listo para operar" : "Requiere atención"}
-            </p>
-            <p className="mt-1 text-xs opacity-80">
-              Verificado {new Date(readiness.checkedAt).toLocaleString("es-CO")} · usuario BD{" "}
-              <span className="font-mono">{readiness.database.user}</span>
-            </p>
-            {readiness.issues.length > 0 ? (
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                {readiness.issues.map((issue) => (
-                  <li key={issue}>{READINESS_ISSUE_LABELS[issue] ?? issue}</li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-
-          <ul className="rounded-lg border border-slate-200 bg-white px-4">
-            <CheckRow label="Esquema control_center" ok={readiness.database.schemaPresent} />
-            <CheckRow label="Tabla de auditoría administrativa" ok={readiness.database.auditTablePresent} />
-            <CheckRow label="Registro de auditoría permitido" ok={readiness.database.canInsertAudit} />
-            <CheckRow label="Auditoría inmutable" ok={readiness.database.auditImmutable} />
-            <CheckRow label="Tenant plataforma activo" ok={readiness.database.platformTenantPresent} />
-            <CheckRow
-              label="Usuario operativo sin acceso al esquema"
-              ok={!readiness.isolation.operationalRoleHasSchemaAccess}
+        {readiness ? (
+          <>
+            <Toast
+              variant={ready ? "success" : "error"}
+              message={
+                ready ? (
+                  "La plataforma está lista para operar."
+                ) : (
+                  <ul className="list-disc space-y-1 pl-4">
+                    {readiness.issues.map((issue) => (
+                      <li key={issue}>{READINESS_ISSUE_LABELS[issue] ?? issue}</li>
+                    ))}
+                  </ul>
+                )
+              }
             />
-            <CheckRow
-              label="Impuestos configurados en el tenant plataforma (requerido en fase 1)"
-              ok={readiness.database.platformTaxConfigured}
-            />
-          </ul>
-        </>
-      ) : null}
-    </section>
+            <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-800">
+              <CheckRow label="Esquema control_center" ok={readiness.database.schemaPresent} />
+              <CheckRow label="Tabla de auditoría administrativa" ok={readiness.database.auditTablePresent} />
+              <CheckRow label="Registro de auditoría permitido" ok={readiness.database.canInsertAudit} />
+              <CheckRow label="Auditoría inmutable" ok={readiness.database.auditImmutable} />
+              <CheckRow label="Tenant plataforma activo" ok={readiness.database.platformTenantPresent} />
+              <CheckRow
+                label="Usuario operativo sin acceso al esquema"
+                ok={!readiness.isolation.operationalRoleHasSchemaAccess}
+              />
+              <CheckRow
+                label="Impuestos configurados en el tenant plataforma (requerido en fase 1)"
+                ok={readiness.database.platformTaxConfigured}
+              />
+            </ul>
+          </>
+        ) : null}
+      </div>
+    </ReportLayout>
   );
 };
