@@ -15,6 +15,9 @@ test("control center route requires the CONTROL_CENTER menu permission", () => {
     module: MENU_KEYS.CONTROL_CENTER,
     action: "read",
   });
+  for (const path of ["/manus/control-center/accounts", "/manus/control-center/contracts/abc"]) {
+    assert.deepEqual(getRoutePermissionRequirement(path), { module: MENU_KEYS.CONTROL_CENTER, action: "read" });
+  }
 });
 
 test("only SUPER_ADMIN of the platform tenant with menu access sees the Control Center", () => {
