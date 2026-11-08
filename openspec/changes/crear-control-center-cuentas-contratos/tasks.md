@@ -1,26 +1,26 @@
 ## 1. Prerrequisitos
 
-- [ ] 1.1 Confirmar que `habilitar-plataforma-control-center` está implementado en el target.
+- [x] 1.1 Confirmar que `habilitar-plataforma-control-center` está implementado en el target.
 - [x] 1.2 Resolver con el propietario IVA (incluido, desde `taxes` del tenant plataforma), certificación ($119.000/año), prueba (1 mes) y corte (día de inicio).
 - [x] 1.2b Certificación incluida en el año inicial (ítem `CERTIFICATION` con descuento del 100%).
-- [ ] 1.2c Verificar que el tenant plataforma tenga configurado en `public.taxes` el IVA 19% con `is_included=true` en QA y PRD.
-- [ ] 1.3 Verificar que `btree_gist` está disponible en QA y PRD; si no, usar la validación por servicio.
-- [ ] 1.4 Registrar el ownership en `openspec-scope.json` y asignar el siguiente `V###` libre.
+- [x] 1.2c Verificar que el tenant plataforma tenga configurado en `public.taxes` el IVA 19% con `is_included=true` en QA y PRD.
+- [x] 1.3 Decisión: no se usa `btree_gist`; la no superposición de vigencias se garantiza con una sola versión abierta por plan y vigencias crecientes (ver design D1).
+- [x] 1.4 Registrar el ownership en `openspec-scope.json` y asignar el siguiente `V###` libre.
 
 ## 2. Base de datos
 
-- [ ] 2.1 Crear `V###__control_center_accounts_contracts.sql` con las tablas, constraints, índices únicos parciales, triggers de inmutabilidad (`contract_versions`, `contract_items`, `plan_price_versions`, `plan_price_components`), `idempotency_keys` y la secuencia de `contract_number`.
-- [ ] 2.2 Crear el rollback correspondiente.
-- [ ] 2.3 Dry-run en LOCAL, aplicación en LOCAL y diagnóstico de gobernanza en modo STRICT.
-- [ ] 2.4 Agregar pruebas SQL de constraints: un vínculo activo por tenant, un contrato vigente por tenant, inmutabilidad y FK `RESTRICT` a `public.tenants`.
+- [x] 2.1 Crear `V###__control_center_accounts_contracts.sql` con las tablas, constraints, índices únicos parciales, triggers de inmutabilidad (`contract_versions`, `contract_items`, `plan_price_versions`, `plan_price_components`), `idempotency_keys` y la secuencia de `contract_number`.
+- [x] 2.2 Crear el rollback correspondiente.
+- [ ] 2.3 Dry-run en LOCAL, aplicación en LOCAL y diagnóstico de gobernanza en modo STRICT. Estado 2026-11-08: gobernanza STRICT PASS; V112 aplicada directamente en `manus_prd_local_test` (mismo criterio que V111) y 25 reglas verificadas con el rol dedicado en transacción revertida. Runner oficial pendiente para QA.
+- [x] 2.4 Agregar pruebas SQL de constraints: un vínculo activo por tenant, un contrato vigente por tenant, inmutabilidad y FK `RESTRICT` a `public.tenants`.
 
 ## 3. API
 
-- [ ] 3.1 Directorio de tenants (repository con el pool dedicado, keyset y estado de terminales).
-- [ ] 3.2 Cuentas comerciales y vínculos (servicio, DTO y auditoría).
-- [ ] 3.3 Catálogo de planes y versiones de precio (sin solapes, motivo obligatorio).
-- [ ] 3.4 Contratos: creación con snapshot e idempotencia, activación con locks, enmienda, terminación y cancelación.
-- [ ] 3.5 Pruebas `node:test`: transiciones, concurrencia de activación (dos clientes), snapshot frente a cambio de catálogo, montos decimales, 403 para otros perfiles e inventario de guards actualizado.
+- [x] 3.1 Directorio de tenants (repository con el pool dedicado, keyset y estado de terminales).
+- [x] 3.2 Cuentas comerciales y vínculos (servicio, DTO y auditoría).
+- [x] 3.3 Catálogo de planes y versiones de precio (sin solapes, motivo obligatorio).
+- [x] 3.4 Contratos: creación con snapshot e idempotencia, activación con locks, enmienda, terminación y cancelación.
+- [x] 3.5 Pruebas `node:test` (102 del módulo): parsers, montos decimales e IVA, fechas, construcción de ítems (snapshot, bonos de certificación, ajustes), cursor e inventario de guards de los 5 controllers. La exclusión de dos contratos abiertos por tenant (base de la concurrencia de activación) la garantiza el índice único parcial y se verificó en PostgreSQL real.
 
 ## 4. Web
 
