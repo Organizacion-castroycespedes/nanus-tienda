@@ -516,6 +516,20 @@
         "web/app/[tenant]/control-center/**",
         "docs/evidencia-control-center-cuentas-contratos.md"
       ]
+    },
+    {
+      "change_id": "control-center-cargos-recaudos",
+      "paths": [
+        "openspec/changes/control-center-cargos-recaudos/**",
+        "api/src/modules/control-center/**",
+        "scripts/governance/openspec-scope.json",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "scripts/database/migrations/V113__control_center_charges_receipts.sql",
+        "scripts/database/rollbacks/V113__control_center_charges_receipts_rollback.sql",
+        "scripts/database/tests/test_v113_control_center_charges_receipts_migration.py",
+        "docs/evidencia-control-center-cargos-recaudos.md"
+      ]
     }
   ],
   "current_ownership": [
@@ -662,16 +676,27 @@
       "change_id": "crear-control-center-cuentas-contratos",
       "paths": [
         "openspec/changes/crear-control-center-cuentas-contratos/**",
-        "api/src/modules/control-center/**",
-        "scripts/governance/openspec-scope.json",
         "scripts/database/migrations/V112__control_center_accounts_contracts.sql",
         "scripts/database/rollbacks/V112__control_center_accounts_contracts_rollback.sql",
         "scripts/database/tests/test_v112_control_center_accounts_contracts_migration.py",
-        "web/domains/control-center/**",
-        "web/app/[tenant]/control-center/**",
         "docs/evidencia-control-center-cuentas-contratos.md"
       ],
       "reason": "Implementacion de la fase 1 del Control Center: directorio de tenants, cuentas comerciales, planes con precios versionados y contratos."
+    },
+    {
+      "change_id": "control-center-cargos-recaudos",
+      "paths": [
+        "openspec/changes/control-center-cargos-recaudos/**",
+        "api/src/modules/control-center/**",
+        "scripts/governance/openspec-scope.json",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "scripts/database/migrations/V113__control_center_charges_receipts.sql",
+        "scripts/database/rollbacks/V113__control_center_charges_receipts_rollback.sql",
+        "scripts/database/tests/test_v113_control_center_charges_receipts_migration.py",
+        "docs/evidencia-control-center-cargos-recaudos.md"
+      ],
+      "reason": "Implementacion de la fase 2 del Control Center: cargos por periodo, prorrateo diario, recaudos manuales con soporte y cartera."
     }
   ]
 }
