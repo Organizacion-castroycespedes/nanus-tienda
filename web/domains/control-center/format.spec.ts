@@ -41,3 +41,19 @@ test("idempotency keys are unique and server-valid", () => {
   assert.notEqual(a, newIdempotencyKey());
   assert.match(a, /^[A-Za-z0-9_\-:.]{8,120}$/);
 });
+
+test("money helpers avoid floating point", async () => {
+  const { centsToMoney, moneyToCents, sumMoney } = await import("./format");
+  assert.equal(moneyToCents("850000.00"), BigInt(85000000));
+  assert.equal(moneyToCents("-176438.5"), BigInt(-17643850));
+  assert.equal(centsToMoney(BigInt(-5)), "-0.05");
+  assert.equal(sumMoney(["0.10", "0.20", "361781.00"]), "361781.30");
+});
+
+test("overdue only applies to open charges before today", async () => {
+  const { isOverdue, todayInBogota } = await import("./format");
+  assert.equal(isOverdue({ status: "OPEN", dueDate: "2027-01-14" }, "2027-01-15"), true);
+  assert.equal(isOverdue({ status: "PAID", dueDate: "2027-01-14" }, "2027-01-15"), false);
+  assert.equal(isOverdue({ status: "PARTIALLY_PAID", dueDate: "2027-01-15" }, "2027-01-15"), false);
+  assert.equal(todayInBogota(new Date("2026-11-09T03:00:00Z")), "2026-11-08");
+});

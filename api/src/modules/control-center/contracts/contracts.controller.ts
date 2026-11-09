@@ -43,6 +43,11 @@ export class ContractsController {
     return this.service.end(contractId, body, buildControlCenterRequestContext(request));
   }
 
+  @Post(":contractId/void")
+  void(@Param("contractId") contractId: string, @Body() body: unknown, @Req() request: any) {
+    return this.service.voidContract(contractId, body, buildControlCenterRequestContext(request));
+  }
+
   @Post(":contractId/cancel")
   cancel(@Param("contractId") contractId: string, @Body() body: unknown, @Req() request: any) {
     return this.service.cancel(contractId, body, buildControlCenterRequestContext(request));

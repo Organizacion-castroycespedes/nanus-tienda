@@ -8,10 +8,18 @@ import { ControlCenterReadinessController } from "./control-center-readiness.con
 import { ControlCenterReadinessService } from "./control-center-readiness.service";
 import { AccountsController } from "./accounts/accounts.controller";
 import { AccountsService } from "./accounts/accounts.service";
+import { BillingService } from "./billing/billing.service";
+import { ControlCenterBillingWorker } from "./billing/billing.worker";
+import { ChargesController } from "./billing/charges.controller";
+import { ChargesService } from "./billing/charges.service";
+import { ReceiptsController } from "./collections/receipts.controller";
+import { ReceiptsService } from "./collections/receipts.service";
 import { ContractsController } from "./contracts/contracts.controller";
 import { ContractsService } from "./contracts/contracts.service";
 import { PlansController } from "./plans/plans.controller";
 import { PlansService } from "./plans/plans.service";
+import { ReceivablesController } from "./receivables/receivables.controller";
+import { ReceivablesService } from "./receivables/receivables.service";
 import { TenantDirectoryController } from "./tenant-directory/tenant-directory.controller";
 import { TenantDirectoryService } from "./tenant-directory/tenant-directory.service";
 
@@ -23,6 +31,9 @@ import { TenantDirectoryService } from "./tenant-directory/tenant-directory.serv
     AccountsController,
     PlansController,
     ContractsController,
+    ChargesController,
+    ReceiptsController,
+    ReceivablesController,
   ],
   providers: [
     ControlCenterDatabaseService,
@@ -31,6 +42,11 @@ import { TenantDirectoryService } from "./tenant-directory/tenant-directory.serv
     AccountsService,
     PlansService,
     ContractsService,
+    BillingService,
+    ChargesService,
+    ReceiptsService,
+    ReceivablesService,
+    ControlCenterBillingWorker,
     PlatformTenantGuard,
     ControlCenterEnabledGuard,
     { provide: ControlCenterAuditService, useFactory: () => new ControlCenterAuditService() },

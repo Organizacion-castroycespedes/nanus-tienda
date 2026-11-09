@@ -1,5 +1,12 @@
-import { apiClient } from "../../lib/http";
+import { apiBlobClient, apiClient } from "../../lib/http";
 import type {
+  Charge,
+  ChargeDetail,
+  GenerateChargesResult,
+  PaymentCatalog,
+  Receipt,
+  ReceiptDetail,
+  ReceivablesSummary,
   AccountDetail,
   AccountTenantLink,
   CommercialAccount,
@@ -122,5 +129,95 @@ export const amendContract = (
 export const endContract = (contractId: string, endDate: string, reason: string) =>
   post<ContractDetail>(`${BASE}/contracts/${encodeURIComponent(contractId)}/end`, { endDate, reason });
 
+export const voidContract = (contractId: string, reason: string) =>
+  post<ContractDetail>(`${BASE}/contracts/${encodeURIComponent(contractId)}/void`, { reason });
+
 export const cancelContract = (contractId: string, reason?: string) =>
   post<ContractDetail>(`${BASE}/contracts/${encodeURIComponent(contractId)}/cancel`, reason ? { reason } : {});
+
+// Fase 2: cargos, recaudos y cartera -------------------------------------------
+
+export const listCharges = (
+  params: {
+    status?: string;
+    kind?: string;
+    accountId?: string;
+    contractId?: string;
+    overdue?: boolean;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  },
+  signal?: AbortSignal,
+) =>
+  apiClient<Paged<Charge>>(
+    `${BASE}/charges${toQuery({ ...params, overdue: params.overdue ? "true" : undefined })}`,
+    { method: "GET", signal },
+  );
+
+export const getCharge = (chargeId: string, signal?: AbortSignal) =>
+  apiClient<ChargeDetail>(`${BASE}/charges/${encodeURIComponent(chargeId)}`, { method: "GET", signal });
+
+export const voidCharge = (chargeId: string, reason: string) =>
+  post<ChargeDetail>(`${BASE}/charges/${encodeURIComponent(chargeId)}/void`, { reason });
+
+export const generateCharges = (contractId: string) =>
+  post<GenerateChargesResult>(`${BASE}/contracts/${encodeURIComponent(contractId)}/charges/generate`, {});
+
+export const getPaymentCatalog = (signal?: AbortSignal) =>
+  apiClient<PaymentCatalog>(`${BASE}/payment-methods`, { method: "GET", signal });
+
+export const listReceipts = (
+  params: { accountId?: string; status?: string; source?: string; withBalance?: boolean; search?: string; limit?: number; offset?: number },
+  signal?: AbortSignal,
+) =>
+  apiClient<Paged<Receipt>>(
+    `${BASE}/receipts${toQuery({ ...params, withBalance: params.withBalance ? "true" : undefined })}`,
+    { method: "GET", signal },
+  );
+
+export const getReceipt = (receiptId: string, signal?: AbortSignal) =>
+  apiClient<ReceiptDetail>(`${BASE}/receipts/${encodeURIComponent(receiptId)}`, { method: "GET", signal });
+
+export type RegisterReceiptInput = {
+  accountId: string;
+  receivedOn: string;
+  amount: string;
+  paymentMethodId: string;
+  financialInstitutionId?: string;
+  reference?: string;
+  notes?: string;
+  autoAllocate?: boolean;
+  allocations?: { chargeId: string; amount: string }[];
+  attachment?: File | null;
+};
+
+export const registerReceipt = (input: RegisterReceiptInput, idempotencyKey: string) => {
+  const form = new FormData();
+  form.set("accountId", input.accountId);
+  form.set("receivedOn", input.receivedOn);
+  form.set("amount", input.amount);
+  form.set("paymentMethodId", input.paymentMethodId);
+  if (input.financialInstitutionId) form.set("financialInstitutionId", input.financialInstitutionId);
+  if (input.reference) form.set("reference", input.reference);
+  if (input.notes) form.set("notes", input.notes);
+  if (input.autoAllocate) form.set("autoAllocate", "true");
+  if (input.allocations?.length) form.set("allocations", JSON.stringify(input.allocations));
+  if (input.attachment) form.set("attachment", input.attachment);
+  return apiClient<ReceiptDetail>(`${BASE}/receipts`, { method: "POST", body: form, headers: { "Idempotency-Key": idempotencyKey } });
+};
+
+export const allocateReceipt = (receiptId: string, payload: { autoAllocate: true } | { allocations: { chargeId: string; amount: string }[] }) =>
+  post<ReceiptDetail>(`${BASE}/receipts/${encodeURIComponent(receiptId)}/allocations`, payload);
+
+export const voidReceipt = (receiptId: string, reason: string) =>
+  post<ReceiptDetail>(`${BASE}/receipts/${encodeURIComponent(receiptId)}/void`, { reason });
+
+export const reverseAllocation = (allocationId: string, reason: string) =>
+  post<ReceiptDetail>(`${BASE}/allocations/${encodeURIComponent(allocationId)}/reverse`, { reason });
+
+export const downloadReceiptAttachment = (receiptId: string) =>
+  apiBlobClient(`${BASE}/receipts/${encodeURIComponent(receiptId)}/attachment`, { method: "GET" });
+
+export const getReceivablesSummary = (asOf?: string, signal?: AbortSignal) =>
+  apiClient<ReceivablesSummary>(`${BASE}/receivables/summary${toQuery({ asOf })}`, { method: "GET", signal });

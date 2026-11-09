@@ -20,6 +20,12 @@ export const mapDatabaseError = (error: unknown, conflictMessage = "El registro 
   if (pg?.code === "23505") throw conflict("CONTROL_CENTER_CONFLICT", conflictMessage);
   if (pg?.code === "23503") throw unprocessable("CONTROL_CENTER_REFERENCE_INVALID", "Una referencia no existe o no está permitida");
   if (pg?.code === "23514") throw badRequest("CONTROL_CENTER_CONSTRAINT_VIOLATION", "Los datos no cumplen las reglas del registro");
+  if (pg?.code === "P0001" && /CONTROL_CENTER_ALLOCATION_ACCOUNT_MISMATCH/.test(pg.message ?? "")) {
+    throw unprocessable("CONTROL_CENTER_ALLOCATION_ACCOUNT_MISMATCH", "El pago y el cargo pertenecen a cuentas distintas");
+  }
+  if (pg?.code === "P0001" && /CONTROL_CENTER_(CHARGE|RECEIPT)_(OVERALLOCATED|BALANCE_MISMATCH)|CONTROL_CENTER_ALLOCATION_ON_VOID/.test(pg.message ?? "")) {
+    throw conflict("CONTROL_CENTER_BALANCE_CONFLICT", "El saldo del pago o del cargo cambió mientras se registraba; vuelve a intentarlo");
+  }
   if (pg?.code === "P0001" && /CONTROL_CENTER_/.test(pg.message ?? "")) {
     throw conflict("CONTROL_CENTER_IMMUTABLE", "El registro no se puede modificar");
   }

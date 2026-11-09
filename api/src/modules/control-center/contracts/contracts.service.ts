@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { ControlCenterAuditService, type ControlCenterRequestContext } from "../control-center-audit.service";
 import { ControlCenterDatabaseService } from "../control-center-database.service";
 import { CONTROL_CENTER_ACTIONS, CONTROL_CENTER_MIN_REASON_LENGTH } from "../control-center.constants";
+import { BillingService, lockContractBilling } from "../billing/billing.service";
 import { loadPlatformTax, type PlatformTax } from "../plans/plans.service";
 import { addDays, addMonthsClamped, dayOfMonth } from "../shared/dates";
 import { badRequest, conflict, mapDatabaseError, notFound, unprocessable } from "../shared/errors";
@@ -66,6 +67,7 @@ export class ContractsService {
   constructor(
     @Inject(ControlCenterDatabaseService) private readonly db: ControlCenterDatabaseService,
     @Inject(ControlCenterAuditService) private readonly audit: ControlCenterAuditService,
+    @Inject(BillingService) private readonly billing: BillingService,
   ) {}
 
   async list(query: Record<string, unknown>) {
@@ -365,6 +367,16 @@ export class ContractsService {
             `La enmienda debe regir después del ${currentVersion.effective_from}`,
           );
         }
+        await lockContractBilling(tx, id);
+        const nextVersionNo = currentVersion.version_no + 1;
+        const voidedCharges = await this.billing.voidFutureCharges(
+          tx,
+          id,
+          input.effectiveFrom,
+          false,
+          `Reemplazado por enmienda v${nextVersionNo} del contrato`,
+          ctx,
+        );
         const priceVersion = await this.loadPriceVersion(tx, contract.plan_id, input.effectiveFrom);
         const tax = await loadPlatformTax(tx, this.db.getConfig().platformTenantId, priceVersion.tax_id);
         const { items, priceAdjusted } = buildContractItems(priceVersion.components, {
@@ -382,7 +394,7 @@ export class ContractsService {
           tx,
           {
             contractId: id,
-            versionNo: currentVersion.version_no + 1,
+            versionNo: nextVersionNo,
             effectiveFrom: input.effectiveFrom,
             termPhase: input.termPhase,
             billingFrequency: input.billingFrequency,
@@ -402,13 +414,22 @@ export class ContractsService {
           `UPDATE control_center.contracts SET current_version_id = $2, updated_by = $3, updated_at = NOW() WHERE id = $1`,
           [id, versionId, ctx.actorUserId],
         );
+        const proration = await this.billing.applyAmendmentProration(tx, id, currentVersion.id, versionId, input.effectiveFrom, ctx);
         await this.audit.record(tx, {
           ...ctx,
           action: CONTROL_CENTER_ACTIONS.CONTRACT_AMENDED,
           entityType: "contract",
           entityId: id,
           before: { versionId: currentVersion.id, versionNo: currentVersion.version_no },
-          after: { versionId, versionNo: currentVersion.version_no + 1, termPhase: input.termPhase, billingFrequency: input.billingFrequency, items },
+          after: {
+            versionId,
+            versionNo: nextVersionNo,
+            termPhase: input.termPhase,
+            billingFrequency: input.billingFrequency,
+            items,
+            voidedCharges,
+            proration,
+          },
           reason: input.reason,
         });
         if (priceAdjusted) {
@@ -442,6 +463,8 @@ export class ContractsService {
       if (version && input.endDate < version.effective_from) {
         throw unprocessable("CONTROL_CENTER_END_DATE_INVALID", `La terminación no puede ser anterior al ${version.effective_from}`);
       }
+      await lockContractBilling(tx, id);
+      await this.billing.voidFutureCharges(tx, id, input.endDate, true, `Contrato terminado el ${input.endDate}`, ctx);
       if (version && version.effective_to === null) {
         await tx.query(`UPDATE control_center.contract_versions SET effective_to = $2 WHERE id = $1`, [version.id, input.endDate]);
       }
@@ -484,6 +507,39 @@ export class ContractsService {
         reason,
       });
     });
+    return this.get(id);
+  }
+
+  /** Anula un contrato activo registrado por error: anula sus cargos sin pagos y libera el tenant. */
+  async voidContract(idParam: string, raw: unknown, ctx: ControlCenterRequestContext) {
+    const id = assertUuid(idParam, "contractId");
+    const reason = requireReason(asBody(raw ?? {}));
+    await this.db
+      .transaction(async (tx) => {
+        const contract = await this.lockContract(tx, id);
+        if (contract.status !== "ACTIVE") {
+          throw conflict(
+            "CONTROL_CENTER_INVALID_TRANSITION",
+            contract.status === "DRAFT" ? "Los borradores se cancelan, no se anulan" : `No se puede anular un contrato en estado ${contract.status}`,
+          );
+        }
+        await lockContractBilling(tx, id);
+        const result = await this.billing.voidAllContractCharges(tx, id, `Contrato anulado: ${reason}`.slice(0, 1000), ctx);
+        await tx.query(
+          `UPDATE control_center.contracts SET status = 'CANCELLED', updated_by = $2, updated_at = NOW() WHERE id = $1`,
+          [id, ctx.actorUserId],
+        );
+        await this.audit.record(tx, {
+          ...ctx,
+          action: CONTROL_CENTER_ACTIONS.CONTRACT_VOIDED,
+          entityType: "contract",
+          entityId: id,
+          before: { status: "ACTIVE" },
+          after: { status: "CANCELLED", ...result },
+          reason,
+        });
+      })
+      .catch((error) => mapDatabaseError(error));
     return this.get(id);
   }
 
