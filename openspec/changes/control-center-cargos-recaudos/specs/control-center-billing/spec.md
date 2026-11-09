@@ -61,3 +61,22 @@ El sistema SHALL generar automáticamente los cargos cuyo inicio esté dentro de
 
 - **WHEN** el worker termina una ejecución
 - **THEN** SHALL registrar en `billing_runs` los contratos revisados, los cargos creados y los errores.
+
+### Requirement: Anulación de contrato registrado por error
+
+El sistema SHALL permitir al SUPER_ADMIN anular un contrato `ACTIVE` registrado por error, con motivo de al menos 10 caracteres, solo si ninguno de sus cargos tiene pagos aplicados. La anulación SHALL anular los cargos del contrato y sus créditos de prorrateo sin aplicar, dejar el contrato en `CANCELLED` con su historial y liberar el tenant para un contrato nuevo, sin modificar los pagos registrados a la cuenta.
+
+#### Scenario: Contrato con datos equivocados sin pagos aplicados
+
+- **WHEN** el SUPER_ADMIN anula con motivo un contrato activo cuyos cargos no tienen pagos aplicados
+- **THEN** el contrato SHALL quedar `CANCELLED`, sus cargos `VOID` y el tenant SHALL aceptar un contrato nuevo.
+
+#### Scenario: Contrato con pagos aplicados
+
+- **WHEN** alguno de los cargos del contrato tiene pagos aplicados
+- **THEN** el sistema SHALL responder 409 indicando que se reviertan primero las aplicaciones.
+
+#### Scenario: Saldo a favor de la cuenta
+
+- **WHEN** la cuenta tiene un pago sin aplicar y se anula el contrato
+- **THEN** el pago SHALL conservarse como saldo a favor para aplicarlo a los cargos del contrato nuevo.

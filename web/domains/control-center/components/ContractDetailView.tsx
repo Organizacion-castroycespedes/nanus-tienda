@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, FilePen, Flag, XCircle } from "lucide-react";
+import { ArrowLeft, Ban, CheckCircle2, FilePen, Flag, XCircle } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { ReportSummary } from "../../../components/design-system/ReportSummary";
 import { Select } from "../../../components/design-system/Select";
 import { Toast } from "../../../components/design-system/Toast";
-import { activateContract, amendContract, cancelContract, endContract, getContract } from "../api";
+import { activateContract, amendContract, cancelContract, endContract, getContract, voidContract } from "../api";
 import { apiErrorMessage } from "../errors";
 import {
   AUDIT_ACTION_LABELS,
@@ -19,12 +19,13 @@ import {
   formatRate,
 } from "../format";
 import type { BillingFrequency, ContractDetail, TermPhase } from "../types";
+import { ContractChargesPanel } from "./ContractChargesPanel";
 import { ContractItemsTable, TotalsSummary } from "./ContractItemsTable";
 import { ControlCenterShell, useControlCenterAccess, useControlCenterHref } from "./ControlCenterShell";
 import { ReasonDialog } from "./ReasonDialog";
 import { ContractStatusBadge, Pill } from "./StatusBadge";
 
-type Action = "activate" | "cancel" | "amend" | "end" | null;
+type Action = "activate" | "cancel" | "amend" | "end" | "void" | null;
 
 const addYear = (date: string) => {
   const [y, m, d] = date.split("-").map(Number);
@@ -82,6 +83,7 @@ export const ContractDetailView = ({ contractId }: { contractId: string }) => {
             <>
               <Button size="sm" onClick={openAmend}><FilePen className="mr-1 h-4 w-4" aria-hidden /> Enmendar / renovar</Button>
               <Button size="sm" variant="ghost" onClick={() => { setEndDate(""); setAction("end"); }}><Flag className="mr-1 h-4 w-4" aria-hidden /> Terminar</Button>
+              <Button size="sm" variant="ghost" onClick={() => setAction("void")}><Ban className="mr-1 h-4 w-4" aria-hidden /> Anular</Button>
             </>
           ) : null}
         </>
@@ -110,6 +112,10 @@ export const ContractDetailView = ({ contractId }: { contractId: string }) => {
           </section>
           {contract.activePosTerminals > (current?.contractedPosTerminals ?? Infinity) ? (
             <Toast variant="warning" message="El tenant usa más terminales POS de las contratadas. Considera enmendar el contrato." />
+          ) : null}
+
+          {contract.status !== "DRAFT" && contract.status !== "CANCELLED" ? (
+            <ContractChargesPanel contractId={contract.id} active={contract.status === "ACTIVE"} refreshKey={contract.updatedAt} />
           ) : null}
 
           {contract.versions.map((version) => (
@@ -160,9 +166,18 @@ export const ContractDetailView = ({ contractId }: { contractId: string }) => {
         onConfirm={async (reason) => { setContract(await cancelContract(contractId, reason || undefined)); }}
       />
       <ReasonDialog
+        open={action === "void"}
+        title="Anular contrato registrado por error"
+        description="Úsalo solo si el contrato se registró con datos equivocados. Se anulan sus cargos (ninguno puede tener pagos aplicados), el contrato queda cancelado con su historial y el tenant queda libre para registrar el contrato correcto. Los pagos de la cuenta se conservan como saldo a favor. Para el fin real de la relación comercial usa Terminar."
+        confirmText="Anular contrato"
+        variant="danger"
+        onClose={() => setAction(null)}
+        onConfirm={async (reason) => { setContract(await voidContract(contractId, reason)); }}
+      />
+      <ReasonDialog
         open={action === "end"}
         title="Terminar contrato"
-        description="Se cierra la versión vigente en la fecha indicada."
+        description="Se cierra la versión vigente en la fecha indicada. Los cargos sin pagos de períodos posteriores se anulan."
         confirmText="Terminar"
         variant="danger"
         canConfirm={Boolean(endDate)}
@@ -174,7 +189,7 @@ export const ContractDetailView = ({ contractId }: { contractId: string }) => {
       <ReasonDialog
         open={action === "amend"}
         title="Enmendar o renovar contrato"
-        description="Se crea una nueva versión con los precios vigentes del plan en la fecha indicada. La versión actual se cierra el día anterior."
+        description="Se crea una nueva versión con los precios vigentes del plan en la fecha indicada. La versión actual se cierra el día anterior. Si la fecha cae dentro de un período ya cobrado y el prorrateo es diario, se genera un cargo o un crédito proporcional."
         confirmText="Crear versión"
         canConfirm={Boolean(amend.effectiveFrom)}
         onClose={() => setAction(null)}
@@ -202,6 +217,7 @@ export const ContractDetailView = ({ contractId }: { contractId: string }) => {
           <Input label="Terminales POS adicionales" type="number" min={0} value={amend.extraPosTerminals} onChange={(e) => setAmend({ ...amend, extraPosTerminals: e.target.value })} />
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">Renovación anual: certificación incluida (bono). Renovación mensual: certificación cobrada aparte.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Para agregar o retirar terminales desde hoy, usa la fecha de hoy: se cobra o acredita la parte proporcional del período en curso. Una fecha anterior a un período ya pagado no se permite.</p>
       </ReasonDialog>
     </ControlCenterShell>
   );

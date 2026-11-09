@@ -213,3 +213,156 @@ export type ContractDraftInput = {
   customItems?: CustomItemInput[];
   reason?: string;
 };
+
+// Fase 2: cargos, recaudos y cartera -------------------------------------------
+
+export type ChargeStatus = "OPEN" | "PARTIALLY_PAID" | "PAID" | "VOID";
+export type ChargeKind = "PERIOD" | "PRORATION" | "ONE_TIME";
+export type ReceiptStatus = "CONFIRMED" | "VOID";
+export type ReceiptSource = "PAYMENT" | "PRORATION_CREDIT";
+
+export type Charge = {
+  id: string;
+  chargeNumber: string;
+  kind: ChargeKind;
+  billingFrequency: ItemFrequency;
+  periodStart: string;
+  periodEnd: string;
+  issueDate: string;
+  dueDate: string;
+  subtotal: string;
+  discountTotal: string;
+  baseAmount: string;
+  taxAmount: string;
+  totalAmount: string;
+  paidAmount: string;
+  balance: string;
+  status: ChargeStatus;
+  generationSource: "WORKER" | "MANUAL" | "AMENDMENT";
+  taxName: string;
+  taxRate: string;
+  pricesIncludeTax: boolean;
+  voidReason: string | null;
+  voidedAt: string | null;
+  contractId: string;
+  contractNumber: string;
+  accountId: string;
+  accountLegalName: string;
+  tenantId: string;
+  tenantName: string | null;
+  createdAt: string;
+};
+
+export type ChargeLine = {
+  id: string;
+  itemType: string;
+  description: string;
+  quantity: string;
+  unitAmount: string;
+  discountAmount: string;
+  prorationFactor: string | null;
+  lineTotal: string;
+};
+
+export type ChargeAllocation = {
+  id: string;
+  amount: string;
+  createdAt: string;
+  reversedAt: string | null;
+  reversalReason: string | null;
+  receiptId: string;
+  receiptNumber: string;
+  receivedOn: string;
+  source: ReceiptSource;
+  paymentMethodName: string | null;
+};
+
+export type ChargeDetail = Charge & { lines: ChargeLine[]; allocations: ChargeAllocation[] };
+
+export type Receipt = {
+  id: string;
+  receiptNumber: string;
+  accountId: string;
+  accountLegalName: string;
+  receivedOn: string;
+  amount: string;
+  allocatedAmount: string;
+  unallocated: string;
+  source: ReceiptSource;
+  paymentMethodId: string | null;
+  paymentMethodCode: string | null;
+  paymentMethodName: string | null;
+  financialInstitutionId: string | null;
+  financialInstitutionName: string | null;
+  reference: string | null;
+  notes: string | null;
+  hasAttachment: boolean;
+  attachmentName: string | null;
+  attachmentMime: string | null;
+  attachmentSize: number | null;
+  contractId: string | null;
+  status: ReceiptStatus;
+  voidReason: string | null;
+  voidedAt: string | null;
+  createdAt: string;
+};
+
+export type ReceiptAllocation = {
+  id: string;
+  amount: string;
+  createdAt: string;
+  reversedAt: string | null;
+  reversalReason: string | null;
+  chargeId: string;
+  chargeNumber: string;
+  dueDate: string;
+  chargeStatus: ChargeStatus;
+  contractNumber: string;
+};
+
+export type ReceiptDetail = Receipt & { allocations: ReceiptAllocation[] };
+
+export type PaymentMethodOption = {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  requiresReference: boolean;
+  requiresFinancialInstitution: boolean;
+  icon: string | null;
+  color: string | null;
+};
+
+export type FinancialInstitutionOption = { id: string; code: string; name: string; shortName: string | null; type: string };
+
+export type PaymentCatalog = { methods: PaymentMethodOption[]; institutions: FinancialInstitutionOption[] };
+
+export type AgingAmounts = {
+  openBalance: string;
+  notDue: string;
+  overdue: string;
+  days1to30: string;
+  days31to60: string;
+  days61to90: string;
+  over90: string;
+  upcoming: string;
+  overdueCharges: number;
+  oldestDueDate: string | null;
+  credit: string;
+};
+
+export type ReceivableAccount = AgingAmounts & { accountId: string; legalName: string; taxIdType: string; taxId: string };
+
+export type ReceivablesSummary = {
+  asOf: string;
+  upcomingUntil: string;
+  totals: AgingAmounts;
+  accounts: ReceivableAccount[];
+  upcoming: { id: string; chargeNumber: string; dueDate: string; balance: string; status: ChargeStatus; accountId: string; accountLegalName: string; contractNumber: string }[];
+};
+
+export type GenerateChargesResult = {
+  runId: string;
+  horizon: string;
+  created: { id: string; chargeNumber: string; periodStart: string; billingFrequency: string; total: string }[];
+};

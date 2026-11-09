@@ -10,7 +10,7 @@ import { useAppSelector } from "../../../store/hooks";
 import { MENU_KEYS } from "../../menu/constants";
 import { canSeeControlCenter } from "../access";
 
-export type ControlCenterSection = "overview" | "tenants" | "accounts" | "plans" | "contracts";
+export type ControlCenterSection = "overview" | "tenants" | "accounts" | "plans" | "contracts" | "receivables";
 
 const SECTIONS: { value: ControlCenterSection; label: string }[] = [
   { value: "overview", label: "Resumen" },
@@ -18,6 +18,7 @@ const SECTIONS: { value: ControlCenterSection; label: string }[] = [
   { value: "accounts", label: "Cuentas" },
   { value: "plans", label: "Planes" },
   { value: "contracts", label: "Contratos" },
+  { value: "receivables", label: "Cartera" },
 ];
 
 export const useControlCenterAccess = () => {

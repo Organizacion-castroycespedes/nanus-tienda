@@ -32,11 +32,11 @@ Lo que se reutiliza:
 
 | Tabla | Columnas clave | Integridad |
 |---|---|---|
-| `charges` | `id`, `charge_number` (`MCC-COB-AAAA-NNNNNN`), `contract_id`, `account_id`, `tenant_id`, `contract_version_id`, `kind` (`PERIOD`/`PRORATION`/`ONE_TIME`), `billing_frequency` (`MONTHLY`/`ANNUAL`/`ONE_TIME`), `period_start`, `period_end`, `issue_date`, `due_date`, `currency`, `tax_name_snapshot`, `tax_rate_snapshot`, `prices_include_tax`, `subtotal`, `base_amount`, `tax_amount`, `total_amount`, `paid_amount`, `status` (`OPEN`/`PARTIALLY_PAID`/`PAID`/`VOID`), `generation_source` (`WORKER`/`MANUAL`/`AMENDMENT`), `void_reason`, `voided_at`, `voided_by` y campos de auditoría | Índice único parcial `(contract_id, kind, billing_frequency, period_start) WHERE status <> 'VOID'`; `0 <= paid_amount <= total_amount` |
+| `charges` | `id`, `charge_number` (`MCC-COB-AAAA-NNNNNN`), `contract_id`, `account_id`, `tenant_id`, `contract_version_id`, `kind` (`PERIOD`/`PRORATION`/`ONE_TIME`), `billing_frequency` (`MONTHLY`/`ANNUAL`/`ONE_TIME`), `period_start`, `period_end`, `issue_date`, `due_date`, `currency`, `tax_name_snapshot`, `tax_rate_snapshot`, `prices_include_tax`, `subtotal`, `base_amount`, `tax_amount`, `total_amount`, `paid_amount`, `status` (`OPEN`/`PARTIALLY_PAID`/`PAID`/`VOID`), `generation_source` (`WORKER`/`MANUAL`/`AMENDMENT`), `void_reason`, `voided_at`, `voided_by` y campos de auditoría | Índice único parcial `(contract_id, kind, billing_frequency, period_start) WHERE status <> 'VOID'` para `PERIOD`/`ONE_TIME` y `(contract_version_id, billing_frequency)` para `PRORATION`; solo cambian `paid_amount`, `status`, anulación y `updated_*`; `0 <= paid_amount <= total_amount` |
 | `charge_lines` | `id`, `charge_id`, `contract_item_id`, `item_type`, `description`, `quantity`, `unit_amount`, `discount_amount`, `proration_factor numeric(9,6) null`, `line_total` | Inmutable (sin `UPDATE`/`DELETE`) |
-| `receipts` | `id`, `receipt_number` (`MCC-REC-AAAA-NNNNNN`), `account_id`, `received_on`, `amount > 0`, `source` (`PAYMENT`/`PRORATION_CREDIT`), `payment_method_id`, `payment_method_code`, `payment_method_name`, `financial_institution_id`, `financial_institution_name` (referencia y snapshot del catálogo de MANUS; nulos en créditos de prorrateo), `reference`, `notes`, `attachment_storage_key`, `attachment_mime`, `attachment_size`, `source_charge_id` (solo créditos de prorrateo), `status` (`CONFIRMED`/`VOID`), `void_reason`, `voided_at`, `voided_by` y campos de auditoría | Índice único parcial `(account_id, payment_method_code, reference) WHERE reference IS NOT NULL AND status = 'CONFIRMED'` contra pagos duplicados; `CHECK` que exige medio de pago cuando `source = 'PAYMENT'` |
+| `receipts` | `id`, `receipt_number` (`MCC-REC-AAAA-NNNNNN`), `account_id`, `received_on`, `amount > 0`, `source` (`PAYMENT`/`PRORATION_CREDIT`), `payment_method_id`, `payment_method_code`, `payment_method_name`, `financial_institution_id`, `financial_institution_name` (referencia y snapshot del catálogo de MANUS; nulos en créditos de prorrateo), `reference`, `notes`, `attachment_storage_key`, `attachment_mime`, `attachment_size`, `allocated_amount`, `attachment_original_name`, `contract_id` y `source_contract_version_id` (solo créditos de prorrateo; uno vigente por versión), `status` (`CONFIRMED`/`VOID`), `void_reason`, `voided_at`, `voided_by` y campos de auditoría | Índice único parcial `(account_id, payment_method_code, reference) WHERE reference IS NOT NULL AND status = 'CONFIRMED'` contra pagos duplicados; `CHECK` que exige medio de pago cuando `source = 'PAYMENT'` |
 | `receipt_allocations` | `id`, `receipt_id`, `charge_id`, `amount > 0`, `created_at`, `created_by`, `reversed_at`, `reversed_by`, `reversal_reason` | Solo se permite registrar el reverso una vez (trigger). Un trigger de restricción diferido verifica que la suma activa por recaudo no supere su valor y que la suma activa por cargo no supere su total |
-| `billing_runs` | `id`, `trigger` (`WORKER`/`MANUAL`), `actor_user_id`, `started_at`, `finished_at`, `contracts_scanned`, `charges_created`, `errors jsonb` | Bitácora del proceso |
+| `billing_runs` | `id`, `trigger_source` (`WORKER`/`MANUAL`), `actor_user_id`, `contract_id` (manual), `run_date`, `lead_days`, `status` (`RUNNING`/`COMPLETED`/`FAILED`), `started_at`, `finished_at`, `contracts_scanned`, `charges_created`, `errors jsonb` | Bitácora del proceso |
 
 `paid_amount` y `status` del cargo se recalculan en la misma transacción de cada aplicación, reverso o anulación.
 
@@ -63,17 +63,18 @@ El worker recorre los contratos `ACTIVE` por lotes, registra la ejecución en `b
 
 ### D4. Prorrateo diario por enmienda
 
-Se ejecuta dentro de la transacción de `ContractsService.amend`, después de crear la nueva versión con fecha `E`, y solo si su política es `DAILY`. Para cada frecuencia con un cargo `PERIOD` no anulado que cubre `E` (`inicio < E ≤ fin`):
+Se ejecuta dentro de la transacción de `ContractsService.amend`, con el bloqueo de facturación del contrato, después de crear la nueva versión con fecha `E`, y solo si su política es `DAILY`. Para cada frecuencia (mensual y anual) cuyo período contiene `E` con `inicio < E ≤ fin` (y `E` posterior al inicio de facturación):
 
-- `valor_viejo` y `valor_nuevo` son los netos de la frecuencia según cada versión.
+- `valor_viejo` y `valor_nuevo` son los netos de la frecuencia según cada versión, agrupados por tipo de ítem.
 - `diferencia = valor_nuevo − valor_viejo`.
 - `factor = (fin − E + 1) / (fin − inicio + 1)`.
 - `monto = redondeo_a_pesos(diferencia × factor)`.
-- Si `monto > 0`, se crea un cargo `PRORATION` (período `E..fin`, vence en `E`) con líneas que guardan el factor.
-- Si `monto < 0`, se crea un recaudo `PRORATION_CREDIT` por el valor absoluto, enlazado al cargo, y se aplica automáticamente a los cargos abiertos del mismo contrato empezando por el vencimiento más antiguo. Lo que sobra queda como saldo a favor.
-- Los cargos `PERIOD` futuros (inicio ≥ E) ya generados con la versión anterior se anulan con el motivo "Reemplazado por enmienda". Si alguno tiene aplicaciones activas, la enmienda se rechaza con 409 hasta que se reviertan.
+- Si `monto > 0`, se crea un cargo `PRORATION` (período `E..fin`, vence en `E`) con una línea por tipo de ítem que cambió y su factor.
+- Los montos negativos de todas las frecuencias se suman en un solo recaudo `PRORATION_CREDIT`, enlazado a la nueva versión, que se aplica automáticamente a los cargos abiertos del mismo contrato empezando por el vencimiento más antiguo. Lo que sobra queda como saldo a favor.
+- Antes de crear la versión, los cargos `PERIOD` y `ONE_TIME` futuros (inicio ≥ E) ya generados se anulan con el motivo "Reemplazado por enmienda vN". Si alguno tiene pagos aplicados, la enmienda se rechaza con 409 hasta que se reviertan.
+- El período que contiene `E` se cobrará con la versión anterior (la vigente en su inicio); por eso el prorrateo no depende de que ese cargo ya exista.
 
-Con política `NONE` no hay prorrateo y el cambio rige desde el siguiente período.
+Con política `NONE` no hay prorrateo y el cambio rige desde el siguiente período. Al terminar un contrato se anulan, con la misma regla de pagos, los cargos cuyo período inicia después de la fecha de terminación.
 
 ### D5. Recaudos y comprobantes
 
@@ -91,7 +92,9 @@ Con política `NONE` no hay prorrateo y el cambio rige desde el siguiente perío
 - **Cargos:** `GET charges` (filtros por estado, cuenta, tenant, contrato, rango de vencimiento y vencidos), `GET charges/:id` (líneas y aplicaciones), `POST contracts/:id/charges/generate` (botón manual) y `POST charges/:id/void` (con motivo y sin aplicaciones activas).
 - **Cartera:** `GET receivables/summary` da totales globales y por cuenta: saldo abierto, vencido por tramos según los días de mora desde `due_date` (hora de Bogotá), saldo a favor y próximos vencimientos (15 días).
 
-Acciones críticas nuevas (motivo obligatorio): `CHARGE_VOIDED`, `RECEIPT_VOIDED` y `ALLOCATION_REVERSED`.
+- **Anulación de contrato registrado por error:** `POST contracts/:id/void` con motivo. Solo para contratos `ACTIVE` (los borradores se cancelan) y solo si ningún cargo tiene pagos aplicados (409 en caso contrario). Con el bloqueo de facturación del contrato, anula todos sus cargos y sus créditos de prorrateo sin aplicar y deja el contrato en `CANCELLED`, lo que libera el índice de contrato abierto por tenant. Los pagos de la cuenta no cambian y quedan como saldo a favor. Se diferencia de terminar, que conserva los cargos ya causados.
+
+Acciones críticas nuevas (motivo obligatorio): `CHARGE_VOIDED`, `RECEIPT_VOIDED`, `ALLOCATION_REVERSED` y `CONTRACT_VOIDED`.
 
 ### D7. Privilegios
 
@@ -113,7 +116,7 @@ Acciones críticas nuevas (motivo obligatorio): `CHARGE_VOIDED`, `RECEIPT_VOIDED
 - **Cambios de precio entre la generación anticipada y el inicio del período.** No afectan, porque el cargo usa la versión del contrato, no el catálogo.
 - **Worker en varias instancias.** Lo cubren el bloqueo por contrato y el índice único.
 - **Enmiendas con pagos ya aplicados a cargos futuros.** Se rechazan con 409 para evitar inconsistencias. Exige revertir primero.
-- **El tenant plataforma no tiene medios de pago activos.** El registro de pagos responde 422 con un mensaje que indica configurarlos en Finanzas; readiness lo reporta como advertencia.
+- **El tenant plataforma no tiene medios de pago activos.** El registro de pagos responde 422 y el formulario indica configurarlos en Finanzas.
 - **Almacenamiento local de comprobantes en servidores con varias réplicas.** La configuración actual tiene una sola instancia (pm2 fork). Migrar a almacenamiento de objetos queda fuera de alcance.
 
 ## Migration Plan

@@ -30,7 +30,7 @@ Decisiones del propietario (2026-11-08):
 
 ### Modified Capabilities
 
-- `control-center-contracts`: la enmienda dispara el prorrateo y reemplaza los cargos futuros sin pagos. Se especifica en `control-center-proration` porque la spec base de contratos se crea al archivar la fase 1.
+- `control-center-contracts`: la enmienda dispara el prorrateo y reemplaza los cargos futuros sin pagos, la terminación anula los cargos posteriores sin pagos y se agrega la anulación de un contrato activo registrado por error. Se especifica en `control-center-proration` y `control-center-billing` porque la spec base de contratos se crea al archivar la fase 1.
 
 ## Impact
 
