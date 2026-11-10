@@ -17,6 +17,7 @@ import { getCurrentCashSession } from "../../../modules/finance/services/finance
 import type { CashSession } from "../../../modules/finance/types";
 import { formatCurrency } from "../../../modules/finance/utils";
 import { HomeHero } from "../../../components/home/HomeHero";
+import { BillingNoticesBanner } from "../../../domains/billing-notices/BillingNoticesBanner";
 import { QuickActions } from "../../../components/home/QuickActions";
 import { ModulesGrid } from "../../../components/home/ModulesGrid";
 import {
@@ -234,6 +235,7 @@ const DashboardPage = () => {
 
   return (
     <div className="space-y-8">
+      <BillingNoticesBanner />
       <HomeHero
         tenant={tenant}
         userName={userName}

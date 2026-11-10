@@ -22,6 +22,7 @@ import { ParametersModule } from "./parameters/parameters.module";
 import { TerminalRuntimeModule } from "./terminal-runtime/terminal-runtime.module";
 import { ScaleAuthorizationRuntimeModule } from "./scale-authorization/scale-authorization.runtime.module";
 import { ControlCenterModule } from "./control-center/control-center.module";
+import { BillingNoticesModule } from "./billing-notices/billing-notices.module";
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { ControlCenterModule } from "./control-center/control-center.module";
     TerminalRuntimeModule,
     ScaleAuthorizationRuntimeModule,
     ControlCenterModule,
+    BillingNoticesModule,
   ],
 })
 export class AppModule {}

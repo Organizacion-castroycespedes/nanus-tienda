@@ -71,6 +71,16 @@ export class ControlCenterDatabaseService implements OnModuleDestroy {
     return { rows: result.rows };
   }
 
+  /** Conexión dedicada sin transacción (por ejemplo, para bloqueos consultivos de sesión). */
+  async withClient<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.getPool().connect();
+    try {
+      return await work(client);
+    } finally {
+      client.release();
+    }
+  }
+
   async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
     const client = await this.getPool().connect();
     try {

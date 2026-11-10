@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Modal } from "../../../components/design-system/Modal";
 import { Toast } from "../../../components/design-system/Toast";
-import { getCharge, voidCharge } from "../api";
+import { getCharge, remindCharge, voidCharge } from "../api";
 import { apiErrorMessage } from "../errors";
-import { CHARGE_KIND_LABELS, FREQUENCY_LABELS, formatCOP, formatDate, formatRate, isOverdue, moneyToCents, todayInBogota } from "../format";
+import { ALERT_STAGE_LABELS, ALERT_STATUS_LABELS, CHARGE_KIND_LABELS, FREQUENCY_LABELS, formatCOP, formatDate, formatRate, isOverdue, moneyToCents, todayInBogota } from "../format";
 import type { ChargeDetail } from "../types";
 import { ReasonDialog } from "./ReasonDialog";
 import { ChargeStatusBadge } from "./StatusBadge";
@@ -17,16 +17,36 @@ export const ChargeDetailDialog = ({ chargeId, onClose, onChanged }: Props) => {
   const [charge, setCharge] = useState<ChargeDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [voiding, setVoiding] = useState(false);
+  const [reminding, setReminding] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setCharge(null);
     setError(null);
+    setNotice(null);
     if (!chargeId) return;
     void getCharge(chargeId).then(setCharge).catch((caught) => setError(apiErrorMessage(caught)));
   }, [chargeId]);
 
   if (!chargeId) return null;
   const canVoid = charge && charge.status !== "VOID" && moneyToCents(charge.paidAmount) === BigInt(0);
+  const canRemind = charge && (charge.status === "OPEN" || charge.status === "PARTIALLY_PAID");
+
+  const remind = async () => {
+    setReminding(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await remindCharge(chargeId);
+      setNotice(`Recordatorio enviado a ${result.recipient}.`);
+      setCharge(await getCharge(chargeId));
+    } catch (caught) {
+      setError(apiErrorMessage(caught));
+      setCharge(await getCharge(chargeId).catch(() => charge));
+    } finally {
+      setReminding(false);
+    }
+  };
 
   return (
     <Modal
@@ -36,12 +56,16 @@ export const ChargeDetailDialog = ({ chargeId, onClose, onChanged }: Props) => {
       onClose={onClose}
       footer={
         <div className="flex justify-between gap-2">
-          {canVoid ? <Button variant="danger" onClick={() => setVoiding(true)}>Anular cargo</Button> : <span />}
+          <div className="flex gap-2">
+            {canVoid ? <Button variant="danger" onClick={() => setVoiding(true)}>Anular cargo</Button> : null}
+            {canRemind ? <Button variant="secondary" onClick={() => void remind()} isLoading={reminding}>Enviar recordatorio</Button> : null}
+          </div>
           <Button variant="ghost" onClick={onClose}>Cerrar</Button>
         </div>
       }
     >
       {error ? <Toast variant="error" message={error} /> : null}
+      {notice ? <Toast variant="success" message={notice} /> : null}
       {charge ? (
         <div className="space-y-5 text-sm">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -88,6 +112,27 @@ export const ChargeDetailDialog = ({ chargeId, onClose, onChanged }: Props) => {
                   <li key={a.id} className={`flex flex-col gap-1 px-3 py-2 sm:flex-row sm:justify-between ${a.reversedAt ? "opacity-60" : ""}`}>
                     <span>{a.receiptNumber} · {a.source === "PRORATION_CREDIT" ? "Crédito por prorrateo" : a.paymentMethodName} · {formatDate(a.receivedOn)}</span>
                     <span className="font-medium">{formatCOP(a.amount)}{a.reversedAt ? ` · revertido: ${a.reversalReason}` : ""}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section>
+            <h4 className="mb-2 font-semibold text-slate-900 dark:text-white">Alertas</h4>
+            {charge.alerts.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">Sin alertas. Se envían desde 5 días antes del vencimiento.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
+                {charge.alerts.map((alert) => (
+                  <li key={alert.id} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span>
+                      {ALERT_STAGE_LABELS[alert.stage]} · {alert.channel === "EMAIL" ? `Correo${alert.recipient ? ` a ${alert.recipient}` : ""}` : "Aviso en dashboard"}
+                      {alert.triggerSource === "MANUAL" ? " · manual" : ""}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {ALERT_STATUS_LABELS[alert.status]} · {new Date(alert.sentAt ?? alert.createdAt).toLocaleString("es-CO")}
+                      {alert.lastError ? ` · ${alert.lastError}` : ""}
+                    </span>
                   </li>
                 ))}
               </ul>

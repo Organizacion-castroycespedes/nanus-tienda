@@ -2,6 +2,7 @@ import type { ControlCenterQueryable } from "../control-center-database.service"
 import { chargeStatusFor, planAutoAllocation } from "../billing/billing-periods";
 import { conflict, notFound, unprocessable } from "../shared/errors";
 import { fromCents, toCents } from "../shared/money";
+import { syncChargeNotice } from "../alerts/notices";
 
 export type AllocationRequest = { chargeId: string; amountCents: bigint };
 
@@ -89,10 +90,12 @@ export const applyAllocations = async (
       [receiptId, chargeId, fromCents(amount), actorUserId],
     );
     const paid = toCents(charge.paid_amount) + amount;
+    const status = chargeStatusFor(toCents(charge.total_amount), paid);
     await tx.query(
       `UPDATE control_center.charges SET paid_amount = $2, status = $3, updated_by = $4, updated_at = NOW() WHERE id = $1`,
-      [chargeId, fromCents(paid), chargeStatusFor(toCents(charge.total_amount), paid), actorUserId],
+      [chargeId, fromCents(paid), status, actorUserId],
     );
+    await syncChargeNotice(tx, chargeId, status, fromCents(toCents(charge.total_amount) - paid));
     applied.push({ allocationId: inserted.rows[0].id, chargeId, chargeNumber: charge.charge_number, amount: fromCents(amount) });
   }
   if (total > 0n) {
@@ -148,10 +151,12 @@ export const reverseAllocationInTx = async (
     [allocationId, actorUserId, reason],
   );
   const paid = toCents(charge.paid_amount) - amount;
+  const status = chargeStatusFor(toCents(charge.total_amount), paid);
   await tx.query(
     `UPDATE control_center.charges SET paid_amount = $2, status = $3, updated_by = $4, updated_at = NOW() WHERE id = $1`,
-    [charge.id, fromCents(paid), chargeStatusFor(toCents(charge.total_amount), paid), actorUserId],
+    [charge.id, fromCents(paid), status, actorUserId],
   );
+  await syncChargeNotice(tx, charge.id, status, fromCents(toCents(charge.total_amount) - paid));
   await tx.query(
     `UPDATE control_center.receipts SET allocated_amount = allocated_amount - $2::numeric, updated_by = $3, updated_at = NOW() WHERE id = $1`,
     [allocation.receipt_id, allocation.amount, actorUserId],

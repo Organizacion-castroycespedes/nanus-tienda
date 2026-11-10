@@ -6,6 +6,7 @@ import { parseIsoDate, todayInBogota } from "../shared/dates";
 import { badRequest, conflict, mapDatabaseError, notFound } from "../shared/errors";
 import { toCents } from "../shared/money";
 import { asBody, assertUuid, likePattern, parseLimit, parseOffset, parseSearch, requireReason } from "../shared/parsing";
+import { resolveChargeNotices } from "../alerts/notices";
 import { lockContractBilling } from "./billing.service";
 
 const CHARGE_STATUSES = ["OPEN", "PARTIALLY_PAID", "PAID", "VOID"];
@@ -90,7 +91,7 @@ export class ChargesService {
     const id = assertUuid(idParam, "chargeId");
     const charge = await this.db.query(`SELECT ${CHARGE_COLUMNS} ${CHARGE_FROM} WHERE ch.id = $1`, [id]);
     if (!charge.rows[0]) throw notFound("CONTROL_CENTER_CHARGE_NOT_FOUND", "Cargo no encontrado");
-    const [lines, allocations] = await Promise.all([
+    const [lines, allocations, alerts] = await Promise.all([
       this.db.query(
         `SELECT id, item_type AS "itemType", description, quantity::text AS quantity, unit_amount::text AS "unitAmount",
                 discount_amount::text AS "discountAmount", proration_factor::text AS "prorationFactor", line_total::text AS "lineTotal"
@@ -106,8 +107,14 @@ export class ChargesService {
          WHERE ra.charge_id = $1 ORDER BY ra.created_at`,
         [id],
       ),
+      this.db.query(
+        `SELECT id, stage, channel, trigger_source AS "triggerSource", status, recipient, attempts,
+                last_error AS "lastError", created_at AS "createdAt", sent_at AS "sentAt"
+         FROM control_center.billing_alerts WHERE charge_id = $1 ORDER BY created_at DESC LIMIT 50`,
+        [id],
+      ),
     ]);
-    return { ...charge.rows[0], lines: lines.rows, allocations: allocations.rows };
+    return { ...charge.rows[0], lines: lines.rows, allocations: allocations.rows, alerts: alerts.rows };
   }
 
   async void(idParam: string, raw: unknown, ctx: ControlCenterRequestContext) {
@@ -133,6 +140,7 @@ export class ChargesService {
            WHERE id = $1`,
           [id, reason, ctx.actorUserId],
         );
+        await resolveChargeNotices(tx, [id]);
         await this.audit.record(tx, {
           ...ctx,
           action: CONTROL_CENTER_ACTIONS.CHARGE_VOIDED,

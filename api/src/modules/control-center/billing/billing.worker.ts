@@ -1,10 +1,12 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ControlCenterDatabaseService } from "../control-center-database.service";
-import { BillingService } from "./billing.service";
+import { ControlCenterAlertsService } from "../alerts/alerts.service";
+import { BillingService, systemContext } from "./billing.service";
 
 /**
  * Worker de facturación. Apagado por defecto
- * (CONTROL_CENTER_BILLING_WORKER_ENABLED=true para activarlo). Varias
+ * (CONTROL_CENTER_BILLING_WORKER_ENABLED=true para activarlo). Al terminar
+ * corre las alertas de cobro si CONTROL_CENTER_ALERTS_ENABLED=true. Varias
  * instancias son seguras: el bloqueo por contrato y el índice único evitan duplicados.
  */
 @Injectable()
@@ -16,6 +18,7 @@ export class ControlCenterBillingWorker implements OnModuleInit, OnModuleDestroy
   constructor(
     @Inject(ControlCenterDatabaseService) private readonly db: ControlCenterDatabaseService,
     @Inject(BillingService) private readonly billing: BillingService,
+    @Inject(ControlCenterAlertsService) private readonly alerts: ControlCenterAlertsService,
   ) {}
 
   onModuleInit() {
@@ -39,6 +42,14 @@ export class ControlCenterBillingWorker implements OnModuleInit, OnModuleDestroy
       const result = await this.billing.runAll();
       if (result.chargesCreated > 0 || result.errors.length > 0) {
         this.logger.log(`Cargos creados: ${result.chargesCreated}; errores: ${result.errors.length}`);
+      }
+      if (this.alerts.getConfig().alertsEnabled) {
+        const alerts = await this.alerts.runAll("WORKER", systemContext(this.db.getConfig().platformTenantId));
+        if (alerts.emailsSent > 0 || alerts.emailsFailed > 0 || alerts.noticesPublished > 0) {
+          this.logger.log(
+            `Alertas: avisos ${alerts.noticesPublished}, correos enviados ${alerts.emailsSent}, fallidos ${alerts.emailsFailed}`,
+          );
+        }
       }
     } catch (error) {
       this.logger.error(`Fallo la ejecución de facturación: ${(error as Error)?.message ?? error}`);

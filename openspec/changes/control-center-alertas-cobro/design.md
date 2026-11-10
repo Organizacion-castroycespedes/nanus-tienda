@@ -82,8 +82,8 @@ La API operativa no puede leer `control_center`. El Control Center publica un re
   - Los valores se escapan en HTML.
 - **Envío fuera de la transacción:** se reserva el registro `FAILED` con `attempts = 0` dentro de una transacción corta y se envía fuera de ella, para no mantener bloqueos durante la llamada SMTP. Después se marca `SENT` o `FAILED`.
 - **Prueba de configuración:** `POST alerts/test-email` (`{ to }`) envía un correo de prueba sin tocar la cartera; la acción queda auditada.
-- **Recordatorio manual:** `POST charges/:id/remind` envía el correo de la etapa vigente (o de `DUE` si el cargo aún no vence) y queda en la bitácora con `trigger_source = MANUAL`.
-- **Readiness:** informa si el correo está activo y configurado, sin exponer credenciales.
+- **Recordatorio manual:** `POST charges/:id/remind` envía el correo de la etapa vigente (o de aviso previo, `UPCOMING`, si faltan más de 5 días) y queda en la bitácora con `trigger_source = MANUAL`.
+- **Estado del canal:** `GET alerts/status` informa si las alertas y el correo están activos y qué variables faltan, sin exponer credenciales. Se muestra en Cartera; readiness no cambia para no mezclar la configuración de correo con el aislamiento de base de datos.
 
 ### D6. Proceso automático
 

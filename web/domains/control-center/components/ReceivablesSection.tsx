@@ -13,6 +13,7 @@ import { getReceivablesSummary, listCharges, listReceipts } from "../api";
 import { apiErrorMessage } from "../errors";
 import { CHARGE_KIND_LABELS, formatCOP, formatDate, isOverdue, moneyToCents, todayInBogota } from "../format";
 import type { Charge, Receipt, ReceivableAccount, ReceivablesSummary } from "../types";
+import { AlertsPanel } from "./AlertsPanel";
 import { ChargeDetailDialog } from "./ChargeDetailDialog";
 import { ControlCenterShell, useControlCenterAccess } from "./ControlCenterShell";
 import { ReceiptDetailDialog } from "./ReceiptDetailDialog";
@@ -162,6 +163,7 @@ export const ReceivablesSection = () => {
     >
       {error ? <Toast variant="error" message={error} /> : null}
       {notice ? <Toast variant="success" message={notice} onClose={() => setNotice(null)} /> : null}
+      <AlertsPanel onRun={refresh} />
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <Tabs items={VIEWS} value={view} onChange={(value) => { setView(value as View); setPage(1); }} />
         {view !== "accounts" ? (
