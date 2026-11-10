@@ -277,7 +277,22 @@ export type ChargeAllocation = {
   paymentMethodName: string | null;
 };
 
-export type ChargeDetail = Charge & { lines: ChargeLine[]; allocations: ChargeAllocation[] };
+export type AlertStage = "UPCOMING" | "DUE" | "OVERDUE_1" | "OVERDUE_7" | "OVERDUE_15" | "OVERDUE_30";
+
+export type ChargeAlert = {
+  id: string;
+  stage: AlertStage;
+  channel: "DASHBOARD" | "EMAIL";
+  triggerSource: "WORKER" | "MANUAL";
+  status: "SENT" | "FAILED" | "SKIPPED";
+  recipient: string | null;
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  sentAt: string | null;
+};
+
+export type ChargeDetail = Charge & { lines: ChargeLine[]; allocations: ChargeAllocation[]; alerts: ChargeAlert[] };
 
 export type Receipt = {
   id: string;
@@ -365,4 +380,29 @@ export type GenerateChargesResult = {
   runId: string;
   horizon: string;
   created: { id: string; chargeNumber: string; periodStart: string; billingFrequency: string; total: string }[];
+};
+
+// Fase 3: alertas de cobro -----------------------------------------------------
+
+export type AlertsStatus = {
+  alertsEnabled: boolean;
+  emailEnabled: boolean;
+  emailReady: boolean;
+  missing: string[];
+  smtpHost: string | null;
+  smtpPort: number;
+  smtpSecure: boolean;
+  from: string | null;
+  paymentInstructionsConfigured: boolean;
+};
+
+export type AlertsRunResult = {
+  skipped: boolean;
+  today: string;
+  chargesEvaluated: number;
+  noticesPublished: number;
+  noticesResolved: number;
+  emailsSent: number;
+  emailsFailed: number;
+  emailsSkipped: number;
 };

@@ -3,6 +3,7 @@ import type { ControlCenterQueryable } from "../control-center-database.service"
 import { ControlCenterDatabaseService } from "../control-center-database.service";
 import { ControlCenterAuditService, type ControlCenterRequestContext } from "../control-center-audit.service";
 import { CONTROL_CENTER_ACTIONS, CONTROL_CENTER_SYSTEM_ACTOR_ID } from "../control-center.constants";
+import { resolveChargeNotices } from "../alerts/notices";
 import { autoAllocate } from "../collections/allocations";
 import { addDays, todayInBogota } from "../shared/dates";
 import { conflict, mapDatabaseError, notFound } from "../shared/errors";
@@ -261,6 +262,7 @@ export class BillingService {
           `o revierte primero esas aplicaciones.`,
       );
     }
+    await resolveChargeNotices(tx, result.rows.map((row: any) => row.id));
     for (const row of result.rows) {
       await tx.query(
         `UPDATE control_center.charges
@@ -299,6 +301,7 @@ export class BillingService {
         `Revierte primero los pagos aplicados a los cargos ${withPayments.map((row: any) => row.charge_number).join(", ")}`,
       );
     }
+    await resolveChargeNotices(tx, charges.rows.map((row: any) => row.id));
     for (const row of charges.rows) {
       await tx.query(
         `UPDATE control_center.charges

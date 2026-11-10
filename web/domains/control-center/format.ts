@@ -1,4 +1,5 @@
 import type {
+  AlertStage,
   BillingFrequency,
   ChargeKind,
   ChargeStatus,
@@ -98,6 +99,9 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   RECEIPT_ALLOCATED: "Pago aplicado",
   RECEIPT_VOIDED: "Pago anulado",
   ALLOCATION_REVERSED: "Aplicación revertida",
+  ALERTS_RUN_MANUAL: "Alertas ejecutadas manualmente",
+  CHARGE_REMINDER_SENT: "Recordatorio enviado",
+  ALERT_TEST_EMAIL_SENT: "Correo de prueba",
 };
 
 export const MIN_REASON_LENGTH = 10;
@@ -171,3 +175,20 @@ export const formatFileSize = (bytes: number | null | undefined) => {
 };
 
 export const RECEIPT_ACCEPT = "application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp";
+
+// Fase 3: alertas de cobro -----------------------------------------------------
+
+export const ALERT_STAGE_LABELS: Record<AlertStage, string> = {
+  UPCOMING: "5 días antes",
+  DUE: "Día del vencimiento",
+  OVERDUE_1: "1 día de mora",
+  OVERDUE_7: "7 días de mora",
+  OVERDUE_15: "15 días de mora",
+  OVERDUE_30: "30 días de mora",
+};
+
+export const ALERT_STATUS_LABELS: Record<"SENT" | "FAILED" | "SKIPPED", string> = {
+  SENT: "Enviada",
+  FAILED: "Fallida",
+  SKIPPED: "Omitida",
+};

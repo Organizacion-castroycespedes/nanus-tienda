@@ -94,3 +94,27 @@ Actualiza el secreto `CONTROL_CENTER_DB_PASSWORD` y reinicia la API.
 DROP ROLE IF EXISTS manus_cc_<ambiente>;
 DROP ROLE IF EXISTS manus_control_center_app;  -- solo si ningún ambiente del clúster lo usa
 ```
+
+## Avisos de cobro para la API operativa (V114)
+
+V114 crea `public.tenant_billing_notices`. La escribe solo `manus_control_center_app`. La API operativa la lee para mostrar el banner de pagos en el dashboard del tenant cliente.
+
+La migración concede `SELECT` a `manus_user` y `manus_qa_user` cuando existen. Si el usuario runtime de la API operativa tiene otro nombre, concede solo lectura:
+
+```sql
+GRANT SELECT ON public.tenant_billing_notices TO <usuario_runtime_api>;
+```
+
+No le concedas `INSERT`, `UPDATE` ni `DELETE`, ni acceso al esquema `control_center`. Si no hay permiso de lectura, el endpoint `GET /billing-notices/active` responde una lista vacía y el dashboard sigue funcionando sin banner.
+
+## Correo de alertas (fase 3)
+
+Variables de la API:
+
+- `CONTROL_CENTER_ALERTS_ENABLED`
+- `CONTROL_CENTER_ALERTS_EMAIL_ENABLED`
+- `CONTROL_CENTER_SMTP_HOST`, `CONTROL_CENTER_SMTP_PORT`, `CONTROL_CENTER_SMTP_SECURE`, `CONTROL_CENTER_SMTP_USER`, `CONTROL_CENTER_SMTP_PASSWORD`
+- `CONTROL_CENTER_ALERTS_FROM`
+- `CONTROL_CENTER_PAYMENT_INSTRUCTIONS`
+
+Las alertas automáticas corren después del worker de facturación, así que también requieren `CONTROL_CENTER_BILLING_WORKER_ENABLED=true`. Antes de activarlas, envía un correo de prueba desde **Cartera → Correo de prueba**.

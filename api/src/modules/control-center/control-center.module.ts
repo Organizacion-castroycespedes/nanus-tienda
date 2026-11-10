@@ -8,6 +8,10 @@ import { ControlCenterReadinessController } from "./control-center-readiness.con
 import { ControlCenterReadinessService } from "./control-center-readiness.service";
 import { AccountsController } from "./accounts/accounts.controller";
 import { AccountsService } from "./accounts/accounts.service";
+import { AlertsController } from "./alerts/alerts.controller";
+import { readAlertsConfig } from "./alerts/alerts.config";
+import { ControlCenterAlertsService } from "./alerts/alerts.service";
+import { EMAIL_SENDER, SmtpEmailSender } from "./alerts/email-sender";
 import { BillingService } from "./billing/billing.service";
 import { ControlCenterBillingWorker } from "./billing/billing.worker";
 import { ChargesController } from "./billing/charges.controller";
@@ -34,6 +38,7 @@ import { TenantDirectoryService } from "./tenant-directory/tenant-directory.serv
     ChargesController,
     ReceiptsController,
     ReceivablesController,
+    AlertsController,
   ],
   providers: [
     ControlCenterDatabaseService,
@@ -47,6 +52,8 @@ import { TenantDirectoryService } from "./tenant-directory/tenant-directory.serv
     ReceiptsService,
     ReceivablesService,
     ControlCenterBillingWorker,
+    ControlCenterAlertsService,
+    { provide: EMAIL_SENDER, useFactory: () => new SmtpEmailSender(readAlertsConfig()) },
     PlatformTenantGuard,
     ControlCenterEnabledGuard,
     { provide: ControlCenterAuditService, useFactory: () => new ControlCenterAuditService() },

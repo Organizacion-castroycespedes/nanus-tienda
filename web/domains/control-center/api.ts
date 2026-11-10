@@ -1,5 +1,7 @@
 import { apiBlobClient, apiClient } from "../../lib/http";
 import type {
+  AlertsRunResult,
+  AlertsStatus,
   Charge,
   ChargeDetail,
   GenerateChargesResult,
@@ -221,3 +223,15 @@ export const downloadReceiptAttachment = (receiptId: string) =>
 
 export const getReceivablesSummary = (asOf?: string, signal?: AbortSignal) =>
   apiClient<ReceivablesSummary>(`${BASE}/receivables/summary${toQuery({ asOf })}`, { method: "GET", signal });
+
+// Fase 3: alertas de cobro -----------------------------------------------------
+
+export const getAlertsStatus = (signal?: AbortSignal) =>
+  apiClient<AlertsStatus>(`${BASE}/alerts/status`, { method: "GET", signal });
+
+export const runAlerts = () => post<AlertsRunResult>(`${BASE}/alerts/run`, {});
+
+export const sendTestEmail = (to: string) => post<{ sent: boolean; to: string }>(`${BASE}/alerts/test-email`, { to });
+
+export const remindCharge = (chargeId: string) =>
+  post<{ status: string; stage: string; recipient: string }>(`${BASE}/charges/${encodeURIComponent(chargeId)}/remind`, {});
