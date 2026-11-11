@@ -282,7 +282,7 @@ export type AlertStage = "UPCOMING" | "DUE" | "OVERDUE_1" | "OVERDUE_7" | "OVERD
 export type ChargeAlert = {
   id: string;
   stage: AlertStage;
-  channel: "DASHBOARD" | "EMAIL";
+  channel: "DASHBOARD" | "EMAIL" | "WHATSAPP";
   triggerSource: "WORKER" | "MANUAL";
   status: "SENT" | "FAILED" | "SKIPPED";
   recipient: string | null;
@@ -394,6 +394,11 @@ export type AlertsStatus = {
   smtpSecure: boolean;
   from: string | null;
   paymentInstructionsConfigured: boolean;
+  whatsappEnabled: boolean;
+  whatsappReady: boolean;
+  whatsappMissing: string[];
+  whatsappApiVersion: string;
+  whatsappTemplateLang: string;
 };
 
 export type AlertsRunResult = {
@@ -405,4 +410,7 @@ export type AlertsRunResult = {
   emailsSent: number;
   emailsFailed: number;
   emailsSkipped: number;
+  whatsappSent: number;
+  whatsappFailed: number;
+  whatsappSkipped: number;
 };

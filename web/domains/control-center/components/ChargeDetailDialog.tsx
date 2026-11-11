@@ -32,13 +32,13 @@ export const ChargeDetailDialog = ({ chargeId, onClose, onChanged }: Props) => {
   const canVoid = charge && charge.status !== "VOID" && moneyToCents(charge.paidAmount) === BigInt(0);
   const canRemind = charge && (charge.status === "OPEN" || charge.status === "PARTIALLY_PAID");
 
-  const remind = async () => {
+  const remind = async (channel: "EMAIL" | "WHATSAPP") => {
     setReminding(true);
     setError(null);
     setNotice(null);
     try {
-      const result = await remindCharge(chargeId);
-      setNotice(`Recordatorio enviado a ${result.recipient}.`);
+      const result = await remindCharge(chargeId, channel);
+      setNotice(`Recordatorio por ${channel === "EMAIL" ? "correo" : "WhatsApp"} enviado a ${result.recipient}.`);
       setCharge(await getCharge(chargeId));
     } catch (caught) {
       setError(apiErrorMessage(caught));
@@ -58,7 +58,12 @@ export const ChargeDetailDialog = ({ chargeId, onClose, onChanged }: Props) => {
         <div className="flex justify-between gap-2">
           <div className="flex gap-2">
             {canVoid ? <Button variant="danger" onClick={() => setVoiding(true)}>Anular cargo</Button> : null}
-            {canRemind ? <Button variant="secondary" onClick={() => void remind()} isLoading={reminding}>Enviar recordatorio</Button> : null}
+            {canRemind ? (
+              <>
+                <Button variant="secondary" onClick={() => void remind("EMAIL")} isLoading={reminding}>Recordar por correo</Button>
+                <Button variant="ghost" onClick={() => void remind("WHATSAPP")} disabled={reminding}>Recordar por WhatsApp</Button>
+              </>
+            ) : null}
           </div>
           <Button variant="ghost" onClick={onClose}>Cerrar</Button>
         </div>
@@ -126,7 +131,11 @@ export const ChargeDetailDialog = ({ chargeId, onClose, onChanged }: Props) => {
                 {charge.alerts.map((alert) => (
                   <li key={alert.id} className="flex flex-col gap-1 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <span>
-                      {ALERT_STAGE_LABELS[alert.stage]} · {alert.channel === "EMAIL" ? `Correo${alert.recipient ? ` a ${alert.recipient}` : ""}` : "Aviso en dashboard"}
+                      {ALERT_STAGE_LABELS[alert.stage]} · {alert.channel === "EMAIL"
+                        ? `Correo${alert.recipient ? ` a ${alert.recipient}` : ""}`
+                        : alert.channel === "WHATSAPP"
+                          ? `WhatsApp${alert.recipient ? ` a ${alert.recipient}` : ""}`
+                          : "Aviso en dashboard"}
                       {alert.triggerSource === "MANUAL" ? " · manual" : ""}
                     </span>
                     <span className="text-xs text-slate-500 dark:text-slate-400">

@@ -233,5 +233,10 @@ export const runAlerts = () => post<AlertsRunResult>(`${BASE}/alerts/run`, {});
 
 export const sendTestEmail = (to: string) => post<{ sent: boolean; to: string }>(`${BASE}/alerts/test-email`, { to });
 
-export const remindCharge = (chargeId: string) =>
-  post<{ status: string; stage: string; recipient: string }>(`${BASE}/charges/${encodeURIComponent(chargeId)}/remind`, {});
+export const remindCharge = (chargeId: string, channel: "EMAIL" | "WHATSAPP" = "EMAIL") =>
+  post<{ status: string; stage: string; channel: string; recipient: string }>(`${BASE}/charges/${encodeURIComponent(chargeId)}/remind`, { channel });
+
+export const sendTestWhatsapp = (to: string) => post<{ sent: boolean; to: string }>(`${BASE}/alerts/test-whatsapp`, { to });
+
+export const downloadContractPdf = (contractId: string, versionId?: string) =>
+  apiBlobClient(`${BASE}/contracts/${encodeURIComponent(contractId)}/pdf${toQuery({ versionId })}`, { method: "GET" });

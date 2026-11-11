@@ -23,8 +23,13 @@ export class AlertsController {
     return this.alerts.testEmail(body, buildControlCenterRequestContext(request));
   }
 
+  @Post("alerts/test-whatsapp")
+  testWhatsapp(@Body() body: unknown, @Req() request: any) {
+    return this.alerts.testWhatsapp(body, buildControlCenterRequestContext(request));
+  }
+
   @Post("charges/:chargeId/remind")
-  remind(@Param("chargeId") chargeId: string, @Req() request: any) {
-    return this.alerts.sendReminder(chargeId, buildControlCenterRequestContext(request));
+  remind(@Param("chargeId") chargeId: string, @Body() body: unknown, @Req() request: any) {
+    return this.alerts.sendReminder(chargeId, body, buildControlCenterRequestContext(request));
   }
 }

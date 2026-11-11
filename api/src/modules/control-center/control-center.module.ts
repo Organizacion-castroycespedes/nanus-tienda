@@ -12,6 +12,8 @@ import { AlertsController } from "./alerts/alerts.controller";
 import { readAlertsConfig } from "./alerts/alerts.config";
 import { ControlCenterAlertsService } from "./alerts/alerts.service";
 import { EMAIL_SENDER, SmtpEmailSender } from "./alerts/email-sender";
+import { CloudApiWhatsappSender, WHATSAPP_SENDER } from "./alerts/whatsapp-sender";
+import { readWhatsappConfig } from "./alerts/whatsapp.config";
 import { BillingService } from "./billing/billing.service";
 import { ControlCenterBillingWorker } from "./billing/billing.worker";
 import { ChargesController } from "./billing/charges.controller";
@@ -54,6 +56,7 @@ import { TenantDirectoryService } from "./tenant-directory/tenant-directory.serv
     ControlCenterBillingWorker,
     ControlCenterAlertsService,
     { provide: EMAIL_SENDER, useFactory: () => new SmtpEmailSender(readAlertsConfig()) },
+    { provide: WHATSAPP_SENDER, useFactory: () => new CloudApiWhatsappSender(readWhatsappConfig()) },
     PlatformTenantGuard,
     ControlCenterEnabledGuard,
     { provide: ControlCenterAuditService, useFactory: () => new ControlCenterAuditService() },
