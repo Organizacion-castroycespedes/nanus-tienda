@@ -25,6 +25,8 @@ import { ContractsService } from "./contracts/contracts.service";
 import { PlansController } from "./plans/plans.controller";
 import { PlansService } from "./plans/plans.service";
 import { ReceivablesController } from "./receivables/receivables.controller";
+import { ReportsController } from "./reports/reports.controller";
+import { ReportsService } from "./reports/reports.service";
 import { ReceivablesService } from "./receivables/receivables.service";
 import { TenantDirectoryController } from "./tenant-directory/tenant-directory.controller";
 import { TenantDirectoryService } from "./tenant-directory/tenant-directory.service";
@@ -41,6 +43,7 @@ import { TenantDirectoryService } from "./tenant-directory/tenant-directory.serv
     ReceiptsController,
     ReceivablesController,
     AlertsController,
+    ReportsController,
   ],
   providers: [
     ControlCenterDatabaseService,
@@ -55,6 +58,7 @@ import { TenantDirectoryService } from "./tenant-directory/tenant-directory.serv
     ReceivablesService,
     ControlCenterBillingWorker,
     ControlCenterAlertsService,
+    ReportsService,
     { provide: EMAIL_SENDER, useFactory: () => new SmtpEmailSender(readAlertsConfig()) },
     { provide: WHATSAPP_SENDER, useFactory: () => new CloudApiWhatsappSender(readWhatsappConfig()) },
     PlatformTenantGuard,

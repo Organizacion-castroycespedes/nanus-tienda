@@ -1,5 +1,7 @@
 import { apiBlobClient, apiClient } from "../../lib/http";
 import type {
+  BillingCollectionsReport,
+  RenewalRow,
   AlertsRunResult,
   AlertsStatus,
   Charge,
@@ -240,3 +242,20 @@ export const sendTestWhatsapp = (to: string) => post<{ sent: boolean; to: string
 
 export const downloadContractPdf = (contractId: string, versionId?: string) =>
   apiBlobClient(`${BASE}/contracts/${encodeURIComponent(contractId)}/pdf${toQuery({ versionId })}`, { method: "GET" });
+
+// Reportes ---------------------------------------------------------------------
+
+export const downloadAccountStatement = (accountId: string, range: { from?: string; to?: string }) =>
+  apiBlobClient(`${BASE}/accounts/${encodeURIComponent(accountId)}/statement${toQuery(range)}`, { method: "GET" });
+
+export const sendAccountStatement = (accountId: string, range: { from?: string; to?: string }) =>
+  post<{ sent: boolean; to: string; fileName: string }>(`${BASE}/accounts/${encodeURIComponent(accountId)}/statement/send`, range);
+
+export const getBillingCollections = (range: { from?: string; to?: string }, signal?: AbortSignal) =>
+  apiClient<BillingCollectionsReport>(`${BASE}/reports/billing-collections${toQuery(range)}`, { method: "GET", signal });
+
+export const downloadBillingCollectionsXlsx = (range: { from?: string; to?: string }) =>
+  apiBlobClient(`${BASE}/reports/billing-collections.xlsx${toQuery(range)}`, { method: "GET" });
+
+export const getRenewals = (days: 30 | 60 | 90, signal?: AbortSignal) =>
+  apiClient<{ today: string; days: number; items: RenewalRow[] }>(`${BASE}/reports/renewals${toQuery({ days })}`, { method: "GET", signal });

@@ -114,17 +114,17 @@ const labelValue = (rows: [string, string][]) => ({
   layout: "lightHorizontalLines",
 });
 
-/** Definición pdfmake del contrato (función pura, sin acceso a datos). */
-export const buildContractDocument = (input: ContractPdfInput): Record<string, unknown> => {
-  const { issuer, contract, account, version } = input;
+export const issuerIdText = (issuer: PdfIssuer) => (issuer.taxId ? `NIT ${issuer.taxId}${issuer.dv ? `-${issuer.dv}` : ""}` : "");
+
+/** Encabezado con logo (o nombre) y datos del emisor; compartido por el contrato y el estado de cuenta. */
+export const issuerHeader = (issuer: PdfIssuer) => {
   const issuerLines = [
-    issuer.taxId ? `NIT ${issuer.taxId}${issuer.dv ? `-${issuer.dv}` : ""}` : null,
+    issuerIdText(issuer) || null,
     [issuer.address, issuer.city].filter(Boolean).join(", ") || null,
     [issuer.phone, issuer.email].filter(Boolean).join(" · ") || null,
     issuer.website,
   ].filter((line): line is string => Boolean(line));
-
-  const header = {
+  return {
     columns: [
       issuer.logoDataUrl
         ? { image: issuer.logoDataUrl, fit: [190, 70], width: 200 }
@@ -137,6 +137,25 @@ export const buildContractDocument = (input: ContractPdfInput): Record<string, u
     ],
     margin: [0, 0, 0, 16],
   };
+};
+
+/** Estilos comunes de los documentos del Control Center. */
+export const PDF_STYLES = {
+  issuerName: { fontSize: 16, bold: true },
+  title: { fontSize: 15, bold: true, alignment: "center", margin: [0, 0, 0, 4] },
+  subtitle: { fontSize: 9, alignment: "center", color: "#475569", margin: [0, 0, 0, 14] },
+  section: { fontSize: 11, bold: true, color: "#1e3a8a", margin: [0, 12, 0, 6] },
+  label: { color: "#475569" },
+  small: { fontSize: 8.5, color: "#334155" },
+  tableHeader: { bold: true, fillColor: "#e2e8f0" },
+  clauseTitle: { bold: true, margin: [0, 8, 0, 2] },
+  clause: { alignment: "justify", margin: [0, 0, 0, 4] },
+};
+
+/** Definición pdfmake del contrato (función pura, sin acceso a datos). */
+export const buildContractDocument = (input: ContractPdfInput): Record<string, unknown> => {
+  const { issuer, contract, account, version } = input;
+  const header = issuerHeader(issuer);
 
   const itemRows = version.items.map((item) => [
     item.description,
@@ -167,17 +186,7 @@ export const buildContractDocument = (input: ContractPdfInput): Record<string, u
     info: { title: `Contrato ${contract.number} v${version.versionNo}`, author: issuer.name, subject: "Contrato de licencia de uso de MANUS POS" },
     ...(contract.status === "DRAFT" ? { watermark: { text: "BORRADOR", color: "#b91c1c", opacity: 0.12, bold: true } } : {}),
     defaultStyle: { font: "Helvetica", fontSize: 9.5, lineHeight: 1.2, color: "#0f172a" },
-    styles: {
-      issuerName: { fontSize: 16, bold: true },
-      title: { fontSize: 15, bold: true, alignment: "center", margin: [0, 0, 0, 4] },
-      subtitle: { fontSize: 9, alignment: "center", color: "#475569", margin: [0, 0, 0, 14] },
-      section: { fontSize: 11, bold: true, color: "#1e3a8a", margin: [0, 12, 0, 6] },
-      label: { color: "#475569" },
-      small: { fontSize: 8.5, color: "#334155" },
-      tableHeader: { bold: true, fillColor: "#e2e8f0" },
-      clauseTitle: { bold: true, margin: [0, 8, 0, 2] },
-      clause: { alignment: "justify", margin: [0, 0, 0, 4] },
-    },
+    styles: PDF_STYLES,
     footer: (currentPage: number, pageCount: number) => ({
       columns: [
         { text: `${issuer.name} · Contrato ${contract.number} v${version.versionNo}`, style: "small" },
@@ -332,4 +341,31 @@ export const renderPdf = (definition: Record<string, unknown>): Promise<Buffer> 
     document.on("error", reject);
     document.end();
   });
+};
+
+type Queryable = { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> };
+
+/** Emisor: empresa del tenant plataforma registrada en MANUS (datos de empresa y logo de la marca). */
+export const loadIssuer = async (db: Queryable, platformTenantId: string): Promise<PdfIssuer> => {
+  const result = await db.query(
+    `SELECT t.nombre, t.config->>'logo' AS logo, td.razon_social, td.nit, td.dv, td.direccion_principal,
+            COALESCE(m.nombre, td.ciudad) AS ciudad, td.telefono, td.email_corporativo, td.sitio_web
+     FROM public.tenants t
+     LEFT JOIN public.tenants_detalles td ON td.tenant_id = t.id
+     LEFT JOIN public.municipios m ON m.id = td.municipio_id
+     WHERE t.id = $1`,
+    [platformTenantId],
+  );
+  const issuer = result.rows[0] ?? {};
+  return {
+    name: issuer.razon_social ?? issuer.nombre ?? "MANUS POS",
+    taxId: issuer.nit ?? null,
+    dv: issuer.dv ?? null,
+    address: issuer.direccion_principal ?? null,
+    city: issuer.ciudad ?? null,
+    phone: issuer.telefono ?? null,
+    email: issuer.email_corporativo ?? null,
+    website: issuer.sitio_web ?? null,
+    logoDataUrl: embeddedLogo(issuer.logo),
+  };
 };
