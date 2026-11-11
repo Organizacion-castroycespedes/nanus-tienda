@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Ban, CheckCircle2, FilePen, Flag, XCircle } from "lucide-react";
+import { ArrowLeft, Ban, CheckCircle2, FileDown, FilePen, Flag, XCircle } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { ReportSummary } from "../../../components/design-system/ReportSummary";
 import { Select } from "../../../components/design-system/Select";
 import { Toast } from "../../../components/design-system/Toast";
-import { activateContract, amendContract, cancelContract, endContract, getContract, voidContract } from "../api";
+import { activateContract, amendContract, cancelContract, downloadContractPdf, endContract, getContract, voidContract } from "../api";
 import { apiErrorMessage } from "../errors";
 import {
   AUDIT_ACTION_LABELS,
@@ -55,6 +55,28 @@ export const ContractDetailView = ({ contractId }: { contractId: string }) => {
     if (visible) void load();
   }, [load, visible]);
 
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const downloadPdf = async (versionId?: string) => {
+    if (!contract) return;
+    setDownloading(versionId ?? "current");
+    setError(null);
+    try {
+      const blob = await downloadContractPdf(contract.id, versionId);
+      const version = contract.versions.find((v) => v.id === (versionId ?? contract.currentVersionId)) ?? contract.versions[0];
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${contract.contractNumber}-v${version?.versionNo ?? ""}.pdf`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (caught) {
+      setError(apiErrorMessage(caught));
+    } finally {
+      setDownloading(null);
+    }
+  };
+
   const current = contract?.versions.find((version) => version.id === contract.currentVersionId) ?? contract?.versions[0];
 
   const openAmend = () => {
@@ -73,6 +95,11 @@ export const ContractDetailView = ({ contractId }: { contractId: string }) => {
           <Button variant="ghost" size="sm" onClick={() => router.push(href("contracts"))}>
             <ArrowLeft className="mr-1 h-4 w-4" aria-hidden /> Contratos
           </Button>
+          {contract ? (
+            <Button variant="secondary" size="sm" onClick={() => void downloadPdf()} isLoading={downloading === "current"}>
+              <FileDown className="mr-1 h-4 w-4" aria-hidden /> Descargar PDF
+            </Button>
+          ) : null}
           {contract?.status === "DRAFT" ? (
             <>
               <Button size="sm" onClick={() => setAction("activate")}><CheckCircle2 className="mr-1 h-4 w-4" aria-hidden /> Activar</Button>
@@ -122,6 +149,14 @@ export const ContractDetailView = ({ contractId }: { contractId: string }) => {
             <section key={version.id} className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white">Versión {version.versionNo}</h3>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400"
+                  disabled={downloading !== null}
+                  onClick={() => void downloadPdf(version.id)}
+                >
+                  {downloading === version.id ? "Generando…" : "PDF"}
+                </button>
                 {version.effectiveTo ? <Pill tone="muted">{`${formatDate(version.effectiveFrom)} – ${formatDate(version.effectiveTo)}`}</Pill> : <Pill tone="ok">{`Vigente desde ${formatDate(version.effectiveFrom)}`}</Pill>}
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {TERM_PHASE_LABELS[version.termPhase]} · {FREQUENCY_LABELS[version.billingFrequency]} · {version.taxName} {formatRate(version.taxRate)} {version.pricesIncludeTax ? "incluido" : "aparte"} · prorrateo {version.prorationPolicy === "DAILY" ? "diario" : "no"}

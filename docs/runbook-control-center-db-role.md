@@ -118,3 +118,27 @@ Variables de la API:
 - `CONTROL_CENTER_PAYMENT_INSTRUCTIONS`
 
 Las alertas automáticas corren después del worker de facturación, así que también requieren `CONTROL_CENTER_BILLING_WORKER_ENABLED=true`. Antes de activarlas, envía un correo de prueba desde **Cartera → Correo de prueba**.
+
+## WhatsApp Cloud API
+
+El canal se despliega apagado. Pasos para activarlo:
+
+1. **Cuenta de Meta.** En [business.facebook.com](https://business.facebook.com) crea o verifica el portafolio de negocio. En [developers.facebook.com](https://developers.facebook.com) crea una app de tipo *Business* y agrégale el producto **WhatsApp**.
+2. **Número.** En **WhatsApp → Configuración de la API**, registra un número que no esté en uso en la app de WhatsApp. Copia el **Identificador del número de teléfono** en `CONTROL_CENTER_WHATSAPP_PHONE_NUMBER_ID`.
+3. **Token.** En el portafolio, ve a **Usuarios del sistema**. Crea un usuario de sistema con acceso a la app y a la cuenta de WhatsApp, y genera un token permanente con los permisos `whatsapp_business_messaging` y `whatsapp_business_management`. Guárdalo como secreto en `CONTROL_CENTER_WHATSAPP_ACCESS_TOKEN`; nunca lo subas al repositorio.
+4. **Plantillas.** En WhatsApp Manager → **Plantillas de mensajes**, crea estas tres en categoría **Utility** e idioma **Español** (`es`):
+   - `manus_cobro_previo`: "Hola {{1}}, te recordamos que el cargo {{2}} de MANUS POS por {{3}} vence el {{4}}. Si ya pagaste, ignora este mensaje."
+   - `manus_cobro_vence_hoy`: "Hola {{1}}, el cargo {{2}} de MANUS POS por {{3}} vence hoy, {{4}}. Si ya pagaste, ignora este mensaje."
+   - `manus_cobro_vencido`: "Hola {{1}}, el cargo {{2}} de MANUS POS por {{3}} venció el {{4}} y lleva {{5}} días de mora. Comunícate con nosotros para ponerte al día."
+
+   Si cambias los nombres, ajusta `CONTROL_CENTER_WHATSAPP_TEMPLATE_UPCOMING`, `_DUE` y `_OVERDUE`. El orden de los parámetros debe ser el indicado.
+5. **Prueba.** Reinicia la API y, en **Cartera → WhatsApp de prueba**, envía la plantilla de muestra `hello_world` a tu celular en formato E.164 (+57…). Con un número de prueba de Meta, el destino debe estar en la lista de destinatarios permitidos.
+6. **Activación.** Con las plantillas aprobadas, define `CONTROL_CENTER_WHATSAPP_ENABLED=true` y reinicia la API.
+
+Solo se envía a cuentas comerciales con teléfono E.164 y consentimiento de WhatsApp registrado (**Cuentas → editar**). Meta cobra cada plantilla entregada según su tarifa por mensaje.
+
+## PDF del contrato
+
+- **Datos del emisor.** El encabezado y la sección de partes usan la empresa del tenant plataforma: **Configuración → Empresa** (razón social, NIT, DV, dirección, ciudad, teléfono, correo y sitio web) y **Marca** (logo). El logo debe ser una imagen PNG o JPEG cargada; las URL externas se ignoran.
+- **Cláusulas.** Para reemplazar las cláusulas base, crea un archivo de texto con títulos `## Título` y párrafos separados por una línea en blanco, y define `CONTROL_CENTER_CONTRACT_TERMS_FILE` con su ruta. Usa `{{instrucciones_pago}}` donde quieras insertar `CONTROL_CENTER_PAYMENT_INSTRUCTIONS`.
+- **Revisión legal.** Las cláusulas base son una plantilla general. Conviene revisarlas con asesoría legal antes de entregarlas a clientes.

@@ -3,7 +3,11 @@ import type { PoolClient } from "pg";
 import { ControlCenterAuditService, type ControlCenterRequestContext } from "../control-center-audit.service";
 import { ControlCenterDatabaseService } from "../control-center-database.service";
 import { CONTROL_CENTER_ACTIONS, CONTROL_CENTER_MIN_REASON_LENGTH } from "../control-center.constants";
+import { readAlertsConfig } from "../alerts/alerts.config";
 import { BillingService, lockContractBilling } from "../billing/billing.service";
+import { buildContractDocument, contractPdfFileName, embeddedLogo, renderPdf } from "./contract-pdf";
+import { applyPaymentInstructions, loadContractTerms } from "./contract-terms";
+import { todayInBogota } from "../shared/dates";
 import { loadPlatformTax, type PlatformTax } from "../plans/plans.service";
 import { addDays, addMonthsClamped, dayOfMonth } from "../shared/dates";
 import { badRequest, conflict, mapDatabaseError, notFound, unprocessable } from "../shared/errors";
@@ -541,6 +545,95 @@ export class ContractsService {
       })
       .catch((error) => mapDatabaseError(error));
     return this.get(id);
+  }
+
+  /** PDF de una versión del contrato (la vigente por defecto) para entregar al cliente. */
+  async pdf(idParam: string, versionIdParam: unknown, ctx: ControlCenterRequestContext) {
+    const contract: any = await this.get(idParam);
+    const versionId = versionIdParam === undefined || versionIdParam === null || versionIdParam === "" ? null : assertUuid(versionIdParam, "versionId");
+    const version = versionId
+      ? contract.versions.find((v: any) => v.id === versionId)
+      : contract.versions.find((v: any) => v.id === contract.currentVersionId) ?? contract.versions[0];
+    if (!version) throw notFound("CONTROL_CENTER_VERSION_NOT_FOUND", "La versión no pertenece a este contrato");
+    const platformTenantId = this.db.getConfig().platformTenantId;
+    const [accountResult, issuerResult] = await Promise.all([
+      this.db.query(
+        `SELECT dv, contact_name, contact_phone_e164, address, city FROM control_center.commercial_accounts WHERE id = $1`,
+        [contract.account.id],
+      ),
+      this.db.query(
+        `SELECT t.nombre, t.config->>'logo' AS logo, td.razon_social, td.nit, td.dv, td.direccion_principal,
+                COALESCE(m.nombre, td.ciudad) AS ciudad, td.telefono, td.email_corporativo, td.sitio_web
+         FROM public.tenants t
+         LEFT JOIN public.tenants_detalles td ON td.tenant_id = t.id
+         LEFT JOIN public.municipios m ON m.id = td.municipio_id
+         WHERE t.id = $1`,
+        [platformTenantId],
+      ),
+    ]);
+    const extra = accountResult.rows[0] ?? {};
+    const issuer = issuerResult.rows[0] ?? {};
+    const definition = buildContractDocument({
+      issuedOn: todayInBogota(),
+      issuer: {
+        name: issuer.razon_social ?? issuer.nombre ?? "MANUS POS",
+        taxId: issuer.nit ?? null,
+        dv: issuer.dv ?? null,
+        address: issuer.direccion_principal ?? null,
+        city: issuer.ciudad ?? null,
+        phone: issuer.telefono ?? null,
+        email: issuer.email_corporativo ?? null,
+        website: issuer.sitio_web ?? null,
+        logoDataUrl: embeddedLogo(issuer.logo),
+      },
+      contract: {
+        number: contract.contractNumber,
+        status: contract.status,
+        startDate: contract.startDate,
+        endDate: contract.endDate,
+        planName: contract.plan.name,
+        tenantName: contract.tenant.name ?? contract.tenant.slug,
+      },
+      account: {
+        legalName: contract.account.legalName,
+        taxIdType: contract.account.taxIdType,
+        taxId: contract.account.taxId,
+        dv: extra.dv ?? null,
+        billingEmail: contract.account.billingEmail,
+        contactName: extra.contact_name ?? null,
+        contactPhone: extra.contact_phone_e164 ?? null,
+        address: extra.address ?? null,
+        city: extra.city ?? null,
+      },
+      version: {
+        versionNo: version.versionNo,
+        effectiveFrom: version.effectiveFrom,
+        effectiveTo: version.effectiveTo,
+        termPhase: version.termPhase,
+        billingFrequency: version.billingFrequency,
+        billingAnchorDay: version.billingAnchorDay,
+        trialEndsOn: version.trialEndsOn,
+        prorationPolicy: version.prorationPolicy,
+        taxName: version.taxName,
+        taxRate: version.taxRate,
+        pricesIncludeTax: version.pricesIncludeTax,
+        includedPosTerminals: version.includedPosTerminals,
+        contractedPosTerminals: version.contractedPosTerminals,
+        items: version.items,
+        totals: version.totals,
+        reason: version.reason,
+      },
+      clauses: applyPaymentInstructions(loadContractTerms(), readAlertsConfig().paymentInstructions),
+    });
+    const content = await renderPdf(definition);
+    await this.audit.record(this.db, {
+      ...ctx,
+      action: CONTROL_CENTER_ACTIONS.CONTRACT_PDF_DOWNLOADED,
+      entityType: "contract",
+      entityId: contract.id,
+      after: { versionId: version.id, versionNo: version.versionNo, bytes: content.length },
+    });
+    return { content, fileName: contractPdfFileName(contract.contractNumber, version.versionNo) };
   }
 
   private async findIdempotent(key: string): Promise<string | null> {

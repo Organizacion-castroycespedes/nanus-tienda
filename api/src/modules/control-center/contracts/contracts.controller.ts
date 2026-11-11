@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query, Req, Res } from "@nestjs/common";
+import type { Response } from "express";
 import { buildControlCenterRequestContext } from "../control-center-audit.service";
 import { ControlCenterAdmin } from "../control-center-admin.decorator";
 import { ContractsService } from "./contracts.service";
@@ -21,6 +22,16 @@ export class ContractsController {
   @Post()
   create(@Body() body: unknown, @Headers("idempotency-key") idempotencyKey: unknown, @Req() request: any) {
     return this.service.create(body, idempotencyKey, buildControlCenterRequestContext(request));
+  }
+
+  @Get(":contractId/pdf")
+  async pdf(@Param("contractId") contractId: string, @Query("versionId") versionId: unknown, @Req() request: any, @Res() response: Response) {
+    const file = await this.service.pdf(contractId, versionId, buildControlCenterRequestContext(request));
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader("Content-Disposition", `attachment; filename="${file.fileName}"`);
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.send(file.content);
   }
 
   @Get(":contractId")

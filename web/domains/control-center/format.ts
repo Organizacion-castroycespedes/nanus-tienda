@@ -102,6 +102,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ALERTS_RUN_MANUAL: "Alertas ejecutadas manualmente",
   CHARGE_REMINDER_SENT: "Recordatorio enviado",
   ALERT_TEST_EMAIL_SENT: "Correo de prueba",
+  ALERT_TEST_WHATSAPP_SENT: "WhatsApp de prueba",
+  CONTRACT_PDF_DOWNLOADED: "PDF del contrato descargado",
 };
 
 export const MIN_REASON_LENGTH = 10;

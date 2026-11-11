@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BellRing, Mail } from "lucide-react";
+import { BellRing, Mail, MessageCircle } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
 import { Toast } from "../../../components/design-system/Toast";
-import { getAlertsStatus, runAlerts, sendTestEmail } from "../api";
+import { getAlertsStatus, runAlerts, sendTestEmail, sendTestWhatsapp } from "../api";
 import { apiErrorMessage } from "../errors";
 import type { AlertsStatus } from "../types";
 import { Pill } from "./StatusBadge";
@@ -21,6 +21,7 @@ export const AlertsPanel = ({ onRun }: { onRun?: () => void }) => {
   const [testTo, setTestTo] = useState("");
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
+  const [testChannel, setTestChannel] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
 
   useEffect(() => {
     void getAlertsStatus().then(setStatus).catch((caught) => setError(apiErrorMessage(caught)));
@@ -35,7 +36,7 @@ export const AlertsPanel = ({ onRun }: { onRun?: () => void }) => {
       setNotice(
         result.skipped
           ? "Otra ejecución de alertas está en curso; intenta en un momento."
-          : `Alertas: ${result.chargesEvaluated} cargo(s) evaluados, ${result.noticesPublished} aviso(s) publicados, ${result.noticesResolved} resueltos, ${result.emailsSent} correo(s) enviados, ${result.emailsFailed} fallidos, ${result.emailsSkipped} omitidos.`,
+          : `Alertas: ${result.chargesEvaluated} cargo(s) evaluados, ${result.noticesPublished} aviso(s) publicados, ${result.noticesResolved} resueltos. Correo: ${result.emailsSent} enviados, ${result.emailsFailed} fallidos, ${result.emailsSkipped} omitidos. WhatsApp: ${result.whatsappSent} enviados, ${result.whatsappFailed} fallidos, ${result.whatsappSkipped} omitidos.`,
       );
       onRun?.();
     } catch (caught) {
@@ -49,8 +50,8 @@ export const AlertsPanel = ({ onRun }: { onRun?: () => void }) => {
     setTesting(true);
     setTestError(null);
     try {
-      const result = await sendTestEmail(testTo.trim());
-      setNotice(`Correo de prueba enviado a ${result.to}.`);
+      const result = testChannel === "EMAIL" ? await sendTestEmail(testTo.trim()) : await sendTestWhatsapp(testTo.trim());
+      setNotice(`${testChannel === "EMAIL" ? "Correo" : "WhatsApp"} de prueba enviado a ${result.to}.`);
       setTestOpen(false);
     } catch (caught) {
       setTestError(apiErrorMessage(caught));
@@ -70,6 +71,9 @@ export const AlertsPanel = ({ onRun }: { onRun?: () => void }) => {
               <Pill tone={status.emailReady ? "ok" : status.emailEnabled ? "warn" : "muted"}>
                 {status.emailReady ? `Correo activo (${status.smtpHost})` : status.emailEnabled ? "Correo sin configurar" : "Correo apagado"}
               </Pill>
+              <Pill tone={status.whatsappReady ? "ok" : status.whatsappEnabled ? "warn" : "muted"}>
+                {status.whatsappReady ? "WhatsApp activo" : status.whatsappEnabled ? "WhatsApp sin configurar" : "WhatsApp apagado"}
+              </Pill>
             </>
           ) : null}
         </div>
@@ -77,13 +81,19 @@ export const AlertsPanel = ({ onRun }: { onRun?: () => void }) => {
           <Button size="sm" variant="secondary" onClick={() => void run()} isLoading={running}>
             <BellRing className="mr-1 h-4 w-4" aria-hidden /> Ejecutar alertas
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => { setTestOpen(true); setTestError(null); }}>
+          <Button size="sm" variant="ghost" onClick={() => { setTestChannel("EMAIL"); setTestTo(""); setTestOpen(true); setTestError(null); }}>
             <Mail className="mr-1 h-4 w-4" aria-hidden /> Correo de prueba
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setTestChannel("WHATSAPP"); setTestTo("+57"); setTestOpen(true); setTestError(null); }}>
+            <MessageCircle className="mr-1 h-4 w-4" aria-hidden /> WhatsApp de prueba
           </Button>
         </div>
       </div>
       {status && status.emailEnabled && status.missing.length > 0 ? (
         <p className="text-xs text-amber-700 dark:text-amber-300">Falta configurar en el servidor: {status.missing.join(", ")}.</p>
+      ) : null}
+      {status && status.whatsappEnabled && status.whatsappMissing.length > 0 ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">WhatsApp: falta configurar {status.whatsappMissing.join(", ")}.</p>
       ) : null}
       {status && !status.paymentInstructionsConfigured ? (
         <p className="text-xs text-slate-500 dark:text-slate-400">Sin instrucciones de pago (CONTROL_CENTER_PAYMENT_INSTRUCTIONS): el correo pedirá comunicarse con MANUS.</p>
@@ -93,18 +103,33 @@ export const AlertsPanel = ({ onRun }: { onRun?: () => void }) => {
 
       {testOpen ? (
         <Modal
-          title="Enviar correo de prueba"
-          description="Verifica la configuración SMTP sin tocar la cartera. Funciona aunque el canal de correo esté apagado."
+          title={testChannel === "EMAIL" ? "Enviar correo de prueba" : "Enviar WhatsApp de prueba"}
+          description={
+            testChannel === "EMAIL"
+              ? "Verifica la configuración SMTP sin tocar la cartera. Funciona aunque el canal de correo esté apagado."
+              : "Envía la plantilla de muestra hello_world de Meta. Requiere el número y el token configurados; el número de destino debe estar habilitado en tu cuenta de prueba de Meta."
+          }
           onClose={testing ? undefined : () => setTestOpen(false)}
           footer={
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setTestOpen(false)} disabled={testing}>Cancelar</Button>
-              <Button onClick={() => void test()} isLoading={testing} disabled={!/^\S+@\S+\.\S+$/.test(testTo.trim())}>Enviar</Button>
+              <Button
+                onClick={() => void test()}
+                isLoading={testing}
+                disabled={testChannel === "EMAIL" ? !/^\S+@\S+\.\S+$/.test(testTo.trim()) : !/^\+[1-9]\d{7,14}$/.test(testTo.trim())}
+              >
+                Enviar
+              </Button>
             </div>
           }
         >
           <div className="space-y-3">
-            <Input label="Correo de destino" type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)} />
+            <Input
+              label={testChannel === "EMAIL" ? "Correo de destino" : "Celular de destino (E.164, por ejemplo +573001234567)"}
+              type={testChannel === "EMAIL" ? "email" : "tel"}
+              value={testTo}
+              onChange={(e) => setTestTo(e.target.value)}
+            />
             {testError ? <Toast variant="error" message={testError} /> : null}
           </div>
         </Modal>
