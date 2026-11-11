@@ -40,6 +40,7 @@ export class SmtpEmailSender implements EmailSender {
       subject: message.subject,
       text: message.text,
       html: message.html,
+      ...(message.attachments?.length ? { attachments: message.attachments } : {}),
     });
     return { messageId: info.messageId ?? null };
   }

@@ -5,7 +5,7 @@ import { ControlCenterDatabaseService } from "../control-center-database.service
 import { CONTROL_CENTER_ACTIONS, CONTROL_CENTER_MIN_REASON_LENGTH } from "../control-center.constants";
 import { readAlertsConfig } from "../alerts/alerts.config";
 import { BillingService, lockContractBilling } from "../billing/billing.service";
-import { buildContractDocument, contractPdfFileName, embeddedLogo, renderPdf } from "./contract-pdf";
+import { buildContractDocument, contractPdfFileName, loadIssuer, renderPdf } from "./contract-pdf";
 import { applyPaymentInstructions, loadContractTerms } from "./contract-terms";
 import { todayInBogota } from "../shared/dates";
 import { loadPlatformTax, type PlatformTax } from "../plans/plans.service";
@@ -556,36 +556,17 @@ export class ContractsService {
       : contract.versions.find((v: any) => v.id === contract.currentVersionId) ?? contract.versions[0];
     if (!version) throw notFound("CONTROL_CENTER_VERSION_NOT_FOUND", "La versión no pertenece a este contrato");
     const platformTenantId = this.db.getConfig().platformTenantId;
-    const [accountResult, issuerResult] = await Promise.all([
+    const [accountResult, issuer] = await Promise.all([
       this.db.query(
         `SELECT dv, contact_name, contact_phone_e164, address, city FROM control_center.commercial_accounts WHERE id = $1`,
         [contract.account.id],
       ),
-      this.db.query(
-        `SELECT t.nombre, t.config->>'logo' AS logo, td.razon_social, td.nit, td.dv, td.direccion_principal,
-                COALESCE(m.nombre, td.ciudad) AS ciudad, td.telefono, td.email_corporativo, td.sitio_web
-         FROM public.tenants t
-         LEFT JOIN public.tenants_detalles td ON td.tenant_id = t.id
-         LEFT JOIN public.municipios m ON m.id = td.municipio_id
-         WHERE t.id = $1`,
-        [platformTenantId],
-      ),
+      loadIssuer(this.db, platformTenantId),
     ]);
     const extra = accountResult.rows[0] ?? {};
-    const issuer = issuerResult.rows[0] ?? {};
     const definition = buildContractDocument({
       issuedOn: todayInBogota(),
-      issuer: {
-        name: issuer.razon_social ?? issuer.nombre ?? "MANUS POS",
-        taxId: issuer.nit ?? null,
-        dv: issuer.dv ?? null,
-        address: issuer.direccion_principal ?? null,
-        city: issuer.ciudad ?? null,
-        phone: issuer.telefono ?? null,
-        email: issuer.email_corporativo ?? null,
-        website: issuer.sitio_web ?? null,
-        logoDataUrl: embeddedLogo(issuer.logo),
-      },
+      issuer,
       contract: {
         number: contract.contractNumber,
         status: contract.status,

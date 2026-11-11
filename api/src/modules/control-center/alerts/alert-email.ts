@@ -13,7 +13,9 @@ export type ReminderEmailInput = {
   paymentInstructions: string | null;
 };
 
-export type EmailMessage = { to: string; subject: string; text: string; html: string };
+export type EmailAttachment = { filename: string; content: Buffer; contentType: string };
+
+export type EmailMessage = { to: string; subject: string; text: string; html: string; attachments?: EmailAttachment[] };
 
 const EMAIL_RE = /^[^\s@<>()[\]\\,;:"]+@[^\s@<>()[\]\\,;:"]+\.[^\s@<>()[\]\\,;:"]{2,}$/;
 

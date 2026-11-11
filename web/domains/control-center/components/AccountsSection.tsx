@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Link2, Pencil, Plus, Unlink } from "lucide-react";
+import { FileText, Link2, Pencil, Plus, Unlink } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { DataTable, type DataTableColumn } from "../../../components/design-system/DataTable";
 import { Input } from "../../../components/design-system/Input";
@@ -17,6 +17,7 @@ import { formatDate } from "../format";
 import type { AccountDetail, CommercialAccount, TaxIdType, TenantDirectoryEntry } from "../types";
 import { ControlCenterShell, useControlCenterAccess } from "./ControlCenterShell";
 import { ReasonDialog } from "./ReasonDialog";
+import { StatementDialog } from "./StatementDialog";
 import { Pill } from "./StatusBadge";
 
 type FormState = {
@@ -82,6 +83,7 @@ export const AccountsSection = () => {
   const [tenantOptions, setTenantOptions] = useState<TenantDirectoryEntry[]>([]);
   const [unlinking, setUnlinking] = useState<{ tenantId: string; label: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [statementFor, setStatementFor] = useState<CommercialAccount | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -201,9 +203,14 @@ export const AccountsSection = () => {
       key: "actions",
       header: "Acciones",
       render: (row) => (
-        <Button variant="ghost" size="sm" onClick={() => startEdit(row)} aria-label={`Editar ${row.legalName}`}>
-          <Pencil className="h-4 w-4" aria-hidden />
-        </Button>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" onClick={() => startEdit(row)} aria-label={`Editar ${row.legalName}`}>
+            <Pencil className="h-4 w-4" aria-hidden />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setStatementFor(row)} aria-label={`Estado de cuenta de ${row.legalName}`}>
+            <FileText className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -350,6 +357,7 @@ export const AccountsSection = () => {
           await load();
         }}
       />
+      <StatementDialog open={statementFor !== null} accountId={statementFor?.id} accountName={statementFor?.legalName} onClose={() => setStatementFor(null)} />
     </ControlCenterShell>
   );
 };

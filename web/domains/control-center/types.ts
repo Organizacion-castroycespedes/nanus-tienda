@@ -414,3 +414,40 @@ export type AlertsRunResult = {
   whatsappFailed: number;
   whatsappSkipped: number;
 };
+
+// Reportes ---------------------------------------------------------------------
+
+export type BillingCollectionsMonth = {
+  month: string;
+  label: string;
+  billed: string;
+  billedByKind: Record<"PERIOD" | "PRORATION" | "ONE_TIME", string>;
+  collected: string;
+  collectedByMethod: Record<string, string>;
+  prorationCredits: string;
+  difference: string;
+};
+
+export type BillingCollectionsReport = {
+  from: string;
+  to: string;
+  months: BillingCollectionsMonth[];
+  methods: { code: string; name: string }[];
+  totals: { billed: string; collected: string; prorationCredits: string; difference: string; pending: string; collectedByMethod: Record<string, string> };
+};
+
+export type RenewalEventType = "TRIAL_END" | "INITIAL_TERM_END" | "ANNUAL_RENEWAL";
+
+export type RenewalRow = {
+  contractId: string;
+  contractNumber: string;
+  accountLegalName: string;
+  tenantName: string;
+  type: RenewalEventType;
+  date: string;
+  daysRemaining: number;
+  renewalRegistered: boolean;
+  currentFrequency: "MONTHLY" | "ANNUAL";
+  currentValue: string | null;
+  renewal: { monthly: string | null; monthlyAnnualExtras: string | null; annual: string | null };
+};

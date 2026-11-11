@@ -57,3 +57,11 @@ test("overdue only applies to open charges before today", async () => {
   assert.equal(isOverdue({ status: "PARTIALLY_PAID", dueDate: "2027-01-15" }, "2027-01-15"), false);
   assert.equal(todayInBogota(new Date("2026-11-09T03:00:00Z")), "2026-11-08");
 });
+
+test("report date helpers", async () => {
+  const { defaultStatementFrom, shiftMonth } = await import("./format");
+  assert.equal(defaultStatementFrom("2026-11-10"), "2025-11-11");
+  assert.equal(defaultStatementFrom("2024-02-29"), "2023-03-01");
+  assert.equal(shiftMonth("2026-11", -11), "2025-12");
+  assert.equal(shiftMonth("2026-12", 1), "2027-01");
+});

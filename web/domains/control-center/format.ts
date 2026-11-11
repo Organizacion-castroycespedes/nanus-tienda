@@ -104,6 +104,9 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   ALERT_TEST_EMAIL_SENT: "Correo de prueba",
   ALERT_TEST_WHATSAPP_SENT: "WhatsApp de prueba",
   CONTRACT_PDF_DOWNLOADED: "PDF del contrato descargado",
+  ACCOUNT_STATEMENT_DOWNLOADED: "Estado de cuenta descargado",
+  ACCOUNT_STATEMENT_SENT: "Estado de cuenta enviado",
+  REPORT_EXPORTED: "Reporte exportado",
 };
 
 export const MIN_REASON_LENGTH = 10;
@@ -193,4 +196,39 @@ export const ALERT_STATUS_LABELS: Record<"SENT" | "FAILED" | "SKIPPED", string> 
   SENT: "Enviada",
   FAILED: "Fallida",
   SKIPPED: "Omitida",
+};
+
+// Reportes ---------------------------------------------------------------------
+
+export const RENEWAL_EVENT_LABELS: Record<"TRIAL_END" | "INITIAL_TERM_END" | "ANNUAL_RENEWAL", string> = {
+  TRIAL_END: "Fin de la prueba",
+  INITIAL_TERM_END: "Fin del término inicial",
+  ANNUAL_RENEWAL: "Renovación anual",
+};
+
+/** Descarga un Blob con el nombre indicado. */
+export const saveBlob = (blob: Blob, fileName: string) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+/** Fecha AAAA-MM-DD menos N meses (con ajuste a fin de mes) más un día: inicio por defecto del estado de cuenta. */
+export const defaultStatementFrom = (to: string) => {
+  const [y, m, d] = to.split("-").map(Number);
+  const index = y * 12 + (m - 1) - 12;
+  const year = Math.floor(index / 12);
+  const month = (index % 12) + 1;
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const date = new Date(Date.UTC(year, month - 1, Math.min(d, last) + 1));
+  return date.toISOString().slice(0, 10);
+};
+
+export const shiftMonth = (month: string, delta: number) => {
+  const [y, m] = month.split("-").map(Number);
+  const index = y * 12 + (m - 1) + delta;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
 };

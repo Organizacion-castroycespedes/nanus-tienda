@@ -18,6 +18,7 @@ import { ChargeDetailDialog } from "./ChargeDetailDialog";
 import { ControlCenterShell, useControlCenterAccess } from "./ControlCenterShell";
 import { ReceiptDetailDialog } from "./ReceiptDetailDialog";
 import { RegisterPaymentDialog } from "./RegisterPaymentDialog";
+import { StatementDialog } from "./StatementDialog";
 import { ChargeStatusBadge, ReceiptStatusBadge } from "./StatusBadge";
 
 type View = "accounts" | "charges" | "receipts";
@@ -62,6 +63,7 @@ export const ReceivablesSection = () => {
   const [paymentFor, setPaymentFor] = useState<string | undefined | null>(null);
   const [chargeId, setChargeId] = useState<string | null>(null);
   const [receiptId, setReceiptId] = useState<string | null>(null);
+  const [statementFor, setStatementFor] = useState<{ id: string; name: string } | null>(null);
   const today = todayInBogota();
 
   const loadSummary = useCallback(async () => {
@@ -118,7 +120,16 @@ export const ReceivablesSection = () => {
     { key: "d90", header: "61-90", render: (row) => money(row.days61to90), cellClassName: "text-right" },
     { key: "over", header: "> 90", render: (row) => <span className={moneyToCents(row.over90) > BigInt(0) ? "font-semibold text-rose-600 dark:text-rose-400" : ""}>{money(row.over90)}</span>, cellClassName: "text-right" },
     { key: "credit", header: "A favor", render: (row) => money(row.credit), cellClassName: "text-right" },
-    { key: "actions", header: "", render: (row) => <Button size="sm" variant="ghost" onClick={() => setPaymentFor(row.accountId)}>Registrar pago</Button> },
+    {
+      key: "actions",
+      header: "",
+      render: (row) => (
+        <div className="flex gap-1">
+          <Button size="sm" variant="ghost" onClick={() => setPaymentFor(row.accountId)}>Registrar pago</Button>
+          <Button size="sm" variant="ghost" onClick={() => setStatementFor({ id: row.accountId, name: row.legalName })}>Estado de cuenta</Button>
+        </div>
+      ),
+    },
   ];
 
   const chargeColumns: DataTableColumn<Charge>[] = [
@@ -235,6 +246,7 @@ export const ReceivablesSection = () => {
       />
       <ChargeDetailDialog chargeId={chargeId} onClose={() => setChargeId(null)} onChanged={refresh} />
       <ReceiptDetailDialog receiptId={receiptId} onClose={() => setReceiptId(null)} onChanged={refresh} />
+      <StatementDialog open={statementFor !== null} accountId={statementFor?.id} accountName={statementFor?.name} onClose={() => setStatementFor(null)} />
     </ControlCenterShell>
   );
 };
