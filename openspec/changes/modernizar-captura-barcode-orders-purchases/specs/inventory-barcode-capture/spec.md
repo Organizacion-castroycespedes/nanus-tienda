@@ -64,6 +64,21 @@ El sistema SHALL devolver el foco a la barra de escaneo después de cada acción
 - **WHEN** el usuario escribe parte del nombre o del código y elige un resultado
 - **THEN** el producto se agrega con las mismas reglas que un escaneo
 
+### Requirement: Lectura con foco en otro campo
+Cuando el lector envía un código mientras el foco está en otro campo de texto o numérico del formulario, el sistema SHALL bloquear el Enter del lector para que no envíe el formulario, SHALL procesar el código como escaneo cuando corresponda a un producto y SHALL devolver al campo el valor que tenía antes de la lectura.
+
+#### Scenario: Código de producto leído en el campo de lote
+- **WHEN** el foco está en el campo Lote de la recepción y el lector envía el código de un producto de la compra
+- **THEN** la cantidad preparada del producto aumenta, el campo Lote conserva su valor anterior y el formulario no avanza de paso
+
+#### Scenario: Código leído en un campo de cantidad o costo
+- **WHEN** el foco está en un campo de cantidad o costo y el lector envía un código
+- **THEN** el código se procesa como escaneo y la cantidad o el costo no cambian
+
+#### Scenario: Lote escaneado a propósito
+- **WHEN** el foco está en el campo Lote y el lector envía un código que no corresponde a ningún producto
+- **THEN** el código se conserva como lote y el formulario no se envía
+
 ### Requirement: Productos pesables
 El sistema SHALL aplicar el mismo flujo de decisión que el POS según el tipo de venta del producto, con peso digitado manualmente y sin báscula.
 

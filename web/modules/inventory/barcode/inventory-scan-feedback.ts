@@ -30,7 +30,8 @@ export const inventoryScanMessages = {
     `Código ambiguo: ${code} coincide con ${count} productos. Elige uno de la lista.`,
   presentationUnsupported: (code: string) =>
     `Presentación sin factor de conversión configurado (${code}). Agrega el producto por unidad.`,
-  outOfScope: (name: string) => `El producto no pertenece a esta compra: ${name}`,
+  outOfScope: (name: string, documentLabel = "esta compra") =>
+    `El producto no pertenece a ${documentLabel}: ${name}`,
   exceedsPending: (name: string, remaining: number) =>
     `Excede la cantidad pendiente de ${name} (pendiente: ${formatQuantity(remaining)})`,
   modeMismatch: (name: string, mode: InventoryCaptureMode) =>

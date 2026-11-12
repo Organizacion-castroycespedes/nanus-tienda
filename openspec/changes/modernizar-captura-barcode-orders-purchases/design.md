@@ -46,6 +46,8 @@ La lógica específica de pedidos vive en `web/modules/inventory/order-capture/`
 ### D2. Solo lector en modo teclado, ligado a la barra de escaneo
 No se usa el canal WebSocket del agente local ni un listener global. La detección corre en el `onKeyDown` de la barra de escaneo y el foco vuelve a ella después de cada acción, salvo cuando hay un diálogo abierto, el usuario está editando otro campo o navega con Tab (misma política que el POS). Así un escaneo nunca escribe en campos de lote, costo o cantidad.
 
+**Lecturas con el foco en otro campo (hallazgo de QA, 2026-11-12):** si el usuario está en Lote, costo o cantidad, el lector escribe ahí y su Enter enviaba el formulario. El hook vigila también los campos de texto y numéricos del formulario (`fieldScanScope`): ante una secuencia rápida que termina en Enter, bloquea el Enter y llama a `onFieldScan`. En Orders y Purchases la lectura siempre se procesa como escaneo; en la recepción se procesa si el código es de un producto o si el campo es numérico, y un código desconocido en un campo de texto se conserva (lotes escaneados desde la etiqueta). Cuando se procesa, el campo recupera el valor previo a la secuencia.
+
 ### D3. Resolución explícita
 `resolveInventoryBarcode` normaliza (NFD, sin tildes, trim, minúsculas) y compara contra códigos de barras activos (`barcodes[]`, `barcodeCodes`, `primaryBarcode`) y `sku`. Resultado:
 - `MATCH` con el producto, si hay exactamente uno;
@@ -78,6 +80,14 @@ Factura de proveedor: proveedor, sucursal, terminal y tipo en la cabecera; tabla
 - La cantidad preparada nunca supera el pendiente: el excedente es error duro (decisión del propietario: cero tolerancia).
 - "Dividir en lotes" crea sublíneas con lote, vencimiento, ubicación y cantidad propios; la suma no puede superar el pendiente. El payload envía una entrada por sublínea con el mismo `purchaseItemId`.
 - Nada se persiste hasta "Confirmar recepción"; se conserva el `Idempotency-Key` actual y los tres pasos (información, productos, confirmación).
+- Los escaneos suman al último lote (entrada) de la línea; "Dividir en otro lote" solo aparece en productos que exigen lote.
+- El listado `GET /inventory/products` que usa la recepción no trae códigos de barras; para el lector se carga además `GET /products?branchId` (mismo catálogo de Orders y Purchases). Si esa carga falla, el lector reconoce solo el SKU de los productos de la compra y se muestra un aviso.
+
+### D9.1 Factura ya registrada (solicitud del propietario, 2026-11-12)
+Si la compra ya tiene factura (recepción parcial previa), se precarga y la recepción inicia en "Productos"; sigue siendo editable. `GET /purchases/:id` no devuelve `supplierInvoiceNumber/Date`, pero `GET /purchases` sí: la página pasa al formulario la factura de la compra activa del listado. Si la compra se abre por enlace directo sin estar en el listado, se pide la factura como antes. El backend guarda una sola factura por compra (`COALESCE`), así que editarla reemplaza la anterior.
+
+### D9.2 Entrega de pedidos por escaneo (solicitud del propietario, 2026-11-12)
+`OrderDeliverForm` agrega la barra de escaneo con la misma regla que la recepción: solo productos del pedido (`resolveInventoryBarcodeInScope`), cantidad "Entregar ahora" con tope en el pendiente, primera línea con pendiente para productos repetidos y diálogo de cantidad para pesables. Carga `GET /products?branchId` para los códigos; si falla, se busca por nombre. El inventario solo se descuenta con "Guardar entrega" (`POST /orders/:id/deliver`, sin cambios).
 
 ### D10. Contexto, tenant y sucursal
 Las líneas pertenecen a la sucursal del formulario. Si se cambia la sucursal con líneas capturadas se pide confirmación y se limpian las líneas, porque el catálogo, el stock y los precios cambian. El tenant viene del contexto autenticado y el backend lo valida en cada endpoint.

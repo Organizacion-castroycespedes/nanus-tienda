@@ -602,6 +602,7 @@
         "web/modules/inventory/order-capture/**",
         "web/modules/inventory/purchase-capture/**",
         "web/modules/inventory/components/OrderForm.tsx",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
         "web/modules/inventory/components/PurchaseForm.tsx",
         "web/modules/inventory/components/PurchaseReceiveForm.tsx",
         "web/modules/inventory/components/purchase-receive-lines.ts",
@@ -714,7 +715,6 @@
         "api/src/modules/finance/payments/dto/create-document-payment.dto.ts",
         "api/src/modules/finance/payments/payments.service.spec.ts",
         "api/src/modules/finance/payments/payments.service.ts",
-        "web/modules/inventory/components/OrderDeliverForm.tsx",
         "web/modules/inventory/components/OrderInvoiceForm.tsx",
         "web/modules/finance/components/DocumentPaymentForm.financial-institutions.spec.ts",
         "web/modules/finance/components/DocumentPaymentForm.tsx",
@@ -817,6 +817,7 @@
         "web/modules/inventory/order-capture/**",
         "web/modules/inventory/purchase-capture/**",
         "web/modules/inventory/components/OrderForm.tsx",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
         "web/modules/inventory/components/PurchaseForm.tsx",
         "web/modules/inventory/components/PurchaseReceiveForm.tsx",
         "web/modules/inventory/components/purchase-receive-lines.ts",
@@ -826,7 +827,7 @@
         "web/app/[tenant]/purchases/page.tsx",
         "docs/evidencia-hu-scan-001.md"
       ],
-      "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS, API or database path is claimed."
+      "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS, API or database path is claimed."
     }
   ]
 }

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
@@ -39,6 +39,44 @@ const scan = (input: HTMLElement, code: string) => {
     fireEvent.keyDown(input, { key });
   }
   fireEvent.keyDown(input, { key: "Enter" });
+};
+
+type FieldHarnessProps = {
+  onFieldScan: (code: string) => boolean;
+  onSubmitForm: () => void;
+};
+
+const FieldHarness = ({ onFieldScan, onSubmitForm }: FieldHarnessProps) => {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [lot, setLot] = useState("L1");
+  const capture = useInventoryBarcodeCapture({
+    enabled: true,
+    autoFocus: false,
+    onScan: () => undefined,
+    fieldScanScope: formRef,
+    onFieldScan,
+  });
+  return (
+    <form
+      ref={formRef}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmitForm();
+      }}
+    >
+      <InventoryScanBar id="scan" capture={capture} />
+      <input aria-label="Lote" value={lot} onChange={(event) => setLot(event.target.value)} />
+    </form>
+  );
+};
+
+const scanIntoField = (field: HTMLInputElement, code: string) => {
+  for (const key of code.split("")) {
+    fireEvent.keyDown(field, { key });
+  }
+  // El navegador escribe los caracteres en el campo antes del Enter.
+  fireEvent.change(field, { target: { value: `${field.value}${code}` } });
+  fireEvent.keyDown(field, { key: "Enter" });
 };
 
 afterEach(() => cleanup());
@@ -83,6 +121,37 @@ describe("InventoryScanBar + useInventoryBarcodeCapture", () => {
     fireEvent.change(input, { target: { value: "arroz" } });
     fireEvent.keyDown(input, { key: "Escape" });
     expect(input.value).toBe("");
+  });
+
+  it("routes a scanner read typed into another field and restores that field", () => {
+    const onFieldScan = vi.fn(() => true);
+    const onSubmitForm = vi.fn();
+    render(<FieldHarness onFieldScan={onFieldScan} onSubmitForm={onSubmitForm} />);
+    const lot = screen.getByLabelText("Lote") as HTMLInputElement;
+    scanIntoField(lot, "353962561087655");
+    expect(onFieldScan).toHaveBeenCalledWith("353962561087655", lot);
+    expect(lot.value).toBe("L1");
+    expect(onSubmitForm).not.toHaveBeenCalled();
+  });
+
+  it("keeps an intentional lot scan without submitting the form", () => {
+    const onFieldScan = vi.fn(() => false);
+    const onSubmitForm = vi.fn();
+    render(<FieldHarness onFieldScan={onFieldScan} onSubmitForm={onSubmitForm} />);
+    const lot = screen.getByLabelText("Lote") as HTMLInputElement;
+    scanIntoField(lot, "LOTE20261130");
+    expect(onFieldScan).toHaveBeenCalledWith("LOTE20261130", lot);
+    expect(lot.value).toBe("L1LOTE20261130");
+    expect(onSubmitForm).not.toHaveBeenCalled();
+  });
+
+  it("does not intercept human typing in other fields", () => {
+    const onFieldScan = vi.fn(() => true);
+    render(<FieldHarness onFieldScan={onFieldScan} onSubmitForm={() => undefined} />);
+    const lot = screen.getByLabelText("Lote") as HTMLInputElement;
+    fireEvent.keyDown(lot, { key: "A" });
+    fireEvent.keyDown(lot, { key: "Enter" });
+    expect(onFieldScan).not.toHaveBeenCalled();
   });
 
   it("shows the reader status and announces errors assertively", () => {

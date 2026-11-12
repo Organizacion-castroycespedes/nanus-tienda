@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent,
+  type RefObject,
 } from "react";
 
 import { createInventoryBarcodeDeduper } from "./barcode-deduper";
@@ -29,6 +30,33 @@ export type UseInventoryBarcodeCaptureOptions = {
   onScan: (code: string) => void;
   onManualSubmit?: (query: string) => void;
   onDuplicateIgnored?: (code: string) => void;
+  /**
+   * Contenedor (normalmente el formulario) cuyos campos de texto también se
+   * vigilan: si el lector escribe en otro campo, se bloquea su Enter.
+   */
+  fieldScanScope?: RefObject<HTMLElement | null>;
+  /**
+   * Lectura del lector recibida en otro campo del contenedor. Devuelve true si
+   * se procesó como escaneo (el campo recupera su valor anterior) o false para
+   * conservar lo escrito (por ejemplo, un código de lote escaneado a propósito).
+   */
+  onFieldScan?: (code: string, field: HTMLInputElement | HTMLTextAreaElement) => boolean;
+};
+
+const FIELD_SCAN_INPUT_TYPES = new Set(["", "text", "search", "number", "tel"]);
+
+const isFieldScanTarget = (
+  element: EventTarget | null
+): element is HTMLInputElement | HTMLTextAreaElement =>
+  element instanceof HTMLTextAreaElement ||
+  (element instanceof HTMLInputElement && FIELD_SCAN_INPUT_TYPES.has(element.type));
+
+/** Cambia el valor de un input controlado por React y notifica su onChange. */
+const restoreFieldValue = (field: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+  const prototype =
+    field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(field, value);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
 };
 
 const OVERLAY_SELECTOR =
@@ -125,6 +153,48 @@ export const useInventoryBarcodeCapture = (options: UseInventoryBarcodeCaptureOp
     }
 
     let isKeyboardNavigation = false;
+    let fieldWedge = createInventoryBarcodeWedgeState();
+    let fieldTarget: HTMLInputElement | HTMLTextAreaElement | null = null;
+    let fieldSnapshot = "";
+
+    // Lecturas del lector que caen en otro campo del formulario (lote, costo, cantidad).
+    const handleFieldKeyDown = (event: globalThis.KeyboardEvent) => {
+      const scope = optionsRef.current.fieldScanScope?.current;
+      const target = event.target;
+      if (!scope || target === inputRef.current || !isFieldScanTarget(target) || !scope.contains(target)) {
+        return;
+      }
+      if (fieldTarget !== target) {
+        fieldTarget = target;
+        fieldWedge = createInventoryBarcodeWedgeState();
+      }
+      const result = handleInventoryBarcodeKey(fieldWedge, event.key, event.timeStamp, wedgeOptions);
+      if (!result.isTerminator && result.nextState.buffer.length === 1) {
+        // keydown llega antes de escribir el carácter: este es el valor previo a la secuencia.
+        fieldSnapshot = target.value;
+      }
+      fieldWedge = result.nextState;
+      if (!result.committedCode) {
+        return;
+      }
+
+      // Enter del lector nunca envía el formulario ni confirma el campo.
+      event.preventDefault();
+      event.stopPropagation();
+      const code = result.committedCode;
+      const snapshot = fieldSnapshot;
+      fieldTarget = null;
+
+      if (!deduperRef.current.shouldProcess(code, event.timeStamp)) {
+        restoreFieldValue(target, snapshot);
+        optionsRef.current.onDuplicateIgnored?.(code);
+        return;
+      }
+      if (optionsRef.current.onFieldScan?.(code, target)) {
+        restoreFieldValue(target, snapshot);
+        focusScanInput();
+      }
+    };
 
     const restoreFocus = () => {
       if (isKeyboardNavigation) {
@@ -163,6 +233,7 @@ export const useInventoryBarcodeCapture = (options: UseInventoryBarcodeCaptureOp
     };
 
     document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keydown", handleFieldKeyDown, true);
     document.addEventListener("pointerdown", handlePointerDown, true);
     document.addEventListener("pointerup", restoreFocus);
     document.addEventListener("focusout", restoreFocus);
@@ -172,11 +243,12 @@ export const useInventoryBarcodeCapture = (options: UseInventoryBarcodeCaptureOp
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keydown", handleFieldKeyDown, true);
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("pointerup", restoreFocus);
       document.removeEventListener("focusout", restoreFocus);
     };
-  }, [autoFocus, enabled, focusReleased, focusScanInput]);
+  }, [autoFocus, enabled, focusReleased, focusScanInput, wedgeOptions]);
 
   return {
     inputRef,

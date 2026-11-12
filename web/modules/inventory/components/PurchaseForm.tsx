@@ -126,6 +126,7 @@ export const PurchaseForm = ({
   const [pendingDialog, setPendingDialog] = useState<PendingDialog | null>(null);
   const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
   const sounds = useMemo(() => createInventoryScanSoundPlayer(), []);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const markDirty = useCallback(() => {
     onDirtyChange?.(true);
@@ -409,6 +410,12 @@ export const PurchaseForm = ({
     focusReleased: pendingDialog !== null,
     onScan: handleScan,
     onDuplicateIgnored: (code) => notify("info", inventoryScanMessages.duplicateIgnored(code)),
+    // Un código leído con el foco en cantidad o costo se procesa como escaneo.
+    fieldScanScope: formRef,
+    onFieldScan: (code) => {
+      handleScan(code);
+      return true;
+    },
     onManualSubmit: (query) => {
       const exact = resolveInventoryBarcode(query, products);
       if (exact.kind !== "NOT_FOUND") {
@@ -634,7 +641,7 @@ export const PurchaseForm = ({
         </Button>
       </div>
 
-      <form className="grid gap-5" onSubmit={handleSubmit}>
+      <form ref={formRef} className="grid gap-5" onSubmit={handleSubmit}>
         <div
           aria-label="Encabezado de la factura de proveedor"
           className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)] dark:border-slate-700 dark:bg-slate-900/40"

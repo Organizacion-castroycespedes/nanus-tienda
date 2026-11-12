@@ -52,6 +52,17 @@ La recepción SHALL conservar los datos de lote, vencimiento, ubicación y costo
 - **WHEN** un producto con `requiresLot` tiene cantidad preparada sin lote
 - **THEN** el formulario no permite avanzar a la confirmación
 
+### Requirement: Factura ya registrada
+Cuando la compra ya tiene número de factura de una recepción anterior, el sistema SHALL precargar el número y la fecha, SHALL iniciar la recepción en el paso de productos y SHALL permitir editarlos.
+
+#### Scenario: Segunda recepción parcial
+- **WHEN** se abre la recepción de una compra `PARTIAL` cuya factura se registró antes
+- **THEN** el formulario inicia en "Productos" con la factura precargada y un aviso de que se puede editar
+
+#### Scenario: Compra sin factura registrada
+- **WHEN** se abre la recepción de una compra sin factura registrada
+- **THEN** el formulario inicia en "Información" y exige el número de factura
+
 ### Requirement: Estados y permisos de recepción
 La barra de escaneo de recepción SHALL estar disponible solo para compras recibibles (`DRAFT`, `PENDING` o `PARTIAL`) y para usuarios con la acción de recibir habilitada.
 

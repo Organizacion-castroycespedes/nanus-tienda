@@ -24,6 +24,7 @@
 - [x] 3.4 Aviso de stock insuficiente.
 - [x] 3.5 Confirmación y limpieza al cambiar sucursal; captura solo en nuevo o `DRAFT`.
 - [x] 3.6 Layout responsive y actualización de `orders-responsive-layout.spec.ts`.
+- [x] 3.7 Escaneo en `OrderDeliverForm.tsx` restringido a los productos del pedido, con tope en el pendiente.
 
 ## 4. Purchases (captura)
 
@@ -33,10 +34,12 @@
 
 ## 5. Recepción
 
-- [ ] 5.1 Barra de escaneo en el paso de productos de `PurchaseReceiveForm.tsx`, restringida a los productos de la compra.
-- [ ] 5.2 Cantidad preparada con tope en el pendiente, producto ajeno como error y primera línea con pendiente para productos repetidos.
-- [ ] 5.3 Dividir línea en lotes y payload con varias entradas por `purchaseItemId`; extender `purchase-receive-lines.ts` y sus pruebas.
-- [ ] 5.4 Conservar `Idempotency-Key`, factura del proveedor y los tres pasos.
+- [x] 5.1 Barra de escaneo en el paso de productos de `PurchaseReceiveForm.tsx`, restringida a los productos de la compra.
+- [x] 5.2 Cantidad preparada con tope en el pendiente, producto ajeno como error y primera línea con pendiente para productos repetidos.
+- [x] 5.3 Dividir línea en lotes y payload con varias entradas por `purchaseItemId`; extender `purchase-receive-lines.ts` y sus pruebas.
+- [x] 5.4 Conservar `Idempotency-Key`, factura del proveedor y los tres pasos.
+- [x] 5.5 Precargar la factura registrada en una recepción anterior (editable) e iniciar en el paso de productos.
+- [x] 5.6 Lecturas del lector con el foco en otro campo: bloquear Enter, procesar como escaneo y restaurar el campo (hallazgo de QA).
 
 ## 6. Verificación
 
@@ -68,4 +71,6 @@
 | QA-17 | Recepción | Usuario `USER` | Web | Sin acción de recibir |
 | QA-18 | Todos | Foco, F2, Tab, lector de pantalla | Web | Política de foco y anuncios correctos |
 | QA-19 | Todos | Móvil (375 px) | Web | Tarjetas y pie fijo |
+| QA-21 | Orders | Entregar pedido escaneando, producto ajeno y excedente | Web, Electron | Solo productos del pedido, tope en el pendiente |
+| QA-22 | Recepción | Segunda recepción parcial con factura ya registrada | Web | Inicia en Productos con la factura precargada y editable |
 | QA-20 | POS | Regresión de escaneo en `/pos` | Web, Electron | Sin cambios de comportamiento |

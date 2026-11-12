@@ -55,6 +55,25 @@ El formulario SHALL permitir capturar solo en pedidos nuevos o en estado `DRAFT`
 - **WHEN** el usuario cambia la sucursal con líneas capturadas
 - **THEN** el sistema pide confirmación y, si acepta, limpia las líneas y recarga el catálogo de la nueva sucursal
 
+### Requirement: Entrega de pedidos por escaneo
+Al entregar un pedido el sistema SHALL permitir escanear solo productos de ese pedido, SHALL acumular la cantidad a entregar sin superar el pendiente de cada línea y SHALL descontar inventario únicamente al confirmar la entrega.
+
+#### Scenario: Producto del pedido
+- **WHEN** se escanea un producto `UNIT` del pedido con pendiente
+- **THEN** la cantidad "Entregar ahora" de la primera línea del producto con pendiente aumenta en 1
+
+#### Scenario: Producto ajeno al pedido
+- **WHEN** se escanea un producto que no pertenece al pedido
+- **THEN** el sistema muestra "El producto no pertenece a este pedido" y ninguna línea cambia
+
+#### Scenario: Excedente en la entrega
+- **WHEN** una línea ya tiene preparada toda su cantidad pendiente y se escanea otra vez
+- **THEN** la cantidad no cambia y se muestra "Excede la cantidad pendiente"
+
+#### Scenario: Escanear sin confirmar
+- **WHEN** el usuario escanea productos y cancela la entrega
+- **THEN** no se registra ninguna entrega ni movimiento de inventario
+
 ### Requirement: Diseño responsive
 El formulario SHALL presentar el ticket en dos columnas en escritorio y en tarjetas con total y acción principal fijos en el pie en móvil.
 

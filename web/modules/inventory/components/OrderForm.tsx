@@ -140,6 +140,7 @@ export const OrderForm = ({
   const [pendingDialog, setPendingDialog] = useState<PendingDialog | null>(null);
   const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
   const linesLoadedForOrderRef = useRef<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const sounds = useMemo(() => createInventoryScanSoundPlayer(), []);
   const canSelectBranch =
     role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN" || role === "USER";
@@ -449,6 +450,12 @@ export const OrderForm = ({
     focusReleased: pendingDialog !== null,
     onScan: handleScan,
     onDuplicateIgnored: (code) => notify("info", inventoryScanMessages.duplicateIgnored(code)),
+    // Un código leído con el foco en cantidad u otro campo se procesa como escaneo.
+    fieldScanScope: formRef,
+    onFieldScan: (code) => {
+      handleScan(code);
+      return true;
+    },
     onManualSubmit: (query) => {
       const exact = resolveInventoryBarcode(query, products);
       if (exact.kind !== "NOT_FOUND") {
@@ -674,7 +681,7 @@ export const OrderForm = ({
         </Button>
       </div>
 
-      <form className="grid gap-5" onSubmit={handleSubmit}>
+      <form ref={formRef} className="grid gap-5" onSubmit={handleSubmit}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="space-y-1">
             <Select
