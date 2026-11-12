@@ -582,6 +582,16 @@
         "web/app/[tenant]/control-center/**",
         "docs/evidencia-control-center-reportes.md"
       ]
+    },
+    {
+      "change_id": "hu-tenant-bootstrap-001",
+      "paths": [
+        "openspec/changes/hu-tenant-bootstrap-001/**",
+        "scripts/governance/openspec-scope.json",
+        "api/.env.example",
+        "api/src/modules/tenants/**",
+        "docs/evidencia-hu-tenant-bootstrap-001.md"
+      ]
     }
   ],
   "current_ownership": [

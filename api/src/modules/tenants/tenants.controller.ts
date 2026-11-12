@@ -18,6 +18,7 @@ import { Roles } from "../../common/decorators/roles.decorator";
 import { MENU_KEYS } from "../../common/constants/menu-keys";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "../../common/guards/permissions.guard";
+import { PlatformTenantGuard } from "../../common/guards/platform-tenant.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { AccessControlService } from "../../common/services/access-control.service";
 import {
@@ -28,6 +29,7 @@ import {
 
 type AuthRequest = Request & {
   user?: {
+    id?: string;
     tenantId?: string;
     roles?: string[];
   };
@@ -70,10 +72,16 @@ export class TenantsController {
     return this.tenantsService.listTenants(request.user.tenantId);
   }
 
+  /**
+   * HU-TENANT-BOOTSTRAP-001: solo el SUPER_ADMIN del tenant plataforma crea
+   * empresas, porque el alta copia la configuración base de ese tenant.
+   * PlatformTenantGuard revalida en BD usuario, tenant y rol vigentes.
+   */
   @Post()
   @Roles("SUPER_ADMIN")
-  create(@Body() payload: TenantSummaryInput) {
-    return this.tenantsService.createTenant(payload);
+  @UseGuards(PlatformTenantGuard)
+  create(@Body() payload: TenantSummaryInput, @Req() request: AuthRequest) {
+    return this.tenantsService.createTenant(payload, { userId: request.user?.id ?? null });
   }
 
   @Put(":id")
