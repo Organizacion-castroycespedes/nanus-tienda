@@ -1,10 +1,53 @@
-import { BadRequestException, Injectable, Inject } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  Injectable,
+  Inject,
+  Logger,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import { DatabaseService } from "../../common/db/database.service";
+import { readControlCenterConfig } from "../control-center/control-center.config";
+import {
+  TenantBootstrapError,
+  TenantBootstrapService,
+  type TenantBootstrapSummary,
+} from "./tenant-bootstrap.service";
 import {
   resolveTenantSlugFromInput,
   slugifyTenantName,
 } from "./tenant-slug";
 import { normalizeVatResponsibility, type VatResponsibility } from "./vat-responsibility";
+
+/** Kill switch operativo: TENANT_BOOTSTRAP_ENABLED=false vuelve al alta sin catálogos. */
+export const isTenantBootstrapEnabled = (env: Record<string, string | undefined> = process.env) =>
+  (env.TENANT_BOOTSTRAP_ENABLED ?? "true").trim().toLowerCase() !== "false";
+
+export type TenantCreateActor = { userId?: string | null };
+
+const mapTenantCreationError = (error: unknown): unknown => {
+  if (error instanceof HttpException) return error;
+  if (error instanceof TenantBootstrapError) {
+    const body = { code: error.code, message: error.message, details: error.details };
+    switch (error.code) {
+      case "TENANT_BOOTSTRAP_TARGET_NOT_EMPTY":
+        return new ConflictException(body);
+      case "TENANT_BOOTSTRAP_SOURCE_MISSING":
+      case "TENANT_BOOTSTRAP_SOURCE_INACTIVE":
+      case "TENANT_BOOTSTRAP_SOURCE_INCOMPLETE":
+        return new ServiceUnavailableException(body);
+      default:
+        return new UnprocessableEntityException(body);
+    }
+  }
+  const pgError = error as { code?: string; constraint?: string } | null;
+  if (pgError?.code === "23505" && pgError.constraint === "tenants_slug_key") {
+    return new ConflictException({ code: "TENANT_SLUG_TAKEN", message: "El slug ya esta en uso" });
+  }
+  return error;
+};
 
 type TenantBrandingConfig = {
   colors?: {
@@ -78,8 +121,11 @@ export type TenantSummaryInput = {
 
 @Injectable()
 export class TenantsService {
+  private readonly logger = new Logger(TenantsService.name);
+
   constructor(
-   @Inject(DatabaseService) private readonly db: DatabaseService
+   @Inject(DatabaseService) private readonly db: DatabaseService,
+   @Inject(TenantBootstrapService) private readonly bootstrapService: TenantBootstrapService,
   ) {}
 
   private async slugExists(candidate: string, excludeTenantId?: string) {
@@ -109,7 +155,7 @@ export class TenantsService {
     return result.rows ?? [];
   }
 
-  async createTenant(payload: TenantSummaryInput) {
+  async createTenant(payload: TenantSummaryInput, actor: TenantCreateActor = {}) {
     const nombre = payload.nombre?.trim() || null;
     if (!nombre && !payload.slug?.trim()) {
       throw new BadRequestException("nombre o slug es requerido");
@@ -128,11 +174,47 @@ export class TenantsService {
       );
     }
 
-    const result = await this.db.query(
-      "INSERT INTO tenants (slug, nombre, activo, config) VALUES ($1, $2, $3, '{}'::jsonb) RETURNING id, slug, nombre, activo, config",
-      [slug, nombre ?? slug, payload.activo ?? true]
-    );
-    return result.rows[0] ?? null;
+    const insertTenantSql =
+      "INSERT INTO tenants (slug, nombre, activo, config) VALUES ($1, $2, $3, '{}'::jsonb) RETURNING id, slug, nombre, activo, config";
+    const insertTenantParams = [slug, nombre ?? slug, payload.activo ?? true];
+
+    if (!isTenantBootstrapEnabled()) {
+      try {
+        const result = await this.db.query(insertTenantSql, insertTenantParams);
+        return result.rows[0] ?? null;
+      } catch (error) {
+        throw mapTenantCreationError(error);
+      }
+    }
+
+    const sourceTenantId = readControlCenterConfig().platformTenantId;
+    const client = await this.db.getClient();
+    try {
+      // Una sola transacción: alta del tenant + aprovisionamiento. REPEATABLE READ
+      // da una foto consistente del tenant origen durante todas las copias.
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      const inserted = await client.query(insertTenantSql, insertTenantParams);
+      const tenant = inserted.rows[0];
+      const bootstrap: TenantBootstrapSummary = await this.bootstrapService.bootstrap(client, {
+        targetTenantId: tenant.id,
+        sourceTenantId,
+        actorUserId: actor.userId ?? null,
+      });
+      await client.query("COMMIT");
+      return { ...tenant, bootstrap };
+    } catch (error) {
+      await client.query("ROLLBACK").catch((rollbackError: unknown) => {
+        this.logger.error(
+          `Rollback failed after tenant creation error: ${(rollbackError as Error)?.message ?? "unknown"}`,
+        );
+      });
+      if (error instanceof TenantBootstrapError) {
+        this.logger.warn(`Tenant bootstrap aborted: ${error.code} ${JSON.stringify(error.details)}`);
+      }
+      throw mapTenantCreationError(error);
+    } finally {
+      client.release();
+    }
   }
 
   async updateTenant(tenantId: string, payload: TenantSummaryInput) {
