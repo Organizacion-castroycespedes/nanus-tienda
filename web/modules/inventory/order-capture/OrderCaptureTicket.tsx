@@ -1,9 +1,8 @@
 "use client";
 
-import { Minus, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 
-import { parseInventoryQuantity } from "../barcode/barcode-lines";
+import { InventoryQuantityStepper } from "../barcode/InventoryQuantityStepper";
 import type {
   OrderCaptureLine,
   OrderLineAmounts,
@@ -60,63 +59,6 @@ const pricingLabel = (row: OrderTicketRow) => {
   }
 };
 
-const QuantityField = ({
-  row,
-  disabled,
-  onCommit,
-  onInvalid,
-  onZero,
-}: {
-  row: OrderTicketRow;
-  disabled?: boolean;
-  onCommit: (quantity: number) => void;
-  onInvalid: () => void;
-  onZero: () => void;
-}) => {
-  const [draft, setDraft] = useState(String(row.line.quantity));
-  useEffect(() => setDraft(String(row.line.quantity)), [row.line.quantity]);
-
-  const commit = () => {
-    if (draft.trim() === String(row.line.quantity)) {
-      return;
-    }
-    if (Number(draft.trim().replace(",", ".")) === 0 && draft.trim() !== "") {
-      setDraft(String(row.line.quantity));
-      onZero();
-      return;
-    }
-    const quantity = parseInventoryQuantity(draft);
-    if (quantity === null) {
-      setDraft(String(row.line.quantity));
-      onInvalid();
-      return;
-    }
-    onCommit(quantity);
-  };
-
-  return (
-    <input
-      type="text"
-      inputMode="decimal"
-      aria-label={`Cantidad de ${row.name}${row.line.mode === "WEIGHT" ? " (peso)" : ""}`}
-      className="h-10 w-20 rounded-lg border border-slate-200 bg-white text-center text-sm tabular-nums text-slate-900 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-      value={draft}
-      disabled={disabled}
-      onChange={(event) => setDraft(event.target.value)}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          commit();
-        }
-        if (event.key === "Escape") {
-          setDraft(String(row.line.quantity));
-        }
-      }}
-    />
-  );
-};
-
 export const OrderCaptureTicket = ({
   rows,
   highlightedProductId,
@@ -170,36 +112,18 @@ export const OrderCaptureTicket = ({
                 {label ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{label}</p> : null}
               </div>
 
-              <div className="flex items-center gap-1 md:justify-center">
-                {row.line.mode === "UNIT" ? (
-                  <button
-                    type="button"
-                    aria-label={`Restar una unidad de ${row.name}`}
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
-                    disabled={disabled}
-                    onClick={() => onDecrement(row.line)}
-                  >
-                    <Minus className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                ) : null}
-                <QuantityField
-                  row={row}
+              <div className="flex md:justify-center">
+                <InventoryQuantityStepper
+                  name={row.name}
+                  quantity={row.line.quantity}
+                  mode={row.line.mode}
                   disabled={disabled}
+                  onIncrement={() => onIncrement(row.line)}
+                  onDecrement={() => onDecrement(row.line)}
                   onCommit={(quantity) => onSetQuantity(row.line, quantity)}
                   onInvalid={() => onInvalidQuantity(row.name)}
                   onZero={() => onRemove(row.line)}
                 />
-                {row.line.mode === "UNIT" ? (
-                  <button
-                    type="button"
-                    aria-label={`Sumar una unidad de ${row.name}`}
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
-                    disabled={disabled}
-                    onClick={() => onIncrement(row.line)}
-                  >
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                ) : null}
               </div>
 
               <p className="hidden text-right text-sm tabular-nums text-slate-700 md:block dark:text-slate-200">

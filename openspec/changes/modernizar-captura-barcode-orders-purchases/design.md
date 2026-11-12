@@ -39,8 +39,9 @@ Contenido previsto:
 - `inventory-scan-feedback.ts`: mensajes y sonidos de éxito y error propios.
 - `inventory-product-search.ts` e `InventoryProductSearchResults.tsx`: búsqueda manual y lista de candidatos.
 - `InventorySaleModeDialog.tsx` e `InventoryQuantityDialog.tsx`: elección unidad/peso y peso manual.
+- `InventoryQuantityStepper.tsx`: control −/+ y cantidad editable de una línea.
 
-La lógica específica de pedidos vive en `web/modules/inventory/order-capture/` (reglas del ticket, preview de precio, hook de precios y `OrderCaptureTicket.tsx`); la de compras seguirá el mismo patrón en su propio directorio.
+La lógica específica de pedidos vive en `web/modules/inventory/order-capture/` (reglas del ticket, preview de precio, hook de precios y `OrderCaptureTicket.tsx`); la de compras vive en `web/modules/inventory/purchase-capture/` (reglas de líneas con costo editable y `PurchaseInvoiceTable.tsx`).
 
 ### D2. Solo lector en modo teclado, ligado a la barra de escaneo
 No se usa el canal WebSocket del agente local ni un listener global. La detección corre en el `onKeyDown` de la barra de escaneo y el foco vuelve a ella después de cada acción, salvo cuando hay un diálogo abierto, el usuario está editando otro campo o navega con Tab (misma política que el POS). Así un escaneo nunca escribe en campos de lote, costo o cantidad.

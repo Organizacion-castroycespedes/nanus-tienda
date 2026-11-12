@@ -27,9 +27,9 @@
 
 ## 4. Purchases (captura)
 
-- [ ] 4.1 Rediseño de `PurchaseForm.tsx` como factura de proveedor con barra de escaneo y búsqueda manual.
-- [ ] 4.2 Líneas únicas por producto, costo editable que no se sobrescribe, validaciones.
-- [ ] 4.3 Confirmación y limpieza al cambiar sucursal; ajustes en `web/app/[tenant]/purchases/page.tsx` si se requieren.
+- [x] 4.1 Rediseño de `PurchaseForm.tsx` como factura de proveedor con barra de escaneo y búsqueda manual.
+- [x] 4.2 Líneas únicas por producto, costo editable que no se sobrescribe, validaciones.
+- [x] 4.3 Confirmación y limpieza al cambiar sucursal; sin cambios necesarios en `web/app/[tenant]/purchases/page.tsx`.
 
 ## 5. Recepción
 
