@@ -4,16 +4,17 @@
 - [x] 1.2 Decisiones del propietario (2026-11-11): solo modo teclado; bloquear `PACKAGE`/`BOX`; pesables con flujo POS y peso manual; doble escaneo de 300 ms solo en estos módulos; recepción con cero tolerancia y error duro para productos ajenos; precio con permiso actual; aviso de stock; dividir líneas en lotes; `/pos` sin cambios.
 - [x] 1.3 Rama `feature/develop/hu-scan-001-barcode-orders-purchases` desde `develop` `1646b6ad`.
 - [x] 1.4 Registrar el change en `scripts/governance/openspec-scope.json` con la reasignación autorizada de titularidad vigente.
-- [ ] 1.5 `openspec validate modernizar-captura-barcode-orders-purchases --strict` y diagnóstico de gobernanza STRICT sobre el diff.
+- [x] 1.5 `openspec validate modernizar-captura-barcode-orders-purchases --type change --strict`: válido (Windows, propietario, 2026-11-11).
+- [ ] 1.6 Diagnóstico de gobernanza STRICT sobre el diff con el CLI de OpenSpec disponible.
 
 ## 2. Núcleo de captura de Inventario (`web/modules/inventory/barcode/`)
 
-- [ ] 2.1 `barcode-wedge.ts` con detección por tiempos y pruebas (lectura válida, tecleo humano, código corto, terminadores).
-- [ ] 2.2 `barcode-resolver.ts` con `MATCH`, `AMBIGUOUS`, `NOT_FOUND`, `PRESENTATION_UNSUPPORTED` y pruebas (normalización, barcodes inactivos, SKU, catálogo de otro tenant).
-- [ ] 2.3 `barcode-deduper.ts` (300 ms) y pruebas.
-- [ ] 2.4 Reglas puras de líneas: agregar/incrementar, modo unidad/peso, decimales, límite de pendiente; pruebas.
-- [ ] 2.5 `use-inventory-barcode-capture.ts`, `InventoryScanBar.tsx` y `inventory-scan-feedback.ts` (foco, F2, `aria-live`, sonidos).
-- [ ] 2.6 Verificar que ningún archivo del núcleo importa `web/modules/pos/**`.
+- [x] 2.1 `barcode-wedge.ts` con detección por tiempos y pruebas (lectura válida, tecleo humano, código corto, terminadores).
+- [x] 2.2 `barcode-resolver.ts` con `MATCH`, `AMBIGUOUS`, `NOT_FOUND`, `PRESENTATION_UNSUPPORTED` y pruebas (normalización, barcodes inactivos, SKU, catálogo de otro tenant).
+- [x] 2.3 `barcode-deduper.ts` (300 ms) y pruebas.
+- [x] 2.4 Reglas puras de líneas: agregar/incrementar, modo unidad/peso, decimales, límite de pendiente; pruebas.
+- [x] 2.5 `use-inventory-barcode-capture.ts`, `InventoryScanBar.tsx` y `inventory-scan-feedback.ts` (foco, F2, `aria-live`, sonidos); prueba `InventoryScanBar.test.tsx` (Vitest, se ejecuta en 6.1).
+- [x] 2.6 Verificar que ningún archivo del núcleo importa `web/modules/pos/**`.
 
 ## 3. Orders
 
@@ -39,7 +40,7 @@
 
 ## 6. Verificación
 
-- [ ] 6.1 `cd web && npx vitest run modules/inventory app/[tenant]/orders` en Windows.
+- [ ] 6.1 En Windows: `cd web && npx tsx --test modules/inventory/barcode/*.spec.ts modules/inventory/components/purchase-receive-lines.spec.ts` y `npx vitest run modules/inventory/barcode/InventoryScanBar.test.tsx app/[tenant]/orders`.
 - [ ] 6.2 `cd web && npm run lint`, `npx tsc --noEmit` y `npm run build`.
 - [ ] 6.3 `git diff --name-only develop...HEAD` sin archivos de `web/modules/pos/**`, `api/**`, `scripts/database/**` ni `desktop/**`.
 - [ ] 6.4 QA manual según la matriz y evidencia en `docs/evidencia-hu-scan-001.md`.
