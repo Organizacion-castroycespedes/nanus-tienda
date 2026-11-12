@@ -13,7 +13,7 @@ Change OpenSpec: `openspec/changes/modernizar-captura-barcode-orders-purchases/`
 - `c0d7ebd7` F3: Purchases (`PurchaseForm.tsx`, `web/modules/inventory/purchase-capture/`).
 - F4: recepción (`PurchaseReceiveForm.tsx`, `purchase-receive-lines.ts`), factura ya registrada, escaneo en la entrega de pedidos (`OrderDeliverForm.tsx`) y corrección de lecturas con el foco en otro campo.
 
-Sin cambios en `web/modules/pos/**`, `api/**`, `scripts/database/**` ni `desktop/**`.
+Sin cambios en `web/modules/pos/**`, `scripts/database/**` ni `desktop/**`. En `api/**` solo `getPurchaseById` (`purchase.service.ts`) agrega `supplier_invoice_number` y `supplier_invoice_date` al `SELECT`, con prueba en `purchase.service.spec.ts`.
 
 ## Pruebas automáticas
 
@@ -25,6 +25,8 @@ Sin cambios en `web/modules/pos/**`, `api/**`, `scripts/database/**` ni `desktop
 | `npx tsc --noEmit` | Sin errores nuevos; 26 errores preexistentes en 12 specs ajenos |
 | `npm run build` (Windows) | OK (F3) |
 | ESLint sobre los archivos del change | Sin hallazgos |
+| `purchase.service.spec.ts` (API) compilado con `tsc` y ejecutado con `node --test` en la VM | 55/55 OK, incluida la prueba de la factura en `getPurchaseById` (pendiente `npx tsx --test` en Windows) |
+| `tsc --noEmit` de `api` | Sin errores |
 | Diagnóstico de gobernanza STRICT (VM, sin CLI) | Los 41 archivos del diff se asignan a un único change; bloqueo solo por `TOOL_UNAVAILABLE`. Pendiente con CLI en Windows |
 
 En la VM Linux las specs `node:test` se ejecutaron con `node --experimental-strip-types` y un cargador local fuera del repositorio, porque `tsx` y Vitest dependen de binarios nativos de Windows.
@@ -70,4 +72,5 @@ Registrar resultado (PASS/FAIL), entorno y observaciones.
 - Peso manual con 2 decimales (`NUMERIC(12,2)` en `order_items`/`purchase_items`); sin báscula.
 - El precio de Orders mostrado es informativo; el backend lo recalcula al guardar. Se retiró el campo de precio editable porque el backend ya ignoraba ese valor.
 - La recepción carga además `GET /products?branchId` para los códigos de barras; si falla, el lector reconoce solo el SKU.
+- La factura de una recepción previa viene en `GET /purchases/:id` (y, como respaldo, del listado); se precarga y es editable. El backend guarda una sola factura por compra.
 - Riesgo preexistente no abordado: `PUT /purchases/:id` sobre compras `PARTIAL` reinicia cantidades recibidas (no expuesto en la web).

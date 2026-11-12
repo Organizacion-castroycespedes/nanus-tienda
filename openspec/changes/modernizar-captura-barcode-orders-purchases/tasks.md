@@ -39,13 +39,15 @@
 - [x] 5.3 Dividir línea en lotes y payload con varias entradas por `purchaseItemId`; extender `purchase-receive-lines.ts` y sus pruebas.
 - [x] 5.4 Conservar `Idempotency-Key`, factura del proveedor y los tres pasos.
 - [x] 5.5 Precargar la factura registrada en una recepción anterior (editable) e iniciar en el paso de productos.
+- [x] 5.7 `GET /purchases/:id` expone `supplierInvoiceNumber/Date` (`getPurchaseById`) con prueba en `purchase.service.spec.ts`.
 - [x] 5.6 Lecturas del lector con el foco en otro campo: bloquear Enter, procesar como escaneo y restaurar el campo (hallazgo de QA).
 
 ## 6. Verificación
 
 - [ ] 6.1 En Windows: `cd web && npx tsx --test modules/inventory/barcode/*.spec.ts modules/inventory/components/purchase-receive-lines.spec.ts` y `npx vitest run modules/inventory/barcode/InventoryScanBar.test.tsx app/[tenant]/orders`.
 - [ ] 6.2 `cd web && npm run lint`, `npx tsc --noEmit` y `npm run build`.
-- [ ] 6.3 `git diff --name-only develop...HEAD` sin archivos de `web/modules/pos/**`, `api/**`, `scripts/database/**` ni `desktop/**`.
+- [ ] 6.3 `git diff --name-only develop...HEAD` sin archivos de `web/modules/pos/**`, `scripts/database/**` ni `desktop/**`; en `api/**` solo `purchase.service.ts` y su spec.
+- [ ] 6.5 `cd api && npx tsx --test src/modules/inventory/services/purchase.service.spec.ts`.
 - [ ] 6.4 QA manual según la matriz y evidencia en `docs/evidencia-hu-scan-001.md`.
 
 ## Matriz QA

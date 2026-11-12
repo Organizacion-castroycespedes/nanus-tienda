@@ -22,7 +22,7 @@ Discovery sobre `develop` `1646b6ad` (solo lectura, 2026-11-11). Evidencia confi
 **Non-Goals**
 - Cualquier cambio en `/pos` (`web/modules/pos/**`), en el agente de periféricos, en Electron o en la báscula.
 - Factor de conversión de presentaciones (requeriría migración; otro change).
-- Cambios de API o de base de datos, incluida la corrección de `PUT /purchases/:id` sobre compras `PARTIAL` (riesgo preexistente, no se expone en la web).
+- Cambios de base de datos y cambios de API distintos de exponer la factura en `GET /purchases/:id` (D9.1), incluida la corrección de `PUT /purchases/:id` sobre compras `PARTIAL` (riesgo preexistente, no se expone en la web).
 - Edición de compras en la web.
 
 ## Decisions
@@ -84,7 +84,7 @@ Factura de proveedor: proveedor, sucursal, terminal y tipo en la cabecera; tabla
 - El listado `GET /inventory/products` que usa la recepción no trae códigos de barras; para el lector se carga además `GET /products?branchId` (mismo catálogo de Orders y Purchases). Si esa carga falla, el lector reconoce solo el SKU de los productos de la compra y se muestra un aviso.
 
 ### D9.1 Factura ya registrada (solicitud del propietario, 2026-11-12)
-Si la compra ya tiene factura (recepción parcial previa), se precarga y la recepción inicia en "Productos"; sigue siendo editable. `GET /purchases/:id` no devuelve `supplierInvoiceNumber/Date`, pero `GET /purchases` sí: la página pasa al formulario la factura de la compra activa del listado. Si la compra se abre por enlace directo sin estar en el listado, se pide la factura como antes. El backend guarda una sola factura por compra (`COALESCE`), así que editarla reemplaza la anterior.
+Si la compra ya tiene factura (recepción parcial previa), se precarga y la recepción inicia en "Productos"; sigue siendo editable. `GET /purchases/:id` no devolvía `supplierInvoiceNumber/Date` (el listado `GET /purchases` sí). Decisión del propietario: agregar `p.supplier_invoice_number` y `p.supplier_invoice_date` al `SELECT` de `getPurchaseById`; el mapeo (`mapPurchase`) ya los incluía, así que la respuesta solo agrega esos dos campos, sin cambiar los existentes. El formulario usa la factura del detalle y, como respaldo, la de la compra activa del listado. El backend guarda una sola factura por compra (`COALESCE`), así que editarla reemplaza la anterior.
 
 ### D9.2 Entrega de pedidos por escaneo (solicitud del propietario, 2026-11-12)
 `OrderDeliverForm` agrega la barra de escaneo con la misma regla que la recepción: solo productos del pedido (`resolveInventoryBarcodeInScope`), cantidad "Entregar ahora" con tope en el pendiente, primera línea con pendiente para productos repetidos y diálogo de cantidad para pesables. Carga `GET /products?branchId` para los códigos; si falla, se busca por nombre. El inventario solo se descuenta con "Guardar entrega" (`POST /orders/:id/deliver`, sin cambios).
@@ -108,11 +108,11 @@ Barra de escaneo con `label`, región `aria-live="polite"` para resultados y `as
 
 ## Migration Plan
 
-Solo frontend. Despliegue normal de `web`. Sin migraciones ni variables de entorno nuevas.
+Despliegue de `web` y de `api` (el detalle de compra agrega dos campos de solo lectura; compatible hacia atrás: el frontend usa el listado como respaldo si la API aún no los devuelve). Sin migraciones ni variables de entorno nuevas.
 
 ## Rollback
 
-Revertir el commit del frontend. No hay datos ni contratos que revertir.
+Revertir los commits. No hay datos que revertir; el contrato solo agrega dos campos opcionales.
 
 ## Open Questions
 

@@ -1736,3 +1736,47 @@ test("PurchaseService.getPurchaseById mapping: expone flags operativos del produ
   assert.equal(detail.items[0].requiresLot, true);
   assert.equal(detail.items[0].requiresExpiration, true);
 });
+
+test("PurchaseService.getPurchaseById expone la factura del proveedor de recepciones previas", async () => {
+  const queries: string[] = [];
+  const db = {
+    query: async (sql: string) => {
+      queries.push(sql);
+      if (sql.includes("FROM purchases p")) {
+        return {
+          rows: [
+            {
+              ...buildPurchaseRow({
+                status: "PARTIAL",
+                supplierInvoiceNumber: "FV-002",
+                supplierInvoiceDate: new Date("2026-11-11T00:00:00.000Z"),
+              }),
+              supplier_name: "Proveedor",
+              branch_id: null,
+              branch_name: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  };
+  const service = new PurchaseService(
+    db as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any
+  );
+  (service as any).getPurchaseAuditContext = async () => ({ branch_id: null });
+  (service as any).resolvePurchaseScope = async () => ({ tenantId: ids.tenant });
+
+  const detail = await service.getPurchaseById(ids.purchase, ids.tenant, actor as any);
+
+  assert.match(queries[0], /p\.supplier_invoice_number/);
+  assert.match(queries[0], /p\.supplier_invoice_date/);
+  assert.equal(detail.supplierInvoiceNumber, "FV-002");
+  assert.equal(detail.supplierInvoiceDate?.toISOString(), "2026-11-11T00:00:00.000Z");
+});

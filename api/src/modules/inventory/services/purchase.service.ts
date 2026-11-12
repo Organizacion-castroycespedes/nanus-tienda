@@ -1199,6 +1199,8 @@ export class PurchaseService {
           p.total_paid,
           p.balance_due,
           p.created_at,
+          p.supplier_invoice_number,
+          p.supplier_invoice_date,
           p.motivo_cancelacion,
           p.cancelado_por::text AS cancelado_por,
           COALESCE(

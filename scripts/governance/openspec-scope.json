@@ -610,7 +610,9 @@
         "web/app/[tenant]/orders/page.tsx",
         "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
         "web/app/[tenant]/purchases/page.tsx",
-        "docs/evidencia-hu-scan-001.md"
+        "docs/evidencia-hu-scan-001.md",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts"
       ]
     }
   ],
@@ -652,8 +654,6 @@
       "change_id": "soportar-productos-no-inventariables",
       "paths": [
         "api/src/modules/inventory/controllers/purchase.controller.ts",
-        "api/src/modules/inventory/services/purchase.service.ts",
-        "api/src/modules/inventory/services/purchase.service.spec.ts",
         "api/src/modules/inventory/entities/purchase.entity.ts",
         "api/src/modules/inventory/entities/purchase-item.entity.ts",
         "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
@@ -825,9 +825,11 @@
         "web/app/[tenant]/orders/page.tsx",
         "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
         "web/app/[tenant]/purchases/page.tsx",
-        "docs/evidencia-hu-scan-001.md"
+        "docs/evidencia-hu-scan-001.md",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts"
       ],
-      "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS, API or database path is claimed."
+      "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) purchase.service.ts and its spec (from soportar-productos-no-inventariables, only to expose the supplier invoice in getPurchaseById) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS or database path is claimed."
     }
   ]
 }

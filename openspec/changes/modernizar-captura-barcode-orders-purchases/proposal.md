@@ -11,7 +11,7 @@ HU-SCAN-001 pide modernizar la captura de Orders con una experiencia visual tipo
 - **Purchases (captura)**: rediseño de `PurchaseForm` como factura de proveedor con escaneo continuo, líneas únicas por producto y costo editable. Guardar sigue usando `POST /purchases`.
 - **Recepción**: `PurchaseReceiveForm` permite escanear solo productos de la compra, acumula una cantidad *preparada* que no puede superar el pendiente, permite dividir una línea en varios lotes y solo afecta inventario al confirmar con el endpoint actual (`POST /purchases/:id/receive`, idempotente).
 - **Entrega de pedidos**: `OrderDeliverForm` permite escanear solo productos del pedido, con tope en el pendiente; el inventario se descuenta solo al guardar la entrega.
-- **Recepción con factura ya registrada**: si la compra ya tiene factura de una recepción parcial previa, se precarga (editable) y se inicia en el paso de productos.
+- **Recepción con factura ya registrada**: si la compra ya tiene factura de una recepción parcial previa, se precarga (editable) y se inicia en el paso de productos. Para cubrir también la apertura por enlace directo, `GET /purchases/:id` expone la factura.
 - **Productos pesables**: mismo flujo de decisión que el POS (UNIT suma 1, BOTH pregunta Unidad/Peso, WEIGHT pide el peso), con peso digitado manualmente (2 decimales); sin báscula.
 - **Códigos de caja/paquete** (`PACKAGE`, `BOX`): se bloquean con aviso porque no existe factor de conversión.
 
@@ -31,7 +31,7 @@ Ninguna capacidad publicada en `openspec/specs/` cambia. El POS (`pos-barcode-hi
 ## Impact
 
 - **Web:** `web/modules/inventory/barcode/**` `web/modules/inventory/order-capture/**` y `web/modules/inventory/purchase-capture/**` (nuevos), `OrderForm.tsx`, `OrderDeliverForm.tsx`, `PurchaseForm.tsx`, `PurchaseReceiveForm.tsx`, `purchase-receive-lines.ts` y sus pruebas, `web/app/[tenant]/orders/**` y `web/app/[tenant]/purchases/page.tsx`.
-- **API:** sin cambios. Se reutilizan `GET /products?branchId`, `POST /pricing/preview-line`, `POST/PUT /orders`, `POST /purchases` y `POST /purchases/:id/receive`.
+- **API:** un solo cambio de lectura: `GET /purchases/:id` devuelve también `supplierInvoiceNumber` y `supplierInvoiceDate` (dos columnas más en el `SELECT` de `getPurchaseById`; campos que el listado ya exponía). Se reutilizan `GET /products?branchId`, `POST /pricing/preview-line`, `POST/PUT /orders`, `POST /purchases` y `POST /purchases/:id/receive`.
 - **Base de datos:** sin migraciones.
 - **POS (`/pos`), agente de periféricos y Electron:** sin cambios de código. Electron solo requiere QA de regresión.
 - **Gobernanza:** reasignación autorizada por el propietario de la titularidad vigente de `OrderForm.tsx`, `OrderDeliverForm.tsx`, `web/app/[tenant]/orders/page.tsx`, `orders-responsive-layout.spec.ts` y `PurchaseReceiveForm.tsx` a este change en `scripts/governance/openspec-scope.json`.

@@ -59,6 +59,10 @@ Cuando la compra ya tiene número de factura de una recepción anterior, el sist
 - **WHEN** se abre la recepción de una compra `PARTIAL` cuya factura se registró antes
 - **THEN** el formulario inicia en "Productos" con la factura precargada y un aviso de que se puede editar
 
+#### Scenario: Apertura por enlace directo
+- **WHEN** se abre por enlace directo la recepción de una compra cuya factura se registró antes
+- **THEN** el detalle de la compra incluye `supplierInvoiceNumber` y `supplierInvoiceDate` y el formulario inicia en "Productos" con la factura precargada
+
 #### Scenario: Compra sin factura registrada
 - **WHEN** se abre la recepción de una compra sin factura registrada
 - **THEN** el formulario inicia en "Información" y exige el número de factura
