@@ -592,6 +592,28 @@
         "api/src/modules/tenants/**",
         "docs/evidencia-hu-tenant-bootstrap-001.md"
       ]
+    },
+    {
+      "change_id": "modernizar-captura-barcode-orders-purchases",
+      "paths": [
+        "openspec/changes/modernizar-captura-barcode-orders-purchases/**",
+        "scripts/governance/openspec-scope.json",
+        "web/modules/inventory/barcode/**",
+        "web/modules/inventory/order-capture/**",
+        "web/modules/inventory/purchase-capture/**",
+        "web/modules/inventory/components/OrderForm.tsx",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/components/PurchaseForm.tsx",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "docs/evidencia-hu-scan-001.md",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts"
+      ]
     }
   ],
   "current_ownership": [
@@ -632,8 +654,6 @@
       "change_id": "soportar-productos-no-inventariables",
       "paths": [
         "api/src/modules/inventory/controllers/purchase.controller.ts",
-        "api/src/modules/inventory/services/purchase.service.ts",
-        "api/src/modules/inventory/services/purchase.service.spec.ts",
         "api/src/modules/inventory/entities/purchase.entity.ts",
         "api/src/modules/inventory/entities/purchase-item.entity.ts",
         "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
@@ -650,7 +670,6 @@
         "api/src/modules/inventory/services/product.service.ts",
         "api/src/modules/inventory/services/product.service.spec.ts",
         "web/domains/products/dtos.ts",
-        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
         "web/modules/inventory/components/product-form/types.ts",
         "web/modules/inventory/services/product.service.ts",
         "web/modules/inventory/services/purchase.service.ts"
@@ -696,10 +715,6 @@
         "api/src/modules/finance/payments/dto/create-document-payment.dto.ts",
         "api/src/modules/finance/payments/payments.service.spec.ts",
         "api/src/modules/finance/payments/payments.service.ts",
-        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
-        "web/app/[tenant]/orders/page.tsx",
-        "web/modules/inventory/components/OrderDeliverForm.tsx",
-        "web/modules/inventory/components/OrderForm.tsx",
         "web/modules/inventory/components/OrderInvoiceForm.tsx",
         "web/modules/finance/components/DocumentPaymentForm.financial-institutions.spec.ts",
         "web/modules/finance/components/DocumentPaymentForm.tsx",
@@ -787,13 +802,34 @@
       "change_id": "control-center-reportes",
       "paths": [
         "openspec/changes/control-center-reportes/**",
-        "scripts/governance/openspec-scope.json",
         "api/src/modules/control-center/**",
         "web/domains/control-center/**",
         "web/app/[tenant]/control-center/**",
         "docs/evidencia-control-center-reportes.md"
       ],
       "reason": "Reportes del Control Center: estado de cuenta, facturado frente a recaudado y renovaciones por vencer."
+    },
+    {
+      "change_id": "modernizar-captura-barcode-orders-purchases",
+      "paths": [
+        "scripts/governance/openspec-scope.json",
+        "web/modules/inventory/barcode/**",
+        "web/modules/inventory/order-capture/**",
+        "web/modules/inventory/purchase-capture/**",
+        "web/modules/inventory/components/OrderForm.tsx",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/components/PurchaseForm.tsx",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "docs/evidencia-hu-scan-001.md",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts"
+      ],
+      "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) purchase.service.ts and its spec (from soportar-productos-no-inventariables, only to expose the supplier invoice in getPurchaseById) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS or database path is claimed."
     }
   ]
 }

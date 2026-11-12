@@ -856,6 +856,8 @@ const PurchasesPage = () => {
       {!isInvalidAction && activeAction === "receive" && activePurchaseId ? (
         <PurchaseReceiveForm
           purchaseId={activePurchaseId}
+          initialSupplierInvoiceNumber={activePurchase?.supplierInvoiceNumber ?? null}
+          initialSupplierInvoiceDate={activePurchase?.supplierInvoiceDate ?? null}
           onCancel={handleBackToList}
           onSuccess={(response) => void handleReceiveSuccess(response)}
           onError={(error) =>
