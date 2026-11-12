@@ -18,12 +18,12 @@
 
 ## 3. Orders
 
-- [ ] 3.1 Rediseño de `OrderForm.tsx`: cabecera, barra de escaneo, búsqueda manual, ticket sin duplicados, controles de cantidad.
-- [ ] 3.2 Diálogos de unidad/peso y de peso manual.
-- [ ] 3.3 Preview de precio con `POST /pricing/preview-line` canal `ORDER`, debounce y estados (calculando, pendiente, sin permiso).
-- [ ] 3.4 Aviso de stock insuficiente.
-- [ ] 3.5 Confirmación y limpieza al cambiar sucursal; captura solo en nuevo o `DRAFT`.
-- [ ] 3.6 Layout responsive y actualización de `orders-responsive-layout.spec.ts`.
+- [x] 3.1 Rediseño de `OrderForm.tsx`: cabecera, barra de escaneo, búsqueda manual, ticket sin duplicados, controles de cantidad.
+- [x] 3.2 Diálogos de unidad/peso y de peso manual.
+- [x] 3.3 Preview de precio con `POST /pricing/preview-line` canal `ORDER`, debounce y estados (calculando, pendiente, sin permiso).
+- [x] 3.4 Aviso de stock insuficiente.
+- [x] 3.5 Confirmación y limpieza al cambiar sucursal; captura solo en nuevo o `DRAFT`.
+- [x] 3.6 Layout responsive y actualización de `orders-responsive-layout.spec.ts`.
 
 ## 4. Purchases (captura)
 

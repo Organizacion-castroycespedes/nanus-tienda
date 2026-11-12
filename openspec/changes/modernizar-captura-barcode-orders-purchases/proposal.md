@@ -28,7 +28,7 @@ Ninguna capacidad publicada en `openspec/specs/` cambia. El POS (`pos-barcode-hi
 
 ## Impact
 
-- **Web:** `web/modules/inventory/barcode/**` (nuevo), `OrderForm.tsx`, `PurchaseForm.tsx`, `PurchaseReceiveForm.tsx`, `purchase-receive-lines.ts` y sus pruebas, `web/app/[tenant]/orders/**` y `web/app/[tenant]/purchases/page.tsx`.
+- **Web:** `web/modules/inventory/barcode/**` y `web/modules/inventory/order-capture/**` (nuevos), `OrderForm.tsx`, `PurchaseForm.tsx`, `PurchaseReceiveForm.tsx`, `purchase-receive-lines.ts` y sus pruebas, `web/app/[tenant]/orders/**` y `web/app/[tenant]/purchases/page.tsx`.
 - **API:** sin cambios. Se reutilizan `GET /products?branchId`, `POST /pricing/preview-line`, `POST/PUT /orders`, `POST /purchases` y `POST /purchases/:id/receive`.
 - **Base de datos:** sin migraciones.
 - **POS (`/pos`), agente de periféricos y Electron:** sin cambios de código. Electron solo requiere QA de regresión.

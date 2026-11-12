@@ -599,6 +599,7 @@
         "openspec/changes/modernizar-captura-barcode-orders-purchases/**",
         "scripts/governance/openspec-scope.json",
         "web/modules/inventory/barcode/**",
+        "web/modules/inventory/order-capture/**",
         "web/modules/inventory/components/OrderForm.tsx",
         "web/modules/inventory/components/PurchaseForm.tsx",
         "web/modules/inventory/components/PurchaseReceiveForm.tsx",
@@ -812,6 +813,7 @@
       "paths": [
         "scripts/governance/openspec-scope.json",
         "web/modules/inventory/barcode/**",
+        "web/modules/inventory/order-capture/**",
         "web/modules/inventory/components/OrderForm.tsx",
         "web/modules/inventory/components/PurchaseForm.tsx",
         "web/modules/inventory/components/PurchaseReceiveForm.tsx",
