@@ -106,6 +106,7 @@ const buildService = (
   const purchases = [{ tenantId, purchaseId }];
   const purchaseItems = [{ tenantId, purchaseItemId }];
 
+  const traceabilityCalls: Array<{ tenantId: string; lotId: string }> = [];
   const repository = {
     findMany: async (
       requestedTenantId: string,
@@ -242,6 +243,18 @@ const buildService = (
           item.tenantId === requestedTenantId &&
           item.purchaseItemId === requestedPurchaseItemId
       ),
+    findTraceability: async (
+      requestedTenantId: string,
+      lot: { id: string }
+    ) => {
+      traceabilityCalls.push({ tenantId: requestedTenantId, lotId: lot.id });
+      return {
+        locations: [],
+        purchases: [],
+        movements: [],
+        movementsTruncated: false,
+      };
+    },
   };
 
   const financeAccessRepository = {
@@ -250,6 +263,7 @@ const buildService = (
 
   return {
     lots,
+    traceabilityCalls,
     service: new InventoryLotService(
       repository as any,
       financeAccessRepository as any
@@ -549,5 +563,46 @@ describe("InventoryLotService", () => {
       () => context.service.findById(tenantId, current.id, adminActor),
       /inventory lot not found/
     );
+  });
+  it("returns read-only traceability for an accessible lot", async () => {
+    const current = buildLot();
+    const context = buildService([current]);
+
+    const traceability = await context.service.getTraceability(
+      tenantId,
+      current.id,
+      adminActor
+    );
+
+    assert.equal(traceability.lotId, current.id);
+    assert.deepEqual(traceability.purchases, []);
+    assert.deepEqual(context.traceabilityCalls, [
+      { tenantId, lotId: current.id },
+    ]);
+  });
+
+  it("does not return traceability for a lot from another tenant", async () => {
+    const current = buildLot({
+      tenantId: otherTenantId,
+      branchId: otherTenantBranchId,
+      productId: otherTenantProductId,
+    });
+    const context = buildService([current]);
+
+    await assert.rejects(
+      () => context.service.getTraceability(tenantId, current.id, adminActor),
+      /inventory lot not found/
+    );
+    assert.equal(context.traceabilityCalls.length, 0);
+  });
+
+  it("does not return traceability for a branch outside the actor scope", async () => {
+    const current = buildLot({ branchId: otherBranchId });
+    const context = buildService([current], { accessibleBranchIds: [branchId] });
+
+    await assert.rejects(() =>
+      context.service.getTraceability(tenantId, current.id, adminActor)
+    );
+    assert.equal(context.traceabilityCalls.length, 0);
   });
 });

@@ -627,6 +627,33 @@
         "web/modules/inventory/components/OrderInvoiceForm.tsx",
         "docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md"
       ]
+    },
+    {
+      "change_id": "modernizar-inventario-lotes-ubicaciones",
+      "paths": [
+        "openspec/changes/modernizar-inventario-lotes-ubicaciones/**",
+        "scripts/governance/openspec-scope.json",
+        "web/app/[tenant]/inventory/lots/page.tsx",
+        "web/app/[tenant]/inventory/locations/page.tsx",
+        "web/modules/inventory/lots/**",
+        "web/components/design-system/SearchableSelect.tsx",
+        "web/components/design-system/SearchableSelect.spec.ts",
+        "web/components/design-system/ReportSummary.tsx",
+        "web/components/design-system/ReportSummary.spec.ts",
+        "web/modules/inventory/components/InventoryLotDetailModal.tsx",
+        "web/modules/inventory/services/inventory-lot.service.ts",
+        "web/modules/inventory/services/inventory-location.service.ts",
+        "api/src/modules/inventory/repositories/inventory-lot.repository.ts",
+        "api/src/modules/inventory/repositories/inventory-lot.repository.spec.ts",
+        "api/src/modules/inventory/repositories/inventory-lot-balance.repository.ts",
+        "api/src/modules/inventory/repositories/inventory-lot-balance.repository.spec.ts",
+        "api/src/modules/inventory/entities/inventory-lot.entity.ts",
+        "api/src/modules/inventory/entities/inventory-lot-balance.entity.ts",
+        "api/src/modules/inventory/services/inventory-lot.service.ts",
+        "api/src/modules/inventory/services/inventory-lot.service.spec.ts",
+        "api/src/modules/inventory/controllers/inventory-lot.controller.ts",
+        "docs/evidencia-modernizar-inventario-lotes-ubicaciones.md"
+      ]
     }
   ],
   "current_ownership": [
@@ -842,7 +869,6 @@
     {
       "change_id": "mejorar-filtros-alcance-cobro-orders-purchases",
       "paths": [
-        "scripts/governance/openspec-scope.json",
         "web/modules/inventory/list-filters/**",
         "web/app/[tenant]/orders/page.tsx",
         "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
@@ -851,6 +877,33 @@
         "docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md"
       ],
       "reason": "Owner-authorized (2026-11-12) current ownership for collapsible list filters, cash-scope filter and modern payment modal when invoicing orders. Reassigns current ownership of orders/page.tsx, orders-responsive-layout.spec.ts, purchases/page.tsx and the scope manifest (from modernizar-captura-barcode-orders-purchases) and OrderInvoiceForm.tsx (from homologar-pagos-compras-pedidos-pos); historical associations remain intact and no API, database or POS path is claimed."
+    },
+    {
+      "change_id": "modernizar-inventario-lotes-ubicaciones",
+      "paths": [
+        "scripts/governance/openspec-scope.json",
+        "web/app/[tenant]/inventory/lots/page.tsx",
+        "web/app/[tenant]/inventory/locations/page.tsx",
+        "web/modules/inventory/lots/**",
+        "web/components/design-system/SearchableSelect.tsx",
+        "web/components/design-system/SearchableSelect.spec.ts",
+        "web/components/design-system/ReportSummary.tsx",
+        "web/components/design-system/ReportSummary.spec.ts",
+        "web/modules/inventory/components/InventoryLotDetailModal.tsx",
+        "web/modules/inventory/services/inventory-lot.service.ts",
+        "web/modules/inventory/services/inventory-location.service.ts",
+        "api/src/modules/inventory/repositories/inventory-lot.repository.ts",
+        "api/src/modules/inventory/repositories/inventory-lot.repository.spec.ts",
+        "api/src/modules/inventory/repositories/inventory-lot-balance.repository.ts",
+        "api/src/modules/inventory/repositories/inventory-lot-balance.repository.spec.ts",
+        "api/src/modules/inventory/entities/inventory-lot.entity.ts",
+        "api/src/modules/inventory/entities/inventory-lot-balance.entity.ts",
+        "api/src/modules/inventory/services/inventory-lot.service.ts",
+        "api/src/modules/inventory/services/inventory-lot.service.spec.ts",
+        "api/src/modules/inventory/controllers/inventory-lot.controller.ts",
+        "docs/evidencia-modernizar-inventario-lotes-ubicaciones.md"
+      ],
+      "reason": "Owner-authorized (2026-11-13) current ownership for the inventory lots and locations modernization: Phase 1A frontend (lots/locations pages, lot detail modal, lot/location web services and pure helpers; new reusable design-system SearchableSelect used by the lots Producto filter; additive, backward-compatible ReportSummary options (6 columns, per-segment detail/title) for the lots indicators, previously unowned) and Phase 1B additive read-only contract (productName/productSku in lot and lot-balance list queries). Reassigns current ownership of the scope manifest from mejorar-filtros-alcance-cobro-orders-purchases; web/modules/inventory/list-filters/** stays with its owner and is consumed read-only. No database, migration, permission, POS, sales or purchase path is claimed."
     }
   ]
 }
