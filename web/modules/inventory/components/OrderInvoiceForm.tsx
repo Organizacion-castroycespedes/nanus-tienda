@@ -219,7 +219,7 @@ export const OrderInvoiceForm = ({
       await confirm({
         title: "Crear venta",
         description:
-          "Se crearÃ¡ la venta usando los productos entregados pendientes por facturar y se heredaran los abonos previos de la orden.",
+          "Se creará la venta usando los productos entregados pendientes por facturar y se heredarán los abonos previos de la orden.",
         confirmText: "Crear venta",
         cancelText: "Volver",
         variant: "warning",
