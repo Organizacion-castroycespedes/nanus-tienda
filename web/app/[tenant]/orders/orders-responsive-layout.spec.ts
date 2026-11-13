@@ -7,6 +7,9 @@ const readWebSource = (path: string) =>
 
 const ordersPage = readWebSource("app/[tenant]/orders/page.tsx");
 const orderForm = readWebSource("modules/inventory/components/OrderForm.tsx");
+const orderTicket = readWebSource(
+  "modules/inventory/order-capture/OrderCaptureTicket.tsx",
+);
 const deliveryForm = readWebSource(
   "modules/inventory/components/OrderDeliverForm.tsx",
 );
@@ -37,13 +40,34 @@ describe("orders responsive layout contract", () => {
     expect(ordersPage).toContain('label="Filas por pagina"');
   });
 
-  it("keeps long selected product names readable before the five-column layout", () => {
-    expect(orderForm).toContain("sm:grid-cols-2 xl:grid-cols-[minmax(16rem,2fr)");
-    expect(orderForm).not.toContain("md:grid-cols-[2fr_1fr_1fr_1fr_auto]");
-    expect(orderForm).toContain(
-      'className="mt-1 break-words text-xs leading-5 text-slate-500 dark:text-slate-400"',
-    );
-    expect(orderForm).toContain("{selectedProduct.name}");
+  it("keeps filters in a collapsible panel and shows the cash scope only inside it", () => {
+    expect(ordersPage).toContain("<CollapsibleFilterPanel");
+    expect(ordersPage).toContain('storageKey="orders"');
+    expect(ordersPage).toContain("activeCount={activeFilterCount}");
+    expect(ordersPage).toContain('label="Alcance"');
+    expect(ordersPage).not.toContain("Alcance: {cashScope");
+  });
+
+  it("captures order products with a POS-style scan bar, ticket and sticky summary", () => {
+    expect(orderForm).toContain('<InventoryScanBar');
+    expect(orderForm).toContain('id="order-scan"');
+    expect(orderForm).toContain("xl:grid-cols-[minmax(0,1fr)_22rem]");
+    expect(orderForm).toContain('aria-label="Resumen del pedido"');
+    expect(orderForm).toContain("sticky bottom-0");
+    expect(orderForm).not.toContain("Agregar item");
+    expect(orderTicket).toContain('aria-label="Productos del pedido"');
+    expect(orderTicket).toContain("md:grid-cols-[minmax(14rem,2fr)_11rem_9rem_9rem_3rem]");
+    expect(orderTicket).toContain("break-words text-sm font-medium leading-5");
+    expect(orderTicket).toContain("{row.name}");
+  });
+
+  it("charges the invoice balance only when pending and with the modern payment modal", () => {
+    expect(invoiceForm).toContain("{remainingToCover > 0 ? (");
+    expect(invoiceForm).toContain('aria-label="Pagos nuevos"');
+    expect(invoiceForm).toContain("<DocumentPaymentForm");
+    expect(invoiceForm).toContain("balanceDue={remainingToCover}");
+    expect(invoiceForm).toContain("payments: [],");
+    expect(invoiceForm).not.toContain("Agregar pago");
   });
 
   it("gives delivery and invoice product tables stable readable columns", () => {

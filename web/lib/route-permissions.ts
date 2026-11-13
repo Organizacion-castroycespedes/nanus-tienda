@@ -30,6 +30,10 @@ const ROUTE_PERMISSION_RULES: Array<{
     requirement: { module: MENU_KEYS.ELECTRONIC_BILLING_PROVIDERS, action: "read" },
   },
   {
+    pattern: /^\/[^/]+\/control-center(?:\/.*)?$/i,
+    requirement: { module: MENU_KEYS.CONTROL_CENTER, action: "read" },
+  },
+  {
     pattern: /^\/[^/]+\/admin\/peripherals\/?$/i,
     requirement: { module: "peripherals", action: "manage" },
   },
