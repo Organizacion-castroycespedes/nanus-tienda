@@ -614,6 +614,19 @@
         "api/src/modules/inventory/services/purchase.service.ts",
         "api/src/modules/inventory/services/purchase.service.spec.ts"
       ]
+    },
+    {
+      "change_id": "mejorar-filtros-alcance-cobro-orders-purchases",
+      "paths": [
+        "openspec/changes/mejorar-filtros-alcance-cobro-orders-purchases/**",
+        "scripts/governance/openspec-scope.json",
+        "web/modules/inventory/list-filters/**",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "web/modules/inventory/components/OrderInvoiceForm.tsx",
+        "docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md"
+      ]
     }
   ],
   "current_ownership": [
@@ -715,7 +728,6 @@
         "api/src/modules/finance/payments/dto/create-document-payment.dto.ts",
         "api/src/modules/finance/payments/payments.service.spec.ts",
         "api/src/modules/finance/payments/payments.service.ts",
-        "web/modules/inventory/components/OrderInvoiceForm.tsx",
         "web/modules/finance/components/DocumentPaymentForm.financial-institutions.spec.ts",
         "web/modules/finance/components/DocumentPaymentForm.tsx",
         "web/modules/finance/utils/active-financial-institutions.spec.ts",
@@ -812,7 +824,6 @@
     {
       "change_id": "modernizar-captura-barcode-orders-purchases",
       "paths": [
-        "scripts/governance/openspec-scope.json",
         "web/modules/inventory/barcode/**",
         "web/modules/inventory/order-capture/**",
         "web/modules/inventory/purchase-capture/**",
@@ -822,14 +833,24 @@
         "web/modules/inventory/components/PurchaseReceiveForm.tsx",
         "web/modules/inventory/components/purchase-receive-lines.ts",
         "web/modules/inventory/components/purchase-receive-lines.spec.ts",
-        "web/app/[tenant]/orders/page.tsx",
-        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
-        "web/app/[tenant]/purchases/page.tsx",
         "docs/evidencia-hu-scan-001.md",
         "api/src/modules/inventory/services/purchase.service.ts",
         "api/src/modules/inventory/services/purchase.service.spec.ts"
       ],
       "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) purchase.service.ts and its spec (from soportar-productos-no-inventariables, only to expose the supplier invoice in getPurchaseById) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS or database path is claimed."
+    },
+    {
+      "change_id": "mejorar-filtros-alcance-cobro-orders-purchases",
+      "paths": [
+        "scripts/governance/openspec-scope.json",
+        "web/modules/inventory/list-filters/**",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "web/modules/inventory/components/OrderInvoiceForm.tsx",
+        "docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md"
+      ],
+      "reason": "Owner-authorized (2026-11-12) current ownership for collapsible list filters, cash-scope filter and modern payment modal when invoicing orders. Reassigns current ownership of orders/page.tsx, orders-responsive-layout.spec.ts, purchases/page.tsx and the scope manifest (from modernizar-captura-barcode-orders-purchases) and OrderInvoiceForm.tsx (from homologar-pagos-compras-pedidos-pos); historical associations remain intact and no API, database or POS path is claimed."
     }
   ]
 }
