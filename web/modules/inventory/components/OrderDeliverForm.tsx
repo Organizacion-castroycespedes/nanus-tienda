@@ -477,10 +477,17 @@ export const OrderDeliverForm = ({
         return;
       }
 
-      const dialog = buildConfirmFromApiError(
+      const apiDialog = buildConfirmFromApiError(
         error,
         "No se pudo registrar la entrega."
       );
+      // corregir-lotes-entrega-pedidos: mensajes claros cuando el stock no alcanza.
+      const stockMessage = apiDialog.description?.includes("insufficient lot stock for delivery")
+        ? "No hay stock suficiente en lotes vigentes para esta entrega. Revisa lotes vencidos o bloqueados en Inventario > Lotes."
+        : apiDialog.description?.includes("insufficient stock for delivery")
+          ? "No hay stock suficiente en inventario para entregar esa cantidad. Ajusta la cantidad a entregar o registra la entrada de mercancía."
+          : null;
+      const dialog = stockMessage ? { ...apiDialog, description: stockMessage } : apiDialog;
       setErrors({
         submit: dialog.description ?? "No se pudo registrar la entrega.",
       });
