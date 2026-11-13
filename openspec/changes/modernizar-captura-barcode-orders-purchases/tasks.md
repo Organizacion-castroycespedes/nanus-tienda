@@ -5,7 +5,7 @@
 - [x] 1.3 Rama `feature/develop/hu-scan-001-barcode-orders-purchases` desde `develop` `1646b6ad`.
 - [x] 1.4 Registrar el change en `scripts/governance/openspec-scope.json` con la reasignación autorizada de titularidad vigente.
 - [x] 1.5 `openspec validate modernizar-captura-barcode-orders-purchases --type change --strict`: válido (Windows, propietario, 2026-11-11).
-- [ ] 1.6 Diagnóstico de gobernanza STRICT sobre el diff con el CLI de OpenSpec disponible.
+- [x] 1.6 Diagnóstico de gobernanza STRICT sobre el diff: `manus-governance-ci` del PR #392 (mergeado).
 
 ## 2. Núcleo de captura de Inventario (`web/modules/inventory/barcode/`)
 
@@ -44,11 +44,11 @@
 
 ## 6. Verificación
 
-- [ ] 6.1 En Windows: `cd web && npx tsx --test modules/inventory/barcode/*.spec.ts modules/inventory/components/purchase-receive-lines.spec.ts` y `npx vitest run modules/inventory/barcode/InventoryScanBar.test.tsx app/[tenant]/orders`.
-- [ ] 6.2 `cd web && npm run lint`, `npx tsc --noEmit` y `npm run build`.
-- [ ] 6.3 `git diff --name-only develop...HEAD` sin archivos de `web/modules/pos/**`, `scripts/database/**` ni `desktop/**`; en `api/**` solo `purchase.service.ts` y su spec.
-- [ ] 6.5 `cd api && npx tsx --test src/modules/inventory/services/purchase.service.spec.ts`.
-- [ ] 6.4 QA manual según la matriz y evidencia en `docs/evidencia-hu-scan-001.md`.
+- [x] 6.1 En Windows: `cd web && npx tsx --test modules/inventory/barcode/*.spec.ts modules/inventory/components/purchase-receive-lines.spec.ts` y `npx vitest run modules/inventory/barcode/InventoryScanBar.test.tsx app/[tenant]/orders`.
+- [x] 6.2 `cd web && npm run lint`, `npx tsc --noEmit` y `npm run build`.
+- [x] 6.3 `git diff --name-only develop...HEAD` sin archivos de `web/modules/pos/**`, `scripts/database/**` ni `desktop/**`; en `api/**` solo `purchase.service.ts` y su spec.
+- [x] 6.5 `cd api && npx tsx --test src/modules/inventory/services/purchase.service.spec.ts`.
+- [x] 6.4 QA manual según la matriz y evidencia en `docs/evidencia-hu-scan-001.md`: PASS (propietario, 2026-11-12).
 
 ## Matriz QA
 
