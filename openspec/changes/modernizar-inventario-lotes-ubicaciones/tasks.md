@@ -60,11 +60,11 @@
 - [x] 5.4 `cd web && npm run lint` y `npm run build`.
 - [x] 5.5 Backend acotado: `git diff --stat -- api` solo muestra los archivos de 1B; `git diff --stat -- scripts/database` vacío; regresión `cd api && npx tsx --test src/modules/inventory/**/*.spec.ts`.
 - [x] 5.6 `git diff --check`.
-- [ ] 5.7 QA responsive en 390×844, 768×1024, 1024×768, 1342×802 (Lotes, Ubicaciones, modal).
-- [ ] 5.8 QA accesibilidad: navegación solo teclado, nombres accesibles, `aria-expanded`, contraste de badges, lector de pantalla en tabla y chips.
-- [ ] 5.9 QA funcional por rol: `SUPER_ADMIN` (Todas / una sucursal), `ADMIN`, `USER`, rol sin `INVENTORY_PRODUCTS:READ`.
-- [ ] 5.10 QA de errores: conciliación caída, catálogo caído, ubicación inactiva con saldo, lote sin saldo.
-- [ ] 5.11 Verificar en red que Lotes solo emite `GET`.
+- [x] 5.7 QA responsive en 390×844, 768×1024, 1024×768, 1342×802 (Lotes, Ubicaciones, modal). PASS global (propietario, 2026-11-13).
+- [x] 5.8 QA accesibilidad: navegación solo teclado, nombres accesibles, `aria-expanded`, contraste de badges, lector de pantalla en tabla y chips. PASS global (propietario, 2026-11-13).
+- [x] 5.9 QA funcional por rol: `SUPER_ADMIN` (Todas / una sucursal), `ADMIN`, `USER`, rol sin `INVENTORY_PRODUCTS:READ`. PASS global (propietario, 2026-11-13).
+- [x] 5.10 QA de errores: conciliación caída, catálogo caído, ubicación inactiva con saldo, lote sin saldo. PASS global (propietario, 2026-11-13).
+- [x] 5.11 Verificar en red que Lotes solo emite `GET`. PASS global (propietario, 2026-11-13).
 - [x] 5.12 Evidencia en `docs/evidencia-modernizar-inventario-lotes-ubicaciones.md`.
 
 ## 7. Selector de productos con búsqueda (D12)
@@ -89,10 +89,10 @@
 - [x] 9.3 `GET /inventory/lots/:lotId/traceability` con `INVENTORY:READ`.
 - [x] 9.4 Web: `getInventoryLotTraceability`, `lots/lot-traceability.ts` (+spec) y modal con Ubicaciones, Compras y Movimientos; retirar UUID y enlaces "Ver compra"/"Ver ubicación".
 - [x] 9.5 Registrar servicio, controlador y spec del servicio de lotes en `scripts/governance/openspec-scope.json`.
-- [ ] 9.6 Windows: `cd api && npx tsx --test src/modules/inventory/**/*.spec.ts && npm run build`; `cd web && npm run lint && npm run build`.
-- [ ] 9.7 QA-17 manual: lote con varias compras y ubicaciones; usuario sin permiso de Compras; falla de trazabilidad.
+- [x] 9.6 Windows: `cd api && npx tsx --test src/modules/inventory/**/*.spec.ts && npm run build`; `cd web && npm run lint && npm run build`. Windows 2026-11-13: API 467/467 + build; web 54/54 + lint + build.
+- [x] 9.7 QA-17 manual: lote con varias compras y ubicaciones; usuario sin permiso de Compras; falla de trazabilidad. PASS global (propietario, 2026-11-13).
 
-## 6. Fase 2 — Transaccional (FUERA DE ALCANCE; requiere OpenSpec propio)
+## 6. Fase 2 — Transaccional (FUERA DE ALCANCE; requiere OpenSpec propio; no bloquea el cierre)
 
 - [ ] 6.1 Paginación de servidor de `/inventory/lots` y `/inventory/lot-balances`.
 - [ ] 6.2 Actualizaciones atómicas de saldos (`SET quantity = quantity + $n` o `FOR UPDATE`) y pruebas de concurrencia.
