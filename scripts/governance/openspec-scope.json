@@ -480,6 +480,153 @@
         "openspec/changes/homologar-pagos-compras-pedidos-pos/**"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "habilitar-plataforma-control-center",
+      "paths": [
+        "openspec/changes/habilitar-plataforma-control-center/**",
+        "scripts/governance/openspec-scope.json",
+        "api/.env.example",
+        "api/src/common/guards/platform-tenant.guard.spec.ts",
+        "api/src/common/guards/platform-tenant.guard.ts",
+        "api/src/modules/app.module.ts",
+        "api/src/modules/control-center/**",
+        "docs/runbook-control-center-db-role.md",
+        "scripts/database/migrations/V111__control_center_foundation.sql",
+        "scripts/database/rollbacks/V111__control_center_foundation_rollback.sql",
+        "scripts/database/tests/test_v111_control_center_foundation_migration.py",
+        "web/.env.example",
+        "web/app/[tenant]/control-center/**",
+        "web/domains/control-center/**",
+        "web/domains/menu/constants.ts",
+        "web/lib/route-permissions.ts",
+        "docs/evidencia-control-center-foundation.md"
+      ]
+    },
+    {
+      "change_id": "crear-control-center-cuentas-contratos",
+      "paths": [
+        "openspec/changes/crear-control-center-cuentas-contratos/**",
+        "api/src/modules/control-center/**",
+        "scripts/governance/openspec-scope.json",
+        "scripts/database/migrations/V112__control_center_accounts_contracts.sql",
+        "scripts/database/rollbacks/V112__control_center_accounts_contracts_rollback.sql",
+        "scripts/database/tests/test_v112_control_center_accounts_contracts_migration.py",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "docs/evidencia-control-center-cuentas-contratos.md"
+      ]
+    },
+    {
+      "change_id": "control-center-cargos-recaudos",
+      "paths": [
+        "openspec/changes/control-center-cargos-recaudos/**",
+        "api/src/modules/control-center/**",
+        "scripts/governance/openspec-scope.json",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "scripts/database/migrations/V113__control_center_charges_receipts.sql",
+        "scripts/database/rollbacks/V113__control_center_charges_receipts_rollback.sql",
+        "scripts/database/tests/test_v113_control_center_charges_receipts_migration.py",
+        "docs/evidencia-control-center-cargos-recaudos.md",
+        "api/.env.example"
+      ]
+    },
+    {
+      "change_id": "control-center-alertas-cobro",
+      "paths": [
+        "openspec/changes/control-center-alertas-cobro/**",
+        "scripts/governance/openspec-scope.json",
+        "api/.env.example",
+        "api/package.json",
+        "api/package-lock.json",
+        "api/src/modules/app.module.ts",
+        "api/src/modules/control-center/**",
+        "api/src/modules/billing-notices/**",
+        "scripts/database/migrations/V114__control_center_billing_alerts.sql",
+        "scripts/database/rollbacks/V114__control_center_billing_alerts_rollback.sql",
+        "scripts/database/tests/test_v114_control_center_billing_alerts_migration.py",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "web/domains/billing-notices/**",
+        "web/app/[tenant]/dashboard/page.tsx",
+        "docs/runbook-control-center-db-role.md",
+        "docs/evidencia-control-center-alertas-cobro.md"
+      ]
+    },
+    {
+      "change_id": "control-center-whatsapp-contrato-pdf",
+      "paths": [
+        "openspec/changes/control-center-whatsapp-contrato-pdf/**",
+        "scripts/governance/openspec-scope.json",
+        "api/.env.example",
+        "api/package.json",
+        "api/package-lock.json",
+        "api/src/modules/control-center/**",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "scripts/database/migrations/V115__control_center_whatsapp_channel.sql",
+        "scripts/database/rollbacks/V115__control_center_whatsapp_channel_rollback.sql",
+        "scripts/database/tests/test_v115_control_center_whatsapp_channel_migration.py",
+        "docs/runbook-control-center-db-role.md",
+        "docs/evidencia-control-center-whatsapp-contrato-pdf.md"
+      ]
+    },
+    {
+      "change_id": "control-center-reportes",
+      "paths": [
+        "openspec/changes/control-center-reportes/**",
+        "scripts/governance/openspec-scope.json",
+        "api/src/modules/control-center/**",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "docs/evidencia-control-center-reportes.md"
+      ]
+    },
+    {
+      "change_id": "hu-tenant-bootstrap-001",
+      "paths": [
+        "openspec/changes/hu-tenant-bootstrap-001/**",
+        "scripts/governance/openspec-scope.json",
+        "api/.env.example",
+        "api/src/modules/tenants/**",
+        "docs/evidencia-hu-tenant-bootstrap-001.md"
+      ]
+    },
+    {
+      "change_id": "modernizar-captura-barcode-orders-purchases",
+      "paths": [
+        "openspec/changes/modernizar-captura-barcode-orders-purchases/**",
+        "scripts/governance/openspec-scope.json",
+        "web/modules/inventory/barcode/**",
+        "web/modules/inventory/order-capture/**",
+        "web/modules/inventory/purchase-capture/**",
+        "web/modules/inventory/components/OrderForm.tsx",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/components/PurchaseForm.tsx",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "docs/evidencia-hu-scan-001.md",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts"
+      ]
+    },
+    {
+      "change_id": "mejorar-filtros-alcance-cobro-orders-purchases",
+      "paths": [
+        "openspec/changes/mejorar-filtros-alcance-cobro-orders-purchases/**",
+        "scripts/governance/openspec-scope.json",
+        "web/modules/inventory/list-filters/**",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "web/modules/inventory/components/OrderInvoiceForm.tsx",
+        "docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md"
+      ]
     }
   ],
   "current_ownership": [
@@ -520,8 +667,6 @@
       "change_id": "soportar-productos-no-inventariables",
       "paths": [
         "api/src/modules/inventory/controllers/purchase.controller.ts",
-        "api/src/modules/inventory/services/purchase.service.ts",
-        "api/src/modules/inventory/services/purchase.service.spec.ts",
         "api/src/modules/inventory/entities/purchase.entity.ts",
         "api/src/modules/inventory/entities/purchase-item.entity.ts",
         "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
@@ -538,7 +683,6 @@
         "api/src/modules/inventory/services/product.service.ts",
         "api/src/modules/inventory/services/product.service.spec.ts",
         "web/domains/products/dtos.ts",
-        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
         "web/modules/inventory/components/product-form/types.ts",
         "web/modules/inventory/services/product.service.ts",
         "web/modules/inventory/services/purchase.service.ts"
@@ -584,12 +728,6 @@
         "api/src/modules/finance/payments/dto/create-document-payment.dto.ts",
         "api/src/modules/finance/payments/payments.service.spec.ts",
         "api/src/modules/finance/payments/payments.service.ts",
-        "scripts/governance/openspec-scope.json",
-        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
-        "web/app/[tenant]/orders/page.tsx",
-        "web/modules/inventory/components/OrderDeliverForm.tsx",
-        "web/modules/inventory/components/OrderForm.tsx",
-        "web/modules/inventory/components/OrderInvoiceForm.tsx",
         "web/modules/finance/components/DocumentPaymentForm.financial-institutions.spec.ts",
         "web/modules/finance/components/DocumentPaymentForm.tsx",
         "web/modules/finance/utils/active-financial-institutions.spec.ts",
@@ -603,6 +741,116 @@
         "openspec/changes/homologar-pagos-compras-pedidos-pos/**"
       ],
       "reason": "Current branch lets purchase and order document payments select active tenant-owned or global institutions without method mappings and improves the authorized orders-only responsive UX, while preserving required-institution, tenant isolation, persistence, idempotency, business behavior and the unchanged POS source contract."
+    },
+    {
+      "change_id": "habilitar-plataforma-control-center",
+      "paths": [
+        "openspec/changes/habilitar-plataforma-control-center/**",
+        "api/src/common/guards/platform-tenant.guard.spec.ts",
+        "api/src/common/guards/platform-tenant.guard.ts",
+        "scripts/database/migrations/V111__control_center_foundation.sql",
+        "scripts/database/rollbacks/V111__control_center_foundation_rollback.sql",
+        "scripts/database/tests/test_v111_control_center_foundation_migration.py",
+        "web/.env.example",
+        "web/domains/menu/constants.ts",
+        "web/lib/route-permissions.ts",
+        "docs/evidencia-control-center-foundation.md"
+      ],
+      "reason": "Implementacion de la fase 0.5 del Control Center: esquema control_center, rol dedicado, PlatformTenantGuard, auditoria administrativa, readiness y ruta web."
+    },
+    {
+      "change_id": "crear-control-center-cuentas-contratos",
+      "paths": [
+        "openspec/changes/crear-control-center-cuentas-contratos/**",
+        "scripts/database/migrations/V112__control_center_accounts_contracts.sql",
+        "scripts/database/rollbacks/V112__control_center_accounts_contracts_rollback.sql",
+        "scripts/database/tests/test_v112_control_center_accounts_contracts_migration.py",
+        "docs/evidencia-control-center-cuentas-contratos.md"
+      ],
+      "reason": "Implementacion de la fase 1 del Control Center: directorio de tenants, cuentas comerciales, planes con precios versionados y contratos."
+    },
+    {
+      "change_id": "control-center-cargos-recaudos",
+      "paths": [
+        "openspec/changes/control-center-cargos-recaudos/**",
+        "scripts/database/migrations/V113__control_center_charges_receipts.sql",
+        "scripts/database/rollbacks/V113__control_center_charges_receipts_rollback.sql",
+        "scripts/database/tests/test_v113_control_center_charges_receipts_migration.py",
+        "docs/evidencia-control-center-cargos-recaudos.md"
+      ],
+      "reason": "Implementacion de la fase 2 del Control Center: cargos por periodo, prorrateo diario, recaudos manuales con soporte y cartera."
+    },
+    {
+      "change_id": "control-center-alertas-cobro",
+      "paths": [
+        "openspec/changes/control-center-alertas-cobro/**",
+        "api/src/modules/app.module.ts",
+        "api/src/modules/billing-notices/**",
+        "scripts/database/migrations/V114__control_center_billing_alerts.sql",
+        "scripts/database/rollbacks/V114__control_center_billing_alerts_rollback.sql",
+        "scripts/database/tests/test_v114_control_center_billing_alerts_migration.py",
+        "web/domains/billing-notices/**",
+        "web/app/[tenant]/dashboard/page.tsx",
+        "docs/evidencia-control-center-alertas-cobro.md"
+      ],
+      "reason": "Implementacion de la fase 3 del Control Center: alertas de cobro por dashboard del tenant cliente y correo SMTP."
+    },
+    {
+      "change_id": "control-center-whatsapp-contrato-pdf",
+      "paths": [
+        "openspec/changes/control-center-whatsapp-contrato-pdf/**",
+        "api/.env.example",
+        "api/package.json",
+        "api/package-lock.json",
+        "scripts/database/migrations/V115__control_center_whatsapp_channel.sql",
+        "scripts/database/rollbacks/V115__control_center_whatsapp_channel_rollback.sql",
+        "scripts/database/tests/test_v115_control_center_whatsapp_channel_migration.py",
+        "docs/runbook-control-center-db-role.md",
+        "docs/evidencia-control-center-whatsapp-contrato-pdf.md"
+      ],
+      "reason": "Cierre del Control Center: recordatorios por WhatsApp Cloud API con consentimiento y PDF del contrato para el cliente."
+    },
+    {
+      "change_id": "control-center-reportes",
+      "paths": [
+        "openspec/changes/control-center-reportes/**",
+        "api/src/modules/control-center/**",
+        "web/domains/control-center/**",
+        "web/app/[tenant]/control-center/**",
+        "docs/evidencia-control-center-reportes.md"
+      ],
+      "reason": "Reportes del Control Center: estado de cuenta, facturado frente a recaudado y renovaciones por vencer."
+    },
+    {
+      "change_id": "modernizar-captura-barcode-orders-purchases",
+      "paths": [
+        "web/modules/inventory/barcode/**",
+        "web/modules/inventory/order-capture/**",
+        "web/modules/inventory/purchase-capture/**",
+        "web/modules/inventory/components/OrderForm.tsx",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/components/PurchaseForm.tsx",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
+        "docs/evidencia-hu-scan-001.md",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts"
+      ],
+      "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) purchase.service.ts and its spec (from soportar-productos-no-inventariables, only to expose the supplier invoice in getPurchaseById) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS or database path is claimed."
+    },
+    {
+      "change_id": "mejorar-filtros-alcance-cobro-orders-purchases",
+      "paths": [
+        "scripts/governance/openspec-scope.json",
+        "web/modules/inventory/list-filters/**",
+        "web/app/[tenant]/orders/page.tsx",
+        "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "web/modules/inventory/components/OrderInvoiceForm.tsx",
+        "docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md"
+      ],
+      "reason": "Owner-authorized (2026-11-12) current ownership for collapsible list filters, cash-scope filter and modern payment modal when invoicing orders. Reassigns current ownership of orders/page.tsx, orders-responsive-layout.spec.ts, purchases/page.tsx and the scope manifest (from modernizar-captura-barcode-orders-purchases) and OrderInvoiceForm.tsx (from homologar-pagos-compras-pedidos-pos); historical associations remain intact and no API, database or POS path is claimed."
     }
   ]
 }

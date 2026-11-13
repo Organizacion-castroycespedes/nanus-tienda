@@ -1,7 +1,6 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
@@ -23,18 +22,44 @@ import {
 } from "../services/order.service";
 import { getProducts } from "../services/product.service";
 import type { OrderPeripheralContext } from "../../../domains/peripherals/order-integration";
-
-type OrderFormItem = {
-  productId: string;
-  quantity: string;
-  price: string;
-};
+import {
+  addInventoryCaptureQuantity,
+  removeInventoryCaptureLine,
+  resolveInventoryProductSaleType,
+  setInventoryCaptureQuantity,
+  type InventoryCaptureMode,
+} from "../barcode/barcode-lines";
+import { resolveInventoryBarcode } from "../barcode/barcode-resolver";
+import { searchInventoryProducts } from "../barcode/inventory-product-search";
+import {
+  createInventoryScanFeedback,
+  createInventoryScanSoundPlayer,
+  inventoryScanMessages,
+  type InventoryScanFeedback,
+  type InventoryScanTone,
+} from "../barcode/inventory-scan-feedback";
+import { InventoryProductSearchResults } from "../barcode/InventoryProductSearchResults";
+import { InventoryQuantityDialog } from "../barcode/InventoryQuantityDialog";
+import { InventorySaleModeDialog } from "../barcode/InventorySaleModeDialog";
+import { InventoryScanBar } from "../barcode/InventoryScanBar";
+import { useInventoryBarcodeCapture } from "../barcode/use-inventory-barcode-capture";
+import {
+  buildOrderItemsPayload,
+  buildOrderLinePricingKey,
+  createOrderCaptureLine,
+  getOrderLineAmounts,
+  getOrderLineStockWarning,
+  mapOrderItemsToCaptureLines,
+  type OrderCaptureLine,
+  type OrderLineAmounts,
+} from "../order-capture/order-capture-lines";
+import { OrderCaptureTicket, type OrderTicketRow } from "../order-capture/OrderCaptureTicket";
+import { useOrderLinePricing } from "../order-capture/use-order-line-pricing";
 
 type OrderFormValues = {
   customerId: string;
   branchId: string;
   type: "CASH" | "CREDIT";
-  items: OrderFormItem[];
 };
 
 type OrderFormErrors = {
@@ -55,16 +80,9 @@ type OrderFormProps = {
   ) => void;
 };
 
-const createEmptyItem = (): OrderFormItem => ({
-  productId: "",
-  quantity: "",
-  price: "",
-});
-
-const getProductDefaultPrice = (product: ProductResponse | undefined) => {
-  const price = Number(product?.price);
-  return Number.isFinite(price) && price > 0 ? String(price) : "";
-};
+type PendingDialog =
+  | { kind: "sale-mode"; product: ProductResponse }
+  | { kind: "weight"; product: ProductResponse };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -80,12 +98,6 @@ const mapOrderToValues = (
   customerId: order?.customerId ?? "",
   branchId: order?.branchId ?? fallbackBranchId,
   type: order?.type ?? "CASH",
-  items:
-    order?.items.map((item) => ({
-      productId: item.productId,
-      quantity: String(item.orderedQuantity),
-      price: String(item.price),
-    })) ?? [createEmptyItem()],
 });
 
 export const OrderForm = ({
@@ -105,6 +117,13 @@ export const OrderForm = ({
   const [values, setValues] = useState<OrderFormValues>(() =>
     mapOrderToValues(order, currentBranch ?? "")
   );
+  const [lines, setLinesState] = useState<OrderCaptureLine[]>([]);
+  // Fuente sincrónica para escaneos consecutivos antes del siguiente render.
+  const linesRef = useRef<OrderCaptureLine[]>([]);
+  const setLines = useCallback((next: OrderCaptureLine[]) => {
+    linesRef.current = next;
+    setLinesState(next);
+  }, []);
   const [errors, setErrors] = useState<OrderFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
@@ -116,8 +135,16 @@ export const OrderForm = ({
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [scanFeedback, setScanFeedback] = useState<InventoryScanFeedback | null>(null);
+  const [candidates, setCandidates] = useState<ProductResponse[] | null>(null);
+  const [pendingDialog, setPendingDialog] = useState<PendingDialog | null>(null);
+  const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
+  const linesLoadedForOrderRef = useRef<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const sounds = useMemo(() => createInventoryScanSoundPlayer(), []);
   const canSelectBranch =
     role === "SUPER_ADMIN" || role === "SUPER_USER" || role === "ADMIN" || role === "USER";
+  const captureLocked = mode === "edit" && Boolean(order) && order?.status !== "DRAFT";
 
   useEffect(() => {
     setValues(mapOrderToValues(order, currentBranch ?? ""));
@@ -173,6 +200,27 @@ export const OrderForm = ({
       mounted = false;
     };
   }, [canSelectBranch, currentTenant, currentBranch, values.branchId]);
+
+  // Al editar un pedido DRAFT, las líneas se arman una vez que el catálogo está listo.
+  useEffect(() => {
+    if (!order || catalogLoading || linesLoadedForOrderRef.current === order.id) {
+      return;
+    }
+    linesLoadedForOrderRef.current = order.id;
+    setLines(mapOrderItemsToCaptureLines(order.items, products));
+  }, [catalogLoading, order, products, setLines]);
+
+  // Si la sucursal cambia desde el selector global de alcance, las líneas ya no aplican.
+  const previousBranchRef = useRef(values.branchId);
+  useEffect(() => {
+    if (previousBranchRef.current !== values.branchId) {
+      previousBranchRef.current = values.branchId;
+      if (mode === "create" && linesRef.current.length > 0) {
+        setLines([]);
+        setCandidates(null);
+      }
+    }
+  }, [mode, setLines, values.branchId]);
 
   useEffect(() => {
     let mounted = true;
@@ -269,25 +317,243 @@ export const OrderForm = ({
     [resolvedTerminalId, selectedBranchTerminals]
   );
 
-  const itemSubtotals = useMemo(
+  const productsById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products]
+  );
+
+  const { pricing } = useOrderLinePricing({
+    lines,
+    branchId: values.branchId,
+    customerId: values.customerId,
+    enabled: !captureLocked,
+  });
+
+  const amountsByProductId = useMemo(() => {
+    const map = new Map<string, OrderLineAmounts>();
+    for (const line of lines) {
+      const key = buildOrderLinePricingKey({
+        branchId: values.branchId,
+        customerId: values.customerId,
+        productId: line.productId,
+        quantity: line.quantity,
+      });
+      map.set(line.productId, getOrderLineAmounts(line, pricing[line.productId], key));
+    }
+    return map;
+  }, [lines, pricing, values.branchId, values.customerId]);
+
+  const ticketRows: OrderTicketRow[] = useMemo(
     () =>
-      values.items.map((item) => {
-        const quantity = Number(item.quantity);
-        const price = Number(item.price);
-
-        if (!Number.isFinite(quantity) || !Number.isFinite(price)) {
-          return 0;
-        }
-
-        return quantity * price;
+      lines.map((line) => {
+        const product = productsById.get(line.productId);
+        const existingItem = order?.items.find((item) => item.productId === line.productId);
+        return {
+          line,
+          name: product?.name ?? existingItem?.productName ?? line.productId,
+          sku: product?.sku ?? null,
+          amounts: amountsByProductId.get(line.productId) as OrderLineAmounts,
+          pricing: pricing[line.productId],
+          stockWarning: getOrderLineStockWarning(line, product),
+        };
       }),
-    [values.items]
+    [amountsByProductId, lines, order?.items, pricing, productsById]
   );
 
-  const total = useMemo(
-    () => itemSubtotals.reduce((sum, subtotal) => sum + subtotal, 0),
-    [itemSubtotals]
+  const { items: payloadItems, total } = useMemo(
+    () => buildOrderItemsPayload(lines, amountsByProductId),
+    [amountsByProductId, lines]
   );
+  const isEstimatedTotal = ticketRows.some((row) => !row.amounts.fromBackend);
+  const stockWarningCount = ticketRows.filter((row) => row.stockWarning).length;
+  const totalUnits = lines.reduce((sum, line) => sum + (line.mode === "UNIT" ? line.quantity : 0), 0);
+
+  const notify = useCallback(
+    (tone: InventoryScanTone, message: string) => {
+      setScanFeedback(createInventoryScanFeedback(tone, message));
+      if (tone === "success") {
+        sounds.success();
+      } else if (tone === "error" || tone === "warning") {
+        sounds.error();
+      }
+    },
+    [sounds]
+  );
+
+  const addQuantity = useCallback(
+    (product: ProductResponse, captureMode: InventoryCaptureMode, quantity: number) => {
+      const result = addInventoryCaptureQuantity(
+        linesRef.current,
+        { productId: product.id, mode: captureMode, quantity },
+        createOrderCaptureLine(product)
+      );
+      if (result.ok) {
+        setLines(result.lines);
+        setCandidates(null);
+        setHighlightedProductId(product.id);
+        setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
+        notify("success", inventoryScanMessages.added(product.name, result.line.quantity));
+        return;
+      }
+      if (result.reason === "MODE_MISMATCH") {
+        notify("error", inventoryScanMessages.modeMismatch(product.name, result.existingMode));
+        return;
+      }
+      notify("error", inventoryScanMessages.invalidQuantity());
+    },
+    [notify, setLines]
+  );
+
+  const addProduct = useCallback(
+    (product: ProductResponse) => {
+      setCandidates(null);
+      const saleType = resolveInventoryProductSaleType(product);
+      const existing = linesRef.current.find((line) => line.productId === product.id);
+      if (saleType === "UNIT" || (saleType === "BOTH" && existing?.mode === "UNIT")) {
+        addQuantity(product, "UNIT", 1);
+        return;
+      }
+      if (saleType === "BOTH" && !existing) {
+        setPendingDialog({ kind: "sale-mode", product });
+        return;
+      }
+      setPendingDialog({ kind: "weight", product });
+    },
+    [addQuantity]
+  );
+
+  const handleScan = useCallback(
+    (code: string) => {
+      const resolution = resolveInventoryBarcode(code, products);
+      switch (resolution.kind) {
+        case "MATCH":
+          addProduct(resolution.product);
+          return;
+        case "AMBIGUOUS":
+          setCandidates(resolution.candidates);
+          notify("warning", inventoryScanMessages.ambiguous(resolution.code, resolution.candidates.length));
+          return;
+        case "PRESENTATION_UNSUPPORTED":
+          setCandidates(null);
+          notify("error", inventoryScanMessages.presentationUnsupported(resolution.code));
+          return;
+        default:
+          setCandidates(null);
+          notify("error", inventoryScanMessages.notFound(resolution.code));
+      }
+    },
+    [addProduct, notify, products]
+  );
+
+  const capture = useInventoryBarcodeCapture({
+    enabled: !captureLocked && !catalogLoading && !isSubmitting,
+    focusReleased: pendingDialog !== null,
+    onScan: handleScan,
+    onDuplicateIgnored: (code) => notify("info", inventoryScanMessages.duplicateIgnored(code)),
+    // Un código leído con el foco en cantidad u otro campo se procesa como escaneo.
+    fieldScanScope: formRef,
+    onFieldScan: (code) => {
+      handleScan(code);
+      return true;
+    },
+    onManualSubmit: (query) => {
+      const exact = resolveInventoryBarcode(query, products);
+      if (exact.kind !== "NOT_FOUND") {
+        handleScan(query);
+        capture.clear();
+        return;
+      }
+      const results = searchInventoryProducts(products, query);
+      if (results.length === 1) {
+        addProduct(results[0]);
+        capture.clear();
+        return;
+      }
+      if (results.length === 0) {
+        notify("warning", `Sin resultados para "${query}".`);
+      }
+    },
+  });
+
+  const searchResults = useMemo(
+    () => (candidates ? [] : searchInventoryProducts(products, capture.query)),
+    [candidates, capture.query, products]
+  );
+
+  const selectFromList = (product: ProductResponse) => {
+    capture.clear();
+    addProduct(product);
+    capture.focusScanInput();
+  };
+
+  const closeDialog = () => {
+    setPendingDialog(null);
+    capture.focusScanInput();
+  };
+
+  const updateLineQuantity = (line: OrderCaptureLine, quantity: number) => {
+    const result = setInventoryCaptureQuantity(linesRef.current, line.productId, quantity);
+    if (result.ok) {
+      setLines(result.lines);
+      setHighlightedProductId(line.productId);
+    }
+  };
+
+  const removeLine = async (line: OrderCaptureLine) => {
+    const name = productsById.get(line.productId)?.name ?? "este producto";
+    try {
+      await confirm({
+        title: "Eliminar producto",
+        description: `Se quitará ${name} del pedido.`,
+        confirmText: "Eliminar",
+        cancelText: "Volver",
+        variant: "danger",
+      });
+    } catch {
+      capture.focusScanInput();
+      return;
+    }
+    setLines(removeInventoryCaptureLine(linesRef.current, line.productId));
+    capture.focusScanInput();
+  };
+
+  const decrementLine = (line: OrderCaptureLine) => {
+    if (line.quantity - 1 <= 0) {
+      void removeLine(line);
+      return;
+    }
+    updateLineQuantity(line, line.quantity - 1);
+  };
+
+  const changeBranch = async (branchId: string) => {
+    if (branchId === values.branchId) {
+      return;
+    }
+    if (lines.length > 0) {
+      try {
+        await confirm({
+          title: "Cambiar sucursal",
+          description:
+            "El catálogo, el stock y los precios cambian con la sucursal. Se quitarán los productos capturados.",
+          confirmText: "Cambiar y limpiar",
+          cancelText: "Volver",
+          variant: "warning",
+        });
+      } catch {
+        return;
+      }
+      setLines([]);
+      setCandidates(null);
+    }
+    setValues((prev) => ({ ...prev, branchId }));
+    setSelectedTerminalId("");
+    setErrors((prev) => ({
+      ...prev,
+      branchId: undefined,
+      terminalId: undefined,
+      submit: undefined,
+    }));
+  };
 
   const validate = () => {
     const nextErrors: OrderFormErrors = {};
@@ -318,57 +584,18 @@ export const OrderForm = ({
         "La terminal seleccionada no pertenece a la sucursal del pedido.";
     }
 
-    const hasInvalidItems = values.items.some((item) => {
-      const quantity = Number(item.quantity);
-      const price = Number(item.price);
-      return (
-        !item.productId ||
-        !Number.isFinite(quantity) ||
-        quantity <= 0 ||
-        !Number.isFinite(price) ||
-        price < 0
-      );
-    });
-
-    if (values.items.length === 0 || hasInvalidItems) {
-      nextErrors.items =
-        "Todos los items deben tener producto, cantidad mayor a 0 y precio valido.";
+    if (lines.length === 0) {
+      nextErrors.items = "Agrega al menos un producto al pedido.";
     }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleItemChange = (
-    index: number,
-    field: keyof OrderFormItem,
-    value: string
-  ) => {
-    setValues((prev) => ({
-      ...prev,
-      items: prev.items.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              [field]: value,
-              ...(field === "productId"
-                ? {
-                    price: getProductDefaultPrice(
-                      products.find((product) => product.id === value)
-                    ),
-                  }
-                : {}),
-            }
-          : item
-      ),
-    }));
-    setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
-  };
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!validate()) {
+    if (captureLocked || !validate()) {
       return;
     }
 
@@ -381,12 +608,7 @@ export const OrderForm = ({
         branchId: values.branchId,
         type: values.type,
         total,
-        items: values.items.map((item, index) => ({
-          productId: item.productId,
-          quantity: Number(item.quantity),
-          price: Number(item.price),
-          subtotal: itemSubtotals[index] ?? 0,
-        })),
+        items: payloadItems,
       };
 
       const response =
@@ -409,18 +631,12 @@ export const OrderForm = ({
         cashier: authUser?.name ?? authUser?.email ?? undefined,
         customerName: response.customerName ?? selectedCustomer?.name ?? "Cliente",
         status: response.status,
-        items: values.items.map((item, index) => {
-          const product = products.find((candidate) => candidate.id === item.productId);
-          const quantity = Number(item.quantity);
-          const price = Number(item.price);
-
-          return {
-            name: product?.name ?? item.productId,
-            quantity,
-            unitPrice: price,
-            total: itemSubtotals[index] ?? 0,
-          };
-        }),
+        items: ticketRows.map((row) => ({
+          name: row.name,
+          quantity: row.line.quantity,
+          unitPrice: row.amounts.unitPrice,
+          total: row.amounts.lineTotal,
+        })),
         subtotal: total,
         taxes: 0,
         discounts: 0,
@@ -451,13 +667,13 @@ export const OrderForm = ({
   const submitLabel = mode === "edit" ? "Guardar cambios" : "Guardar pedido";
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Orders</p>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{title}</h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Registra el cliente, la sucursal, el tipo de pedido y los items.
+            Escanea o busca productos; el precio final lo calcula el sistema al guardar.
           </p>
         </div>
         <Button variant="ghost" onClick={onCancel} disabled={isSubmitting}>
@@ -465,8 +681,8 @@ export const OrderForm = ({
         </Button>
       </div>
 
-      <form className="grid gap-5" onSubmit={handleSubmit}>
-        <div className="grid gap-4 md:grid-cols-2">
+      <form ref={formRef} className="grid gap-5" onSubmit={handleSubmit}>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="space-y-1">
             <Select
               label="Cliente"
@@ -496,17 +712,8 @@ export const OrderForm = ({
                 label="Sucursal"
                 required
                 value={values.branchId}
-                disabled={catalogLoading || branches.length === 0}
-                onChange={(event) => {
-                  setValues((prev) => ({ ...prev, branchId: event.target.value }));
-                  setSelectedTerminalId("");
-                  setErrors((prev) => ({
-                    ...prev,
-                    branchId: undefined,
-                    terminalId: undefined,
-                    submit: undefined,
-                  }));
-                }}
+                disabled={catalogLoading || branches.length === 0 || mode === "edit"}
+                onChange={(event) => void changeBranch(event.target.value)}
               >
                 <option value="">
                   {catalogLoading ? "Cargando..." : "Selecciona una sucursal"}
@@ -571,9 +778,7 @@ export const OrderForm = ({
               ) : null}
             </div>
           ) : null}
-        </div>
 
-        <div className="grid gap-4 md:grid-cols-1">
           <Select
             label="Tipo"
             value={values.type}
@@ -589,147 +794,85 @@ export const OrderForm = ({
           </Select>
         </div>
 
-        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">Items</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300">
-                Agrega productos, cantidades y precios para calcular el total.
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+          <div className="grid min-w-0 gap-4">
+            {captureLocked ? (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Solo los pedidos en borrador permiten editar productos.
               </p>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() =>
-                setValues((prev) => ({
-                  ...prev,
-                  items: [...prev.items, createEmptyItem()],
-                }))
-              }
-            >
-              <Plus className="h-4 w-4" />
-              Agregar item
-            </Button>
-          </div>
-
-          <div className="grid gap-4">
-            {values.items.map((item, index) => {
-              const selectedProduct = products.find((product) => product.id === item.productId);
-              const selectedProductPrice = Number(selectedProduct?.price);
-              const productHasNoDefaultPrice =
-                Boolean(selectedProduct) &&
-                (!Number.isFinite(selectedProductPrice) || selectedProductPrice <= 0);
-
-              return (
-                <div
-                  key={`${index}-${item.productId}`}
-                  className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[minmax(16rem,2fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_minmax(9rem,1fr)_minmax(11rem,1fr)] dark:bg-slate-800 dark:border-slate-700"
-                >
-                  <div className="min-w-0 sm:col-span-2 xl:col-span-1">
-                    <Select
-                      label="Producto"
-                      value={item.productId}
-                      disabled={catalogLoading || products.length === 0}
-                      onChange={(event) =>
-                        handleItemChange(index, "productId", event.target.value)
-                      }
-                    >
-                      <option value="">
-                        {catalogLoading ? "Cargando..." : "Selecciona un producto"}
-                      </option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name}
-                        </option>
-                      ))}
-                    </Select>
-                    {selectedProduct ? (
-                      <p className="mt-1 break-words text-xs leading-5 text-slate-500 dark:text-slate-400">
-                        {selectedProduct.name}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <Input
-                    label="Cantidad pedida"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={item.quantity}
-                    onChange={(event) =>
-                      handleItemChange(index, "quantity", event.target.value)
+            ) : (
+              <InventoryScanBar
+                id="order-scan"
+                capture={capture}
+                feedback={scanFeedback}
+                disabled={catalogLoading || isSubmitting}
+              >
+                {candidates ? (
+                  <InventoryProductSearchResults
+                    title="Elige el producto del código ambiguo"
+                    products={candidates}
+                    onSelect={selectFromList}
+                  />
+                ) : capture.query.trim().length >= 2 ? (
+                  <InventoryProductSearchResults
+                    title="Resultados de búsqueda"
+                    products={searchResults}
+                    emptyMessage="Sin resultados. Revisa el nombre, SKU o código."
+                    onSelect={selectFromList}
+                    renderMeta={(product) =>
+                      product.isInventoryable === false || product.stock === undefined
+                        ? null
+                        : `Stock ${product.stock}`
                     }
                   />
+                ) : null}
+              </InventoryScanBar>
+            )}
 
-                  <Input
-                    label="Entregado"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={mode === "edit" && order ? String(order.items[index]?.deliveredQuantity ?? 0) : "0"}
-                    disabled
-                    readOnly
-                  />
-
-                  <div className="space-y-1">
-                    <Input
-                      label="Precio"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.price}
-                      onChange={(event) => handleItemChange(index, "price", event.target.value)}
-                    />
-                    {productHasNoDefaultPrice ? (
-                      <p className="text-xs text-amber-700">
-                        Este producto no tiene precio registrado. Ingresa el precio manualmente.
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="flex items-end gap-2 sm:col-span-2 xl:col-span-1">
-                    <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Subtotal
-                      </p>
-                      <p className="mt-1 font-semibold text-slate-900 dark:text-white">
-                        {formatCurrency(itemSubtotals[index] ?? 0)}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      onClick={() =>
-                        setValues((prev) => ({
-                          ...prev,
-                          items:
-                            prev.items.length > 1
-                              ? prev.items.filter((_, itemIndex) => itemIndex !== index)
-                              : prev.items,
-                        }))
-                      }
-                      disabled={values.items.length === 1}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+            <OrderCaptureTicket
+              rows={ticketRows}
+              highlightedProductId={highlightedProductId}
+              disabled={captureLocked || isSubmitting}
+              onIncrement={(line) => updateLineQuantity(line, line.quantity + 1)}
+              onDecrement={decrementLine}
+              onSetQuantity={updateLineQuantity}
+              onInvalidQuantity={() => notify("error", inventoryScanMessages.invalidQuantity())}
+              onRemove={(line) => void removeLine(line)}
+            />
+            {errors.items ? <p className="text-xs text-rose-600">{errors.items}</p> : null}
           </div>
 
-          {errors.items ? <p className="mt-3 text-xs text-rose-600">{errors.items}</p> : null}
-        </section>
-
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-emerald-700">Resumen</p>
-              <p className="text-sm text-emerald-900/80">
-                El total general se calcula con la suma de subtotales por item.
+          <aside
+            aria-label="Resumen del pedido"
+            className="sticky bottom-0 z-10 grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-lg xl:top-4 xl:bottom-auto xl:shadow-none dark:border-emerald-500/30 dark:bg-emerald-950"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                {isEstimatedTotal ? "Total estimado" : "Total"}
+              </p>
+              <p className="text-2xl font-semibold tabular-nums text-emerald-950 dark:text-white">
+                {formatCurrency(total)}
               </p>
             </div>
-            <p className="text-xl font-semibold text-emerald-950">{formatCurrency(total)}</p>
-          </div>
-        </section>
+            <p className="text-xs text-emerald-900/80 dark:text-emerald-100/80">
+              {lines.length} producto(s){totalUnits > 0 ? ` · ${totalUnits} unidad(es)` : ""}. El
+              sistema recalcula precios e impuestos al guardar.
+            </p>
+            {stockWarningCount > 0 ? (
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                {stockWarningCount} producto(s) superan el stock disponible.
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-3">
+              <Button type="submit" isLoading={isSubmitting} disabled={captureLocked} className="flex-1">
+                {submitLabel}
+              </Button>
+              <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+                Cancelar
+              </Button>
+            </div>
+          </aside>
+        </div>
 
         {catalogError ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -742,16 +885,38 @@ export const OrderForm = ({
             {errors.submit}
           </div>
         ) : null}
-
-        <div className="flex flex-wrap gap-3">
-          <Button type="submit" isLoading={isSubmitting}>
-            {submitLabel}
-          </Button>
-          <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-            Cancelar
-          </Button>
-        </div>
       </form>
+
+      {pendingDialog?.kind === "sale-mode" ? (
+        <InventorySaleModeDialog
+          productName={pendingDialog.product.name}
+          onCancel={closeDialog}
+          onSelect={(captureMode) => {
+            const product = pendingDialog.product;
+            if (captureMode === "UNIT") {
+              setPendingDialog(null);
+              addQuantity(product, "UNIT", 1);
+              capture.focusScanInput();
+              return;
+            }
+            setPendingDialog({ kind: "weight", product });
+          }}
+        />
+      ) : null}
+
+      {pendingDialog?.kind === "weight" ? (
+        <InventoryQuantityDialog
+          title="Peso del producto"
+          productName={pendingDialog.product.name}
+          onCancel={closeDialog}
+          onConfirm={(quantity) => {
+            const product = pendingDialog.product;
+            setPendingDialog(null);
+            addQuantity(product, "WEIGHT", quantity);
+            capture.focusScanInput();
+          }}
+        />
+      ) : null}
     </section>
   );
 };
