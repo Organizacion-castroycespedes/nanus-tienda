@@ -8,11 +8,11 @@
 
 ## 2. Filtros y alcance
 
-- [ ] 2.1 `list-filters.ts` (conteo de filtros activos y preferencia tolerante a fallos) con pruebas.
-- [ ] 2.2 `CollapsibleFilterPanel.tsx` accesible (`aria-expanded`, `aria-controls`, contenido montado y oculto).
-- [ ] 2.3 `/orders`: panel colapsable, Alcance dentro de los filtros con caja abierta, sin banner.
-- [ ] 2.4 `/purchases`: panel colapsable, Alcance dentro de los filtros con caja abierta, sin banner.
-- [ ] 2.5 Actualizar `orders-responsive-layout.spec.ts`.
+- [x] 2.1 `list-filters.ts` (conteo de filtros activos y preferencia tolerante a fallos) con pruebas.
+- [x] 2.2 `CollapsibleFilterPanel.tsx` accesible (`aria-expanded`, `aria-controls`, contenido montado y oculto).
+- [x] 2.3 `/orders`: panel colapsable, Alcance dentro de los filtros con caja abierta, sin banner.
+- [x] 2.4 `/purchases`: panel colapsable, Alcance dentro de los filtros con caja abierta, sin banner.
+- [x] 2.5 Actualizar `orders-responsive-layout.spec.ts`.
 
 ## 3. Facturar pedido
 

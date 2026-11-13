@@ -33,6 +33,8 @@ import {
 } from "../../../modules/inventory/components/SettlePartialPurchaseForm";
 import { PurchaseDetailPanel } from "../../../modules/inventory/components/PurchaseDetailPanel";
 import { PurchaseReceiveForm } from "../../../modules/inventory/components/PurchaseReceiveForm";
+import { CollapsibleFilterPanel } from "../../../modules/inventory/list-filters/CollapsibleFilterPanel";
+import { countActiveListFilters } from "../../../modules/inventory/list-filters/list-filters";
 import { usePurchases } from "../../../modules/inventory/hooks/use-purchases";
 import type { PurchaseResponse } from "../../../modules/inventory/services/purchase.service";
 import { isPurchaseCancelable } from "../../../modules/inventory/utils/purchase-cancellation";
@@ -347,6 +349,10 @@ const PurchasesPage = () => {
     [canViewAllTenants, cashScope, currentCashSession?.id, currentTenant]
   );
 
+  const activeFilterCount = countActiveListFilters(appliedFilters, defaultFilters, [
+    Boolean(currentCashSession) && cashScope === "current",
+  ]);
+
   const loadPurchases = useCallback(async (filters?: PurchaseFilters) => {
     const activeFilters = filters ?? appliedFilters;
     await loadPurchaseList(resolvePurchaseFilters(activeFilters));
@@ -563,6 +569,7 @@ const PurchasesPage = () => {
   const resetFilters = () => {
     setDraftFilters(defaultFilters);
     setAppliedFilters(defaultFilters);
+    setCashScope("all");
     setPage(0);
     pushListQuery(defaultFilters, 0, pageSize);
   };
@@ -1147,42 +1154,6 @@ const PurchasesPage = () => {
         </div>
       </section>
 
-      {!isActionMode ? (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-semibold">
-                Alcance: {cashScope === "all" ? "Todas" : "Caja actual"}
-              </p>
-              <p className="mt-1 text-emerald-800">
-                {cashScope === "all"
-                  ? "Mostrando todas las compras registradas."
-                  : currentCashSession
-                    ? `Mostrando operacion de caja actual: ${
-                        currentCashSession.cashRegisterNombre ??
-                        currentCashSession.cashRegisterCodigo ??
-                        "Caja"
-                      }.`
-                    : "Mostrando operacion de compras."}
-              </p>
-            </div>
-            {currentCashSession ? (
-              <Select
-                label="Alcance"
-                value={cashScope}
-                onChange={(event) =>
-                  setCashScope(event.target.value === "all" ? "all" : "current")
-                }
-                className="min-w-[180px]"
-              >
-                <option value="all">Todas</option>
-                <option value="current">Caja actual</option>
-              </Select>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
       {isActionMode && actionHeaderCopy ? (
         <PurchaseActionHeader
           title={actionHeaderCopy.title}
@@ -1207,7 +1178,11 @@ const PurchasesPage = () => {
       ) : null}
 
       {!isActionMode ? (
-        <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
+        <CollapsibleFilterPanel
+          id="purchases-filters"
+          storageKey="purchases"
+          activeCount={activeFilterCount}
+        >
           <div
             className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
           >
@@ -1286,6 +1261,24 @@ const PurchasesPage = () => {
                 </option>
               ))}
             </Select>
+            {currentCashSession ? (
+              <Select
+                label="Alcance"
+                value={cashScope}
+                onChange={(event) =>
+                  setCashScope(event.target.value === "all" ? "all" : "current")
+                }
+              >
+                <option value="all">Todas</option>
+                <option value="current">
+                  {`Caja actual (${
+                    currentCashSession.cashRegisterNombre ??
+                    currentCashSession.cashRegisterCodigo ??
+                    "Caja"
+                  })`}
+                </option>
+              </Select>
+            ) : null}
             <Select
               label="Filas por pagina"
               value={String(pageSize)}
@@ -1312,7 +1305,7 @@ const PurchasesPage = () => {
               Limpiar
             </Button>
           </div>
-        </section>
+        </CollapsibleFilterPanel>
       ) : null}
 
       {errorMessage ? (

@@ -28,7 +28,7 @@ Nuevo `web/modules/inventory/list-filters/`:
 Decisión del propietario: ocultos por defecto y recordar la última elección por usuario en ese navegador.
 
 ### D2. Alcance como filtro
-Se elimina el banner. Si hay caja abierta, el selector "Alcance" (Todas / Caja actual) se agrega dentro del panel de filtros y cuenta como filtro activo cuando vale "Caja actual". Sin caja abierta no se muestra y el alcance es "Todas" (comportamiento actual). Cambiar el alcance sigue recargando el listado como hoy.
+Se elimina el banner. Si hay caja abierta, el selector "Alcance" (Todas / Caja actual) se agrega dentro del panel de filtros y cuenta como filtro activo cuando vale "Caja actual". Sin caja abierta no se muestra y el alcance es "Todas" (comportamiento actual). Como hoy, el alcance se aplica en la siguiente carga ("Buscar" o "Actualizar"), igual que los demás filtros; "Limpiar" lo devuelve a "Todas".
 
 ### D3. Cobro al facturar con el modal moderno
 - "Pagos nuevos" solo se muestra si `remainingToCover` (total a facturar menos abonos heredados) es mayor a 0.

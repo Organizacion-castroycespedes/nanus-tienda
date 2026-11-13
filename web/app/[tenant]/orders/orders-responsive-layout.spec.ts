@@ -40,6 +40,14 @@ describe("orders responsive layout contract", () => {
     expect(ordersPage).toContain('label="Filas por pagina"');
   });
 
+  it("keeps filters in a collapsible panel and shows the cash scope only inside it", () => {
+    expect(ordersPage).toContain("<CollapsibleFilterPanel");
+    expect(ordersPage).toContain('storageKey="orders"');
+    expect(ordersPage).toContain("activeCount={activeFilterCount}");
+    expect(ordersPage).toContain('label="Alcance"');
+    expect(ordersPage).not.toContain("Alcance: {cashScope");
+  });
+
   it("captures order products with a POS-style scan bar, ticket and sticky summary", () => {
     expect(orderForm).toContain('<InventoryScanBar');
     expect(orderForm).toContain('id="order-scan"');

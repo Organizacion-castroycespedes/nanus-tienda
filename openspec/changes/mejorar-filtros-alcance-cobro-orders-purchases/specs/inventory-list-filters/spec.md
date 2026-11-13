@@ -42,5 +42,9 @@ El alcance por caja (Todas / Caja actual) SHALL mostrarse únicamente cuando el 
 - **THEN** ve el filtro "Alcance" con las opciones Todas y Caja actual
 
 #### Scenario: Caja actual seleccionada
-- **WHEN** el usuario elige "Caja actual"
-- **THEN** el listado se recarga con la operación de la caja actual y el alcance cuenta como filtro activo
+- **WHEN** el usuario elige "Caja actual" y presiona "Buscar"
+- **THEN** el listado muestra la operación de la caja actual y el alcance cuenta como filtro activo
+
+#### Scenario: Limpiar filtros
+- **WHEN** el usuario presiona "Limpiar" con el alcance en "Caja actual"
+- **THEN** el alcance vuelve a "Todas" junto con los demás filtros
