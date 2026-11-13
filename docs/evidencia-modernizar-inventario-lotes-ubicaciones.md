@@ -1,6 +1,6 @@
 # Evidencia — modernizar-inventario-lotes-ubicaciones
 
-Estado: implementación de Fase 1B y Fase 1A en la rama `feature/develop/modernizar-inventario-lotes-ubicaciones` (base `develop` `c7b92144`), **sin commit**. QA manual pendiente.
+Estado: **cerrado** (2026-11-13). Mergeado a `develop` en el PR #397 (`59a9e2ea`), junto con `corregir-lotes-entrega-pedidos`. QA manual PASS del propietario.
 
 Change OpenSpec: `openspec/changes/modernizar-inventario-lotes-ubicaciones/` (válido en strict, OpenSpec 2.0.0, Windows, 2026-11-13).
 
@@ -29,22 +29,22 @@ Sin cambios en `scripts/database/**`, migraciones, guards, permisos, POS, ventas
 
 | ID | Caso | Esperado | Resultado |
 |---|---|---|---|
-| QA-01 | Abrir Lotes | Sin consultas automáticas; "Presiona Buscar…" | |
-| QA-02 | Buscar como `SUPER_ADMIN` con "Todas" | Nombre y SKU en todas las filas; columna Sucursal | |
-| QA-03 | Buscar como `USER` | Solo su sucursal; sin columna Sucursal | |
-| QA-04 | Buscar por SKU | La fila aparece | |
-| QA-05 | Filtros ocultos con Estado y Ubicación aplicados | "Filtros (2)" y dos chips; "Quitar" recarga | |
-| QA-06 | Lote vencido o bloqueado con saldo | Suma en "Disponible no vendible", alerta "No vendible" | |
-| QA-07 | Conciliación caída (simular) | Tabla visible, aviso con "Reintentar" | |
-| QA-08 | Modal | Proveedor por nombre, "Ver compra" abre la compra, trazabilidad plegada | |
-| QA-09 | Ubicaciones → "Ver lotes" | Lotes con sucursal y ubicación precargadas; consulta al presionar Buscar | |
-| QA-10 | Inactivar ubicación con saldo | Aviso con cantidad de saldos y unidades | |
-| QA-11 | Reactivar ubicación | Mensaje de éxito; error del backend si el código está en uso | |
-| QA-12 | Responsive 390×844, 768×1024, 1024×768, 1342×802 | Sin scroll horizontal global; Detalle fija | |
-| QA-13 | Teclado y lector de pantalla | Nombres accesibles, `aria-expanded`, chips con "Quitar filtro …" | |
-| QA-14 | Red en Lotes | Solo solicitudes `GET` | |
+| QA-01 | Abrir Lotes | Sin consultas automáticas; "Presiona Buscar…" || PASS global (propietario, 2026-11-13) |
+| QA-02 | Buscar como `SUPER_ADMIN` con "Todas" | Nombre y SKU en todas las filas; columna Sucursal || PASS global (propietario, 2026-11-13) |
+| QA-03 | Buscar como `USER` | Solo su sucursal; sin columna Sucursal || PASS global (propietario, 2026-11-13) |
+| QA-04 | Buscar por SKU | La fila aparece || PASS global (propietario, 2026-11-13) |
+| QA-05 | Filtros ocultos con Estado y Ubicación aplicados | "Filtros (2)" y dos chips; "Quitar" recarga || PASS global (propietario, 2026-11-13) |
+| QA-06 | Lote vencido o bloqueado con saldo | Suma en "Disponible no vendible", alerta "No vendible" || PASS global (propietario, 2026-11-13) |
+| QA-07 | Conciliación caída (simular) | Tabla visible, aviso con "Reintentar" || PASS global (propietario, 2026-11-13) |
+| QA-08 | Modal | Proveedor por nombre, "Ver compra" abre la compra, trazabilidad plegada || PASS global (propietario, 2026-11-13) |
+| QA-09 | Ubicaciones → "Ver lotes" | Lotes con sucursal y ubicación precargadas; consulta al presionar Buscar || PASS global (propietario, 2026-11-13) |
+| QA-10 | Inactivar ubicación con saldo | Aviso con cantidad de saldos y unidades || PASS global (propietario, 2026-11-13) |
+| QA-11 | Reactivar ubicación | Mensaje de éxito; error del backend si el código está en uso || PASS global (propietario, 2026-11-13) |
+| QA-12 | Responsive 390×844, 768×1024, 1024×768, 1342×802 | Sin scroll horizontal global; Detalle fija || PASS global (propietario, 2026-11-13) |
+| QA-13 | Teclado y lector de pantalla | Nombres accesibles, `aria-expanded`, chips con "Quitar filtro …" || PASS global (propietario, 2026-11-13) |
+| QA-14 | Red en Lotes | Solo solicitudes `GET` || PASS global (propietario, 2026-11-13) |
 | QA-15 | Filtro Producto: escribir nombre o SKU (con/sin tildes), flechas + Enter, Escape, clic fuera; en 390×844 | Filtra en cliente, selecciona sin consultar hasta "Buscar", foco vuelve al disparador, desplegable sin desbordar | PASS (propietario, 2026-11-13) |
-| QA-17 | Modal de lote: lote con varias compras y ubicaciones; usuario sin permiso de Compras; simular falla de trazabilidad | Compras, ubicaciones y movimientos en el modal, sin UUID ni enlaces; resumen de compra visible; "Reintentar" por sección | |
+| QA-17 | Modal de lote: lote con varias compras y ubicaciones; usuario sin permiso de Compras; simular falla de trazabilidad | Compras, ubicaciones y movimientos en el modal, sin UUID ni enlaces; resumen de compra visible; "Reintentar" por sección || PASS global (propietario, 2026-11-13) |
 
 ## Selector de productos con búsqueda (D12) — 2026-11-13, Windows
 
@@ -80,3 +80,10 @@ QA-16 (manual): **PASS** (propietario, 2026-11-13). Franja de Lotes en 390×844 
 - Pruebas en contenedor Linux: repositorios y servicio de lotes 28/28 (incluye 2 de trazabilidad en repositorio y 3 en servicio); web `modules/inventory/lots` + `list-filters` 43/43.
 - `tsc --noEmit` de `api` (VM): sin errores. `tsc` de los archivos web del change y ESLint: sin hallazgos.
 - Pendiente en Windows: pruebas completas y build de API y web; QA-17.
+
+## Cierre (2026-11-13)
+
+- Mergeado a `develop` en el PR #397 (merge `59a9e2ea`; commits `89e7b9d4` y `596bcc63`).
+- Validación final en Windows: OpenSpec strict válido; API 467/467 + build; web 54/54 + lint + build; gobernanza PASS.
+- QA manual: QA-15 y QA-16 PASS por caso; QA-01 a QA-14 y QA-17 con aprobación global del propietario (los casos no se registraron uno a uno). Ejercicio de cierre con CEC01002005: Productos 7 = lotes 0 + 0 + 2 + 5; conciliación 0/0.
+- Pendiente fuera de este cambio: Fase 2 (tareas 6.x) con OpenSpec propio.
