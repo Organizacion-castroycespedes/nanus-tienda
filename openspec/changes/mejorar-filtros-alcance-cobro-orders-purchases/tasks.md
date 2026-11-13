@@ -4,7 +4,7 @@
 - [x] 1.2 Decisiones del propietario (2026-11-12): abono previo con el modal moderno; filtros ocultos por defecto con resumen y preferencia recordada; Alcance dentro de los filtros solo con caja abierta.
 - [x] 1.3 Rama `feature/develop/mejorar-filtros-alcance-cobro-orders-purchases` desde `develop` `f6a91f71`.
 - [x] 1.4 Registrar el change en `scripts/governance/openspec-scope.json` con la reasignación autorizada de titularidad vigente.
-- [ ] 1.5 `openspec validate mejorar-filtros-alcance-cobro-orders-purchases --type change --strict` (desde la raíz del repositorio).
+- [x] 1.5 `openspec validate mejorar-filtros-alcance-cobro-orders-purchases --type change --strict` (desde la raíz del repositorio).
 
 ## 2. Filtros y alcance
 
@@ -22,9 +22,9 @@
 
 ## 4. Verificación
 
-- [ ] 4.1 En Windows: `cd web && npx tsx --test modules/inventory/list-filters/*.spec.ts` y `npx vitest run "app/[tenant]/orders/orders-responsive-layout.spec.ts"`.
-- [ ] 4.2 `cd web && npx tsc --noEmit` y `npm run build`.
-- [ ] 4.3 QA manual y evidencia en `docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md`.
+- [x] 4.1 En Windows: `cd web && npx tsx --test modules/inventory/list-filters/*.spec.ts` y `npx vitest run "app/[tenant]/orders/orders-responsive-layout.spec.ts"`.
+- [x] 4.2 `cd web && npx tsc --noEmit` y `npm run build`.
+- [x] 4.3 QA manual y evidencia en `docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md`.
 
 ## Matriz QA
 

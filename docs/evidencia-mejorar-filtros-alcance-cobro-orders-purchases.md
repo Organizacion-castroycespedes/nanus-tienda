@@ -1,6 +1,6 @@
 # Evidencia — Filtros colapsables, alcance por caja y cobro al facturar pedidos
 
-Estado: implementación LOCAL completa. **Verificación en Windows y QA manual pendientes.** QA/PRD no autorizados.
+Estado: implementación completa, verificada en Windows y **QA manual PASS** (propietario, 2026-11-12). Pendiente: PR y despliegue.
 
 Change OpenSpec: `openspec/changes/mejorar-filtros-alcance-cobro-orders-purchases/`.
 
@@ -13,30 +13,34 @@ Change OpenSpec: `openspec/changes/mejorar-filtros-alcance-cobro-orders-purchase
 
 Sin cambios en API, base de datos, POS, Electron ni agente de periféricos.
 
-## Pruebas automáticas (VM Linux)
+## Pruebas automáticas
 
 | Prueba | Resultado |
 |---|---|
-| `list-filters.spec.ts` (`node:test`) | 5/5 OK |
-| Aserciones de cadena de `orders-responsive-layout.spec.ts` (leídas sobre las fuentes) | OK; pendiente `npx vitest run` en Windows |
+| `openspec validate mejorar-filtros-alcance-cobro-orders-purchases --type change --strict` (Windows) | Válido |
+| `npx tsx --test modules/inventory/list-filters/*.spec.ts` (Windows) | 5/5 OK |
+| `npx vitest run orders-responsive-layout.spec.ts` (Windows) | 6/6 OK |
+| `npm run build` (Windows) | OK |
 | `tsc --noEmit` (web) | Sin errores nuevos; 26 preexistentes en specs ajenos |
 | ESLint sobre los archivos del change | Sin hallazgos |
 
-## QA manual (pendiente)
+## QA manual
+
+Resultado global: **PASS** (propietario, 2026-11-12).
 
 | ID | Módulo | Caso | Esperado | Resultado |
 |---|---|---|---|---|
-| QA-01 | Orders, Purchases | Primera visita | Filtros ocultos, botón "Mostrar filtros" | |
-| QA-02 | Orders, Purchases | Mostrar y recargar la página | Filtros siguen visibles | |
-| QA-03 | Orders, Purchases | Aplicar 2 filtros y ocultar | Encabezado "Filtros (2)" | |
-| QA-04 | Orders, Purchases | Sin caja abierta | Sin banner ni selector de alcance | |
-| QA-05 | Orders, Purchases | Con caja abierta, Caja actual + Buscar | Listado de la caja actual; alcance cuenta como filtro; Limpiar vuelve a Todas | |
-| QA-06 | Facturar | Pedido totalmente abonado | Sin "Pagos nuevos"; factura directa | |
-| QA-07 | Facturar | Saldo, Registrar pago total (banco o billetera) | Abono heredado, saldo 0, factura CASH OK | |
-| QA-08 | Facturar | Pago parcial del saldo | Saldo reducido; CASH bloqueado hasta cubrir | |
-| QA-09 | Facturar | CREDIT con saldo | Factura con saldo pendiente | |
-| QA-10 | Facturar | Cerrar el modal sin pagar | Sin pago registrado | |
-| QA-11 | Móvil (375 px) | Filtros y facturación | Sin desbordes | |
+| QA-01 | Orders, Purchases | Primera visita | Filtros ocultos, botón "Mostrar filtros" | PASS |
+| QA-02 | Orders, Purchases | Mostrar y recargar la página | Filtros siguen visibles | PASS |
+| QA-03 | Orders, Purchases | Aplicar 2 filtros y ocultar | Encabezado "Filtros (2)" | PASS |
+| QA-04 | Orders, Purchases | Sin caja abierta | Sin banner ni selector de alcance | PASS |
+| QA-05 | Orders, Purchases | Con caja abierta, Caja actual + Buscar | Listado de la caja actual; alcance cuenta como filtro; Limpiar vuelve a Todas | PASS |
+| QA-06 | Facturar | Pedido totalmente abonado | Sin "Pagos nuevos"; factura directa | PASS |
+| QA-07 | Facturar | Saldo, Registrar pago total (banco o billetera) | Abono heredado, saldo 0, factura CASH OK | PASS |
+| QA-08 | Facturar | Pago parcial del saldo | Saldo reducido; CASH bloqueado hasta cubrir | PASS |
+| QA-09 | Facturar | CREDIT con saldo | Factura con saldo pendiente | PASS |
+| QA-10 | Facturar | Cerrar el modal sin pagar | Sin pago registrado | PASS |
+| QA-11 | Móvil (375 px) | Filtros y facturación | Sin desbordes | PASS |
 
 ## Notas
 
