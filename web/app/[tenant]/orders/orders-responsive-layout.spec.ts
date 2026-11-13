@@ -40,6 +40,14 @@ describe("orders responsive layout contract", () => {
     expect(ordersPage).toContain('label="Filas por pagina"');
   });
 
+  it("keeps filters in a collapsible panel and shows the cash scope only inside it", () => {
+    expect(ordersPage).toContain("<CollapsibleFilterPanel");
+    expect(ordersPage).toContain('storageKey="orders"');
+    expect(ordersPage).toContain("activeCount={activeFilterCount}");
+    expect(ordersPage).toContain('label="Alcance"');
+    expect(ordersPage).not.toContain("Alcance: {cashScope");
+  });
+
   it("captures order products with a POS-style scan bar, ticket and sticky summary", () => {
     expect(orderForm).toContain('<InventoryScanBar');
     expect(orderForm).toContain('id="order-scan"');
@@ -51,6 +59,15 @@ describe("orders responsive layout contract", () => {
     expect(orderTicket).toContain("md:grid-cols-[minmax(14rem,2fr)_11rem_9rem_9rem_3rem]");
     expect(orderTicket).toContain("break-words text-sm font-medium leading-5");
     expect(orderTicket).toContain("{row.name}");
+  });
+
+  it("charges the invoice balance only when pending and with the modern payment modal", () => {
+    expect(invoiceForm).toContain("{remainingToCover > 0 ? (");
+    expect(invoiceForm).toContain('aria-label="Pagos nuevos"');
+    expect(invoiceForm).toContain("<DocumentPaymentForm");
+    expect(invoiceForm).toContain("balanceDue={remainingToCover}");
+    expect(invoiceForm).toContain("payments: [],");
+    expect(invoiceForm).not.toContain("Agregar pago");
   });
 
   it("gives delivery and invoice product tables stable readable columns", () => {
