@@ -16,9 +16,9 @@
 
 ## 3. Facturar pedido
 
-- [ ] 3.1 Ocultar "Pagos nuevos" sin saldo y retirar el formulario antiguo de pagos.
-- [ ] 3.2 Botón "Registrar pago" con `DocumentPaymentForm` (`balanceDue` = saldo de la facturación) y recarga del pedido.
-- [ ] 3.3 Validación CASH/CREDIT y envío de la factura sin pagos nuevos.
+- [x] 3.1 Ocultar "Pagos nuevos" sin saldo y retirar el formulario antiguo de pagos.
+- [x] 3.2 Botón "Registrar pago" con `DocumentPaymentForm` (`balanceDue` = saldo de la facturación) y recarga del pedido.
+- [x] 3.3 Validación CASH/CREDIT y envío de la factura sin pagos nuevos.
 
 ## 4. Verificación
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Wallet, X } from "lucide-react";
+import { Banknote, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
@@ -10,11 +10,9 @@ import { getCurrentPosSession } from "../../../domains/pos/api";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import { buildTenantPath, resolveTenantSlug } from "../../../domains/auth/tenant-path";
 import { useAppSelector } from "../../../store/hooks";
-import {
-  getCurrentCashSession,
-  listPaymentMethods,
-} from "../../finance/services/finance.service";
-import type { CashSession, PaymentMethod } from "../../finance/types";
+import { getCurrentCashSession } from "../../finance/services/finance.service";
+import type { CashSession } from "../../finance/types";
+import { DocumentPaymentForm } from "../../finance/components/DocumentPaymentForm";
 import {
   isConfirmCancelledError,
   useConfirm,
@@ -25,25 +23,11 @@ import {
   type OrderDetailResponse,
 } from "../services/order.service";
 import { buildConfirmFromApiError } from "../../../lib/api-messages";
-import {
-  createDefaultCashPayment,
-  findCashPaymentMethod,
-  parsePaymentAmount,
-  rebalanceCashPayment,
-} from "../../shared/payments/payment-allocation.helper";
 
 type OrderInvoiceFormProps = {
   orderId: string;
   onCancel: () => void;
   onSuccess: () => void;
-};
-
-type PaymentDraft = {
-  id: string;
-  paymentMethodId: string;
-  amount: string;
-  referenceNumber: string;
-  notes: string;
 };
 
 const formatCurrency = (value: number) =>
@@ -54,17 +38,6 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 const round = (value: number) => Number(value.toFixed(2));
-
-const buildDraftId = () =>
-  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
-const createEmptyDraft = (paymentMethodId = ""): PaymentDraft => ({
-  id: buildDraftId(),
-  paymentMethodId,
-  amount: "",
-  referenceNumber: "",
-  notes: "",
-});
 
 export const OrderInvoiceForm = ({
   orderId,
@@ -84,9 +57,9 @@ export const OrderInvoiceForm = ({
   } = usePosContext();
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
   const [type, setType] = useState<"CASH" | "CREDIT">("CASH");
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
-  const [payments, setPayments] = useState<PaymentDraft[]>([]);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -99,9 +72,8 @@ export const OrderInvoiceForm = ({
       setLoading(true);
       setLoadError(null);
       try {
-        const [result, methods, currentSession, currentPosSession] = await Promise.all([
+        const [result, currentSession, currentPosSession] = await Promise.all([
           getOrderById(orderId),
-          listPaymentMethods({ active: true }),
           getCurrentCashSession(),
           getCurrentPosSession().catch(() => null),
         ]);
@@ -109,7 +81,6 @@ export const OrderInvoiceForm = ({
           return;
         }
 
-        const activeMethods = methods.filter((method) => method.active);
         if (currentPosSession?.posSessionId) {
           setPosSession({
             posSessionId: currentPosSession.posSessionId,
@@ -118,12 +89,10 @@ export const OrderInvoiceForm = ({
           });
         }
         setOrder(result);
-        setPaymentMethods(activeMethods);
         setCashSession(currentSession);
-        setPayments([]);
       } catch {
         if (mounted) {
-          setLoadError("No se pudo cargar el detalle del pedido o los metodos de pago.");
+          setLoadError("No se pudo cargar el detalle del pedido.");
         }
       } finally {
         if (mounted) {
@@ -183,44 +152,21 @@ export const OrderInvoiceForm = ({
     [inheritedPayments]
   );
 
-  const paymentMethodById = useMemo(
-    () =>
-      paymentMethods.reduce<Record<string, PaymentMethod>>((acc, method) => {
-        acc[method.id] = method;
-        return acc;
-      }, {}),
-    [paymentMethods]
-  );
-
-  const cashPaymentMethod = useMemo(
-    () => findCashPaymentMethod(paymentMethods),
-    [paymentMethods]
-  );
-
-  const parsedPayments = useMemo(
-    () =>
-      payments.map((payment) => ({
-        ...payment,
-        numericAmount: parsePaymentAmount(payment.amount),
-        method: paymentMethodById[payment.paymentMethodId] ?? null,
-      })),
-    [paymentMethodById, payments]
-  );
-
-  const enteredTotal = useMemo(
-    () => round(parsedPayments.reduce((sum, payment) => sum + payment.numericAmount, 0)),
-    [parsedPayments]
-  );
-
   const remainingToCover = useMemo(
     () => round(Math.max(total - inheritedTotal, 0)),
     [inheritedTotal, total]
   );
 
-  const resultingBalance = useMemo(
-    () => round(Math.max(total - inheritedTotal - enteredTotal, 0)),
-    [enteredTotal, inheritedTotal, total]
-  );
+  /** Recarga el pedido tras registrar un abono: la factura lo hereda y el saldo baja. */
+  const reloadOrder = useCallback(async () => {
+    try {
+      setOrder(await getOrderById(orderId));
+    } catch {
+      setPaymentNotice(
+        "El pago se registró, pero no se pudo actualizar el detalle. Vuelve a abrir la facturación."
+      );
+    }
+  }, [orderId]);
   const cashSessionMatchesBranch = !cashSession || cashSession.branchId === order?.branchId;
   const hasPosSession = Boolean(posSessionId && posBranchId && posTerminalId);
   const posSessionMatchesBranch =
@@ -232,99 +178,6 @@ export const OrderInvoiceForm = ({
     }),
     "pos/select-context"
   );
-
-  const createInvoicePaymentDraft = useCallback(
-    (paymentMethodId: string, amount: string): PaymentDraft => ({
-      ...createEmptyDraft(paymentMethodId),
-      amount,
-    }),
-    []
-  );
-
-  useEffect(() => {
-    if (!order || paymentMethods.length === 0) {
-      return;
-    }
-
-    if (payments.length === 0) {
-      const result = createDefaultCashPayment(
-        remainingToCover,
-        paymentMethods,
-        createInvoicePaymentDraft
-      );
-      setPayments(result.payments);
-      setSubmitError(result.error);
-      return;
-    }
-
-    const result = rebalanceCashPayment(
-      remainingToCover,
-      payments,
-      cashPaymentMethod,
-      createInvoicePaymentDraft
-    );
-    const changed =
-      result.payments.length !== payments.length ||
-      result.payments.some((payment, index) => {
-        const current = payments[index];
-        return (
-          !current ||
-          payment.paymentMethodId !== current.paymentMethodId ||
-          payment.amount !== current.amount ||
-          payment.referenceNumber !== current.referenceNumber ||
-          payment.notes !== current.notes
-        );
-      });
-
-    if (changed) {
-      setPayments(result.payments);
-    }
-  }, [
-    cashPaymentMethod,
-    createInvoicePaymentDraft,
-    order,
-    paymentMethods,
-    payments,
-    remainingToCover,
-  ]);
-
-  const updatePayment = (id: string, field: keyof PaymentDraft, value: string) => {
-    setSubmitError(null);
-    setPayments((current) =>
-      rebalanceCashPayment(
-        remainingToCover,
-        current.map((payment) => (payment.id === id ? { ...payment, [field]: value } : payment)),
-        cashPaymentMethod,
-        createInvoicePaymentDraft
-      ).payments
-    );
-  };
-
-  const addPaymentRow = () => {
-    const firstNonCash =
-      paymentMethods.find((method) => method.id !== cashPaymentMethod?.id) ??
-      paymentMethods[0] ??
-      null;
-    setPayments((current) =>
-      rebalanceCashPayment(
-        remainingToCover,
-        [...current, createEmptyDraft(firstNonCash?.id ?? "")],
-        cashPaymentMethod,
-        createInvoicePaymentDraft
-      ).payments
-    );
-  };
-
-  const removePaymentRow = (id: string) => {
-    setPayments((current) =>
-      rebalanceCashPayment(
-        remainingToCover,
-        current.filter((payment) => payment.id !== id),
-        cashPaymentMethod,
-        createInvoicePaymentDraft
-      ).payments
-    );
-  };
 
   const validate = () => {
     if (rows.length === 0) {
@@ -339,57 +192,12 @@ export const OrderInvoiceForm = ({
       return "La sesion POS activa pertenece a otra sucursal. Selecciona contexto para la sucursal del pedido.";
     }
 
-    if (
-      parsedPayments.some(
-        (payment) => payment.numericAmount > 0 && (!payment.paymentMethodId || !payment.method)
-      )
-    ) {
-      return "Selecciona un metodo de pago valido en cada linea con monto.";
-    }
-
-    if (parsedPayments.some((payment) => payment.numericAmount < 0)) {
-      return "Los montos de pago no pueden ser negativos.";
-    }
-
-    if (
-      parsedPayments.some(
-        (payment) =>
-          payment.numericAmount > 0 &&
-          payment.method?.requiresReference &&
-          payment.referenceNumber.trim() === ""
-      )
-    ) {
-      return "La referencia es obligatoria para los metodos que la requieren.";
-    }
-
     if (!cashSession?.id) {
       return "Debes tener una caja abierta para facturar el pedido.";
     }
 
-    if (
-      parsedPayments.some(
-        (payment) =>
-          payment.numericAmount > 0 &&
-          cashSession?.id &&
-          cashSession.branchId !== order?.branchId
-      )
-    ) {
-      return "La caja abierta actual pertenece a otra sucursal y no puede usarse para esta factura.";
-    }
-
-    if (enteredTotal > remainingToCover) {
-      return "Los pagos nuevos no pueden superar el saldo restante tras aplicar los abonos heredados.";
-    }
-
-    const duplicateMethods = parsedPayments
-      .filter((payment) => payment.numericAmount > 0 && payment.paymentMethodId)
-      .map((payment) => payment.paymentMethodId);
-    if (new Set(duplicateMethods).size !== duplicateMethods.length) {
-      return "No repitas el mismo metodo de pago en varias lineas.";
-    }
-
-    if (type === "CASH" && round(enteredTotal) !== round(remainingToCover)) {
-      return "Las ventas CASH deben quedar cubiertas totalmente entre abonos heredados y pagos nuevos.";
+    if (type === "CASH" && remainingToCover > 0) {
+      return "Registra el pago del saldo antes de facturar: las ventas CASH deben quedar cubiertas con abonos.";
     }
 
     return null;
@@ -417,17 +225,11 @@ export const OrderInvoiceForm = ({
         variant: "warning",
       });
 
+      // El saldo se cobra antes con el modal de abonos; la función de facturación
+      // hereda esos abonos, por lo que no se envían pagos nuevos.
       await invoiceOrder(orderId, {
         type,
-        payments: parsedPayments
-          .filter((payment) => payment.numericAmount > 0)
-          .map((payment) => ({
-            paymentMethodId: payment.paymentMethodId,
-            amount: payment.numericAmount,
-            cashSessionId: cashSession?.id ?? undefined,
-            referenceNumber: payment.referenceNumber.trim() || undefined,
-            notes: payment.notes.trim() || undefined,
-          })),
+        payments: [],
       });
       onSuccess();
     } catch (error) {
@@ -574,7 +376,7 @@ export const OrderInvoiceForm = ({
               <option value="CREDIT">CREDIT</option>
             </Select>
             <Input
-              label="Saldo por cubrir con pagos nuevos"
+              label="Saldo por cubrir"
               value={formatCurrency(remainingToCover)}
               disabled
               readOnly
@@ -624,11 +426,11 @@ export const OrderInvoiceForm = ({
                 ? `${cashSession.cashRegisterNombre ?? "Caja"} abierta con fondo ${formatCurrency(
                     cashSession.openingAmount
                   )}.`
-                : "No hay una caja abierta para este usuario. Los pagos nuevos en efectivo quedaran bloqueados."}
+                : "No hay una caja abierta para este usuario."}
               {cashSession && !cashSessionMatchesBranch ? (
                 <p className="mt-2 text-amber-700">
-                  La caja abierta actual pertenece a otra sucursal. Si agregas pagos nuevos en
-                  efectivo, la operacion sera bloqueada.
+                  La caja abierta actual pertenece a otra sucursal. Los pagos en efectivo de esta
+                  sucursal serán bloqueados.
                 </p>
               ) : null}
             </div>
@@ -679,93 +481,42 @@ export const OrderInvoiceForm = ({
             )}
           </section>
 
-          <section className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
+          {remainingToCover > 0 ? (
+            <section
+              aria-label="Pagos nuevos"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-500/30 dark:bg-blue-500/10"
+            >
+              <div className="min-w-0">
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white">Pagos nuevos</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Puedes registrar varios medios de pago adicionales al momento de facturar.
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  Saldo por cubrir: <span className="font-semibold">{formatCurrency(remainingToCover)}</span>.{" "}
+                  {type === "CASH"
+                    ? "Las ventas CASH deben quedar cubiertas antes de facturar."
+                    : "En CREDIT puedes facturar con saldo pendiente."}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  El pago se registra como abono del pedido y la factura lo hereda.
                 </p>
               </div>
-              <Button type="button" variant="outline" onClick={addPaymentRow}>
-                <Plus className="h-4 w-4" />
-                Agregar pago
+              <Button
+                type="button"
+                onClick={() => {
+                  setPaymentNotice(null);
+                  setPaymentModalOpen(true);
+                }}
+                disabled={isSubmitting}
+              >
+                <Banknote className="h-4 w-4" />
+                Registrar pago
               </Button>
-            </div>
+            </section>
+          ) : null}
 
-            {payments.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
-                No has agregado pagos nuevos para esta factura.
-              </div>
-            ) : (
-              payments.map((payment, index) => {
-                const method = paymentMethodById[payment.paymentMethodId];
-
-                return (
-                  <div
-                    key={payment.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 dark:bg-slate-800 dark:border-slate-700"
-                  >
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-slate-900 dark:text-white">
-                        Pago #{index + 1}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removePaymentRow(payment.id)}
-                        className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <Select
-                        label="Metodo de pago"
-                        value={payment.paymentMethodId}
-                        onChange={(event) =>
-                          updatePayment(payment.id, "paymentMethodId", event.target.value)
-                        }
-                      >
-                        <option value="">Selecciona un metodo</option>
-                        {paymentMethods.map((methodOption) => (
-                          <option key={methodOption.id} value={methodOption.id}>
-                            {methodOption.nombre}
-                          </option>
-                        ))}
-                      </Select>
-
-                      <Input
-                        label="Monto"
-                        inputMode="decimal"
-                        value={payment.amount}
-                        onChange={(event) =>
-                          updatePayment(payment.id, "amount", event.target.value)
-                        }
-                        placeholder="0"
-                      />
-
-                      <Input
-                        label={method?.requiresReference ? "Referencia obligatoria" : "Referencia"}
-                        value={payment.referenceNumber}
-                        onChange={(event) =>
-                          updatePayment(payment.id, "referenceNumber", event.target.value)
-                        }
-                        placeholder="Numero o comprobante"
-                      />
-
-                      <Input
-                        label="Notas"
-                        value={payment.notes}
-                        onChange={(event) => updatePayment(payment.id, "notes", event.target.value)}
-                        placeholder="Opcional"
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </section>
+          {paymentNotice ? (
+            <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {paymentNotice}
+            </p>
+          ) : null}
 
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -779,7 +530,7 @@ export const OrderInvoiceForm = ({
               </div>
               <p className="text-xl font-semibold text-emerald-950">{formatCurrency(total)}</p>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div>
                 <p className="text-xs uppercase tracking-wide text-emerald-700">
                   Abonos heredados
@@ -790,18 +541,10 @@ export const OrderInvoiceForm = ({
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-emerald-700">
-                  Pagos nuevos
-                </p>
-                <p className="mt-1 text-lg font-semibold text-emerald-950">
-                  {formatCurrency(enteredTotal)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-emerald-700">
                   Saldo resultante
                 </p>
                 <p className="mt-1 text-lg font-semibold text-emerald-950">
-                  {formatCurrency(resultingBalance)}
+                  {formatCurrency(remainingToCover)}
                 </p>
               </div>
             </div>
@@ -833,6 +576,33 @@ export const OrderInvoiceForm = ({
             </Button>
           </div>
         </form>
+      ) : null}
+
+      {paymentModalOpen && order ? (
+        <DocumentPaymentForm
+          title="Cobrar saldo del pedido"
+          description="Registra el pago del saldo de esta facturación. Quedará como abono del pedido y se heredará al facturar."
+          branchId={order.branchId ?? ""}
+          referenceType="SALES_ORDER"
+          referenceId={order.id}
+          direction="IN"
+          partyLabel="Cliente del pedido"
+          partyName={order.customerName ?? order.customerId}
+          documentLabel={`Pedido ${order.id.slice(0, 8)}`}
+          total={Number(order.total)}
+          effectiveTotal={total}
+          effectiveTotalLabel="Total a facturar"
+          totalPaid={Number(order.totalPaid)}
+          balanceDue={remainingToCover}
+          paymentStatus={order.paymentStatus}
+          onCancel={() => setPaymentModalOpen(false)}
+          onSuccess={() => {
+            setPaymentModalOpen(false);
+            setSubmitError(null);
+            setPaymentNotice("Pago registrado como abono del pedido; se heredará en la factura.");
+            void reloadOrder();
+          }}
+        />
       ) : null}
     </section>
   );
