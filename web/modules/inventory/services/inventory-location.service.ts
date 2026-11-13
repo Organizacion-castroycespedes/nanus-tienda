@@ -40,7 +40,10 @@ export type CreateInventoryLocationPayload = {
 };
 
 export type UpdateInventoryLocationPayload = Partial<
-  Omit<CreateInventoryLocationPayload, "branchId">
+  Omit<CreateInventoryLocationPayload, "branchId"> & {
+    /** `true` reactiva la ubicación; el backend valida la unicidad del código. */
+    isActive: boolean;
+  }
 >;
 
 const buildLocationsQuery = (params: ListInventoryLocationsParams = {}) => {

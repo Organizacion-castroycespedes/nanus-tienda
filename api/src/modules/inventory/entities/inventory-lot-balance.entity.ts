@@ -31,6 +31,10 @@ export type InventoryLotBalanceProps = {
   lastMovementAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** Solo en listados (`findMany`): nombre del producto del mismo tenant. */
+  productName?: string | null;
+  /** Solo en listados (`findMany`): SKU del producto del mismo tenant. */
+  productSku?: string | null;
 };
 
 export class InventoryLotBalanceEntity {
@@ -46,6 +50,8 @@ export class InventoryLotBalanceEntity {
   readonly lastMovementAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  declare readonly productName?: string | null;
+  declare readonly productSku?: string | null;
 
   constructor(props: InventoryLotBalanceProps) {
     if (!isUuid(props.id)) {
@@ -91,6 +97,12 @@ export class InventoryLotBalanceEntity {
     this.lastMovementAt = props.lastMovementAt ?? null;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
+    if (props.productName !== undefined) {
+      this.productName = props.productName;
+    }
+    if (props.productSku !== undefined) {
+      this.productSku = props.productSku;
+    }
   }
 
   static create(props: InventoryLotBalanceProps) {
