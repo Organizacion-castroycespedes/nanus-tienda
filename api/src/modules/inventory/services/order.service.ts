@@ -1465,6 +1465,184 @@ export class OrderService {
     };
   }
 
+  /**
+   * Serializa las entregas con el mismo bloqueo por alcance de stock que usan la
+   * recepción de compras y la venta POS (`inventory_lock_stock_scope`, V108), en
+   * orden ascendente de producto (change corregir-lotes-entrega-pedidos, D1).
+   */
+  private async lockDeliveryStockScopes(
+    tenantId: string,
+    branchId: string,
+    productIds: string[],
+    client: PoolClient
+  ) {
+    const orderedProductIds = [...new Set(productIds)].sort();
+    for (const productId of orderedProductIds) {
+      await client.query(
+        `SELECT public.inventory_lock_stock_scope($1::uuid, $2::uuid, $3::uuid)`,
+        [tenantId, branchId, productId]
+      );
+    }
+  }
+
+  private async loadDeliveryLotPolicies(
+    tenantId: string,
+    productIds: string[],
+    client: PoolClient
+  ) {
+    const uniqueProductIds = [...new Set(productIds)];
+    const result = await client.query<{
+      id: string;
+      requires_lot: boolean | null;
+      requires_expiration: boolean | null;
+    }>(
+      `
+        SELECT id, requires_lot, requires_expiration
+        FROM products
+        WHERE tenant_id = $1
+          AND id = ANY($2::uuid[])
+      `,
+      [tenantId, uniqueProductIds]
+    );
+    return new Map(
+      result.rows.map((row) => [
+        row.id,
+        {
+          requiresLot: Boolean(row.requires_lot),
+          requiresExpiration: Boolean(row.requires_expiration),
+        },
+      ])
+    );
+  }
+
+  /**
+   * Consume lotes por FEFO para una salida de entrega ya creada, con la misma
+   * regla que `inventory_create_sale_v2`: lotes ACTIVE, no vencidos, con saldo
+   * disponible, ordenados por vencimiento y recepción; descuento atómico del
+   * saldo y vínculo movimiento–lote (change corregir-lotes-entrega-pedidos, D1-D2).
+   */
+  private async consumeDeliveryLots(
+    input: {
+      tenantId: string;
+      branchId: string;
+      productId: string;
+      quantity: number;
+      stockMovementId: string;
+      requiresExpiration: boolean;
+    },
+    client: PoolClient
+  ) {
+    const balancesResult = await client.query<{
+      balance_id: string;
+      lot_id: string;
+      location_id: string | null;
+      quantity_available: string | number;
+    }>(
+      `
+        SELECT
+          balance.id AS balance_id,
+          balance.lot_id,
+          balance.location_id,
+          balance.quantity_available
+        FROM inventory_lot_balances balance
+        INNER JOIN inventory_lots lot
+          ON lot.id = balance.lot_id
+         AND lot.tenant_id = balance.tenant_id
+         AND lot.branch_id = balance.branch_id
+         AND lot.product_id = balance.product_id
+        WHERE balance.tenant_id = $1
+          AND balance.branch_id = $2
+          AND balance.product_id = $3
+          AND balance.quantity_available > 0
+          AND lot.status = 'ACTIVE'
+          AND (lot.expiration_date IS NULL OR lot.expiration_date >= CURRENT_DATE)
+          AND ($4::boolean = FALSE OR lot.expiration_date IS NOT NULL)
+        ORDER BY
+          lot.expiration_date ASC NULLS LAST,
+          lot.received_at ASC,
+          lot.lot_code ASC,
+          lot.id ASC
+        FOR UPDATE OF balance
+      `,
+      [input.tenantId, input.branchId, input.productId, input.requiresExpiration]
+    );
+
+    const roundQuantity = (value: number) => Math.round(value * 1000) / 1000;
+    const eligible = balancesResult.rows.map((row) => ({
+      balanceId: row.balance_id,
+      lotId: row.lot_id,
+      locationId: row.location_id,
+      available: Number(row.quantity_available),
+    }));
+    const totalAvailable = roundQuantity(
+      eligible.reduce((sum, balance) => sum + balance.available, 0)
+    );
+    if (totalAvailable < roundQuantity(input.quantity)) {
+      throw new BadRequestException("insufficient lot stock for delivery");
+    }
+
+    let remaining = roundQuantity(input.quantity);
+    for (const balance of eligible) {
+      if (remaining <= 0) {
+        break;
+      }
+      const fromLot = roundQuantity(Math.min(remaining, balance.available));
+      if (fromLot <= 0) {
+        continue;
+      }
+
+      const updated = await client.query<{ id: string }>(
+        `
+          UPDATE inventory_lot_balances
+          SET
+            quantity_on_hand = quantity_on_hand - $1,
+            last_movement_at = NOW(),
+            updated_at = NOW()
+          WHERE id = $2
+            AND tenant_id = $3
+            AND branch_id = $4
+            AND product_id = $5
+            AND lot_id = $6
+            AND quantity_available >= $1
+          RETURNING id
+        `,
+        [fromLot, balance.balanceId, input.tenantId, input.branchId, input.productId, balance.lotId]
+      );
+      if (!updated.rows[0]) {
+        throw new BadRequestException("insufficient lot stock for delivery");
+      }
+
+      await client.query(
+        `
+          INSERT INTO stock_movement_lots (
+            id,
+            tenant_id,
+            stock_movement_id,
+            product_id,
+            lot_id,
+            location_id,
+            quantity,
+            created_at
+          ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW())
+        `,
+        [
+          input.tenantId,
+          input.stockMovementId,
+          input.productId,
+          balance.lotId,
+          balance.locationId,
+          fromLot,
+        ]
+      );
+
+      remaining = roundQuantity(remaining - fromLot);
+    }
+
+    if (remaining > 0) {
+      throw new BadRequestException("insufficient lot stock for delivery");
+    }
+  }
+
   async deliverOrder(
     id: string,
     tenantId: string,
@@ -1574,6 +1752,23 @@ export class OrderService {
       );
 
       const createdMovements = [];
+      const deliveryBranchId = orderAuditContext.branch_id ?? context?.branchId ?? null;
+      const deliveryProductIds = itemsToDeliver
+        .map((deliverItem) => deliverItem.productId)
+        .filter((productId): productId is string => Boolean(productId));
+      if (deliveryBranchId) {
+        await this.lockDeliveryStockScopes(
+          tenantId,
+          deliveryBranchId,
+          deliveryProductIds,
+          client
+        );
+      }
+      const lotPolicies = await this.loadDeliveryLotPolicies(
+        tenantId,
+        deliveryProductIds,
+        client
+      );
 
       for (const deliverItem of itemsToDeliver) {
         const productId = deliverItem.productId;
@@ -1639,6 +1834,24 @@ export class OrderService {
           client
         );
         createdMovements.push(movement);
+
+        const lotPolicy = lotPolicies.get(productId);
+        if (lotPolicy?.requiresLot) {
+          if (!deliveryBranchId) {
+            throw new BadRequestException("branch is required to deliver lot-controlled products");
+          }
+          await this.consumeDeliveryLots(
+            {
+              tenantId,
+              branchId: deliveryBranchId,
+              productId,
+              quantity,
+              stockMovementId: movement.id,
+              requiresExpiration: lotPolicy.requiresExpiration,
+            },
+            client
+          );
+        }
 
         let remainingQuantity = quantity;
         for (const item of productItems) {

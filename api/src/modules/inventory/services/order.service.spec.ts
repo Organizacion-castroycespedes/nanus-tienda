@@ -959,3 +959,311 @@ test("OrderService.invoiceOrder rejects POS session from another order branch", 
   assert.equal(saleCreated, false);
   assert.ok(queries.length >= 4);
 });
+
+// --- corregir-lotes-entrega-pedidos: consumo de lotes al entregar pedidos ---
+
+type DeliveryBalance = {
+  balance_id: string;
+  lot_id: string;
+  location_id: string | null;
+  quantity_available: number;
+};
+
+const deliveryProductB = "10000000-0000-0000-0000-000000000013";
+
+class FakeDeliveryClient {
+  queries: RecordedQuery[] = [];
+  balanceUpdates: Array<{ quantity: number; balanceId: string }> = [];
+  lotLinks: Array<{ movementId: unknown; lotId: unknown; locationId: unknown; quantity: unknown }> = [];
+  committed = false;
+  rolledBack = false;
+
+  constructor(
+    private readonly options: {
+      items: Array<{ id: string; productId: string; ordered: number; delivered?: number }>;
+      lotPolicies: Record<string, { requiresLot: boolean; requiresExpiration?: boolean }>;
+      balances: Record<string, DeliveryBalance[]>;
+    }
+  ) {}
+
+  private itemRows() {
+    return this.options.items.map((item) => ({
+      id: item.id,
+      order_id: ids.order,
+      product_id: item.productId,
+      ordered_quantity: item.ordered,
+      delivered_quantity: item.delivered ?? 0,
+      billed_quantity: 0,
+      price: 100,
+      subtotal: 100 * item.ordered,
+      base_unit_price: 100,
+      final_unit_price: 100,
+      discount_amount: 0,
+      discount_percent: 0,
+      discount_total: 0,
+      applied_promotion_id: null,
+      applied_promotion_name: null,
+      tax_id: null,
+      tax_rate: 0,
+      tax_base: 0,
+      tax_amount: 0,
+      line_total: 100 * item.ordered,
+      pricing_snapshot: null,
+      pricing_calculated_at: null,
+    }));
+  }
+
+  async query<T>(text: string, params: unknown[] = []) {
+    this.queries.push({ text, params });
+    const sql = text.replace(/\s+/g, " ").trim();
+
+    if (sql === "BEGIN") {
+      return { rows: [] as T[] };
+    }
+    if (sql === "COMMIT") {
+      this.committed = true;
+      return { rows: [] as T[] };
+    }
+    if (sql === "ROLLBACK") {
+      this.rolledBack = true;
+      return { rows: [] as T[] };
+    }
+    if (sql.includes("auditoria_eventos")) {
+      return {
+        rows: [
+          { branch_id: ids.branch, branch_name: "Sucursal QA", terminal_id: null, terminal_name: null },
+        ] as T[],
+      };
+    }
+    if (sql.includes("FROM orders") && sql.includes("LIMIT 1")) {
+      return {
+        rows: [
+          {
+            id: ids.order,
+            tenant_id: ids.tenant,
+            customer_id: ids.customer,
+            type: "CASH",
+            status: "CONFIRMED",
+            total: 500,
+            payment_status: "PAID",
+            total_paid: 500,
+            balance_due: 0,
+            created_at: new Date("2026-11-13T10:00:00.000Z"),
+          },
+        ] as T[],
+      };
+    }
+    if (sql.includes("inventory_lock_stock_scope")) {
+      return { rows: [{}] as T[] };
+    }
+    if (sql.includes("requires_lot") && sql.includes("FROM products")) {
+      const productIds = params[1] as string[];
+      return {
+        rows: productIds
+          .filter((productId) => this.options.lotPolicies[productId])
+          .map((productId) => ({
+            id: productId,
+            requires_lot: this.options.lotPolicies[productId].requiresLot,
+            requires_expiration: this.options.lotPolicies[productId].requiresExpiration ?? false,
+          })) as T[],
+      };
+    }
+    if (sql.includes("FROM inventory_lot_balances balance")) {
+      return { rows: (this.options.balances[params[2] as string] ?? []) as T[] };
+    }
+    if (sql.startsWith("UPDATE inventory_lot_balances")) {
+      this.balanceUpdates.push({ quantity: Number(params[0]), balanceId: String(params[1]) });
+      return { rows: [{ id: params[1] }] as T[] };
+    }
+    if (sql.startsWith("INSERT INTO stock_movement_lots")) {
+      this.lotLinks.push({
+        movementId: params[1],
+        lotId: params[3],
+        locationId: params[4],
+        quantity: params[5],
+      });
+      return { rows: [] as T[] };
+    }
+    if (sql.startsWith("UPDATE order_items")) {
+      return { rows: [] as T[] };
+    }
+    if (sql.includes("FROM order_items")) {
+      return { rows: this.itemRows() as T[] };
+    }
+    if (sql.startsWith("UPDATE orders")) {
+      return {
+        rows: [
+          {
+            id: ids.order,
+            tenant_id: ids.tenant,
+            customer_id: ids.customer,
+            type: "CASH",
+            status: params[2],
+            total: 500,
+            payment_status: "PAID",
+            total_paid: 500,
+            balance_due: 0,
+            created_at: new Date("2026-11-13T10:00:00.000Z"),
+          },
+        ] as T[],
+      };
+    }
+    throw new Error(`Unexpected SQL in delivery test: ${sql}`);
+  }
+
+  release() {}
+}
+
+const buildDeliveryService = (
+  clientOptions: ConstructorParameters<typeof FakeDeliveryClient>[0],
+  kardexStock = 100
+) => {
+  const client = new FakeDeliveryClient(clientOptions);
+  const movements: Array<{ id: string; productId: string; quantity: number }> = [];
+  const stockMovementService = {
+    getStockByProduct: async () => ({ stock: kardexStock }),
+    createMovement: async (data: { productId: string; quantity: number }) => {
+      const movement = { id: `movement-${movements.length + 1}`, productId: data.productId, quantity: data.quantity };
+      movements.push(movement);
+      return movement;
+    },
+    logMovementAuditEvent: () => undefined,
+  };
+  const service = new OrderService(
+    { getClient: async () => client as unknown as PoolClient } as never,
+    { logEvent: () => undefined } as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {} as never,
+    stockMovementService as never,
+    {} as never
+  );
+  return { service, client, movements };
+};
+
+const deliveryContext = { userId: ids.user, branchId: ids.branch };
+
+test("OrderService.deliverOrder: producto con lote consume un lote por FEFO y crea el vínculo", async () => {
+  const { service, client, movements } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 3 }],
+    lotPolicies: { [ids.product]: { requiresLot: true } },
+    balances: {
+      [ids.product]: [{ balance_id: "balance-1", lot_id: "lot-1", location_id: "loc-1", quantity_available: 5 }],
+    },
+  });
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 3 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.deepEqual(client.balanceUpdates, [{ quantity: 3, balanceId: "balance-1" }]);
+  assert.deepEqual(client.lotLinks, [
+    { movementId: "movement-1", lotId: "lot-1", locationId: "loc-1", quantity: 3 },
+  ]);
+});
+
+test("OrderService.deliverOrder: reparte la entrega entre varios lotes en orden FEFO", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 7 }],
+    lotPolicies: { [ids.product]: { requiresLot: true } },
+    balances: {
+      [ids.product]: [
+        { balance_id: "balance-1", lot_id: "lot-1", location_id: null, quantity_available: 5 },
+        { balance_id: "balance-2", lot_id: "lot-2", location_id: null, quantity_available: 4 },
+      ],
+    },
+  });
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 7 }], deliveryContext, actor);
+
+  assert.deepEqual(client.balanceUpdates, [
+    { quantity: 5, balanceId: "balance-1" },
+    { quantity: 2, balanceId: "balance-2" },
+  ]);
+  assert.equal(client.lotLinks.length, 2);
+  const lotQuery = client.queries.find((query) => query.text.includes("FROM inventory_lot_balances balance"));
+  const lotSql = lotQuery?.text.replace(/\s+/g, " ") ?? "";
+  assert.match(lotSql, /lot\.status = 'ACTIVE'/);
+  assert.match(lotSql, /lot\.expiration_date IS NULL OR lot\.expiration_date >= CURRENT_DATE/);
+  assert.match(lotSql, /ORDER BY lot\.expiration_date ASC NULLS LAST, lot\.received_at ASC/);
+  assert.match(lotSql, /FOR UPDATE OF balance/);
+});
+
+test("OrderService.deliverOrder: rechaza sin efectos si los lotes vendibles no alcanzan", async () => {
+  const { service, client } = buildDeliveryService(
+    {
+      items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 5 }],
+      lotPolicies: { [ids.product]: { requiresLot: true } },
+      balances: {
+        [ids.product]: [{ balance_id: "balance-1", lot_id: "lot-1", location_id: null, quantity_available: 2 }],
+      },
+    },
+    10
+  );
+
+  await assert.rejects(
+    () => service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 5 }], deliveryContext, actor),
+    /insufficient lot stock for delivery/
+  );
+  assert.equal(client.rolledBack, true);
+  assert.equal(client.committed, false);
+  assert.equal(client.balanceUpdates.length, 0);
+  assert.equal(client.lotLinks.length, 0);
+});
+
+test("OrderService.deliverOrder: producto sin lote conserva el flujo y no toca lotes", async () => {
+  const { service, client, movements } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 2 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.equal(
+    client.queries.some((query) => query.text.includes("inventory_lot_balances")),
+    false
+  );
+  assert.equal(client.lotLinks.length, 0);
+});
+
+test("OrderService.deliverOrder: bloquea el alcance de stock en orden ascendente antes de consumir lotes", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [
+      { id: "10000000-0000-0000-0000-0000000000a1", productId: deliveryProductB, ordered: 1 },
+      { id: "10000000-0000-0000-0000-0000000000a2", productId: ids.product, ordered: 1 },
+    ],
+    lotPolicies: {
+      [ids.product]: { requiresLot: true },
+      [deliveryProductB]: { requiresLot: true },
+    },
+    balances: {
+      [ids.product]: [{ balance_id: "balance-a", lot_id: "lot-a", location_id: null, quantity_available: 1 }],
+      [deliveryProductB]: [{ balance_id: "balance-b", lot_id: "lot-b", location_id: null, quantity_available: 1 }],
+    },
+  });
+
+  await service.deliverOrder(
+    ids.order,
+    ids.tenant,
+    [
+      { productId: deliveryProductB, quantity: 1 },
+      { productId: ids.product, quantity: 1 },
+    ],
+    deliveryContext,
+    actor
+  );
+
+  const lockCalls = client.queries.filter((query) => query.text.includes("inventory_lock_stock_scope"));
+  assert.deepEqual(
+    lockCalls.map((query) => query.params[2]),
+    [ids.product, deliveryProductB].sort()
+  );
+  const firstLotQueryIndex = client.queries.findIndex((query) =>
+    query.text.includes("FROM inventory_lot_balances balance")
+  );
+  const lastLockIndex = client.queries.lastIndexOf(lockCalls[lockCalls.length - 1]);
+  assert.ok(lastLockIndex < firstLotQueryIndex);
+  assert.deepEqual(lockCalls[0].params.slice(0, 2), [ids.tenant, ids.branch]);
+});
