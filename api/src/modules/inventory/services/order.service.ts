@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -26,6 +27,42 @@ import {
   type BranchScopedActor,
   type BranchScopedFilters,
 } from "../utils/access";
+
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+};
+
+const normalizeOrderDeliveryIdempotencyKey = (value: string | string[] | undefined) => {
+  if (Array.isArray(value)) {
+    throw new BadRequestException("Idempotency-Key must be sent once");
+  }
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new BadRequestException("Idempotency-Key is required");
+  }
+  if (!/^[A-Za-z0-9._~-]{1,128}$/.test(normalized)) {
+    throw new BadRequestException("Idempotency-Key is invalid");
+  }
+  return normalized;
+};
+
+type OrderDeliveryIdempotencyRow = {
+  request_hash: string;
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  result: unknown;
+  operation_reference: string | null;
+};
 
 type CreateOrderItemInput = {
   id?: string;
@@ -1643,16 +1680,141 @@ export class OrderService {
     }
   }
 
+  private buildOrderDeliveryRequestHash(input: {
+    orderId: string;
+    tenantId: string;
+    items: Array<{ productId: string; quantity: number }>;
+    context?: InventoryContext;
+    actor?: BranchScopedActor;
+  }) {
+    return crypto
+      .createHash("sha256")
+      .update(
+        stableSerialize({
+          orderId: input.orderId,
+          tenantId: input.tenantId,
+          items: input.items,
+          context: input.context ?? null,
+          actor: input.actor ?? null,
+        })
+      )
+      .digest("hex");
+  }
+
+  private async claimOrderDeliveryIdempotency(
+    client: PoolClient,
+    tenantId: string,
+    orderId: string,
+    idempotencyKey: string,
+    requestHash: string
+  ): Promise<{ replay: false } | { replay: true; result: unknown }> {
+    const inserted = await client.query<OrderDeliveryIdempotencyRow>(
+      `
+        INSERT INTO order_delivery_idempotency (
+          tenant_id,
+          order_id,
+          idempotency_key,
+          request_hash,
+          status
+        ) VALUES ($1, $2, $3, $4, 'PENDING')
+        ON CONFLICT (tenant_id, order_id, idempotency_key) DO NOTHING
+        RETURNING request_hash, status, result, operation_reference
+      `,
+      [tenantId, orderId, idempotencyKey, requestHash]
+    );
+
+    if (inserted.rows[0]) {
+      return { replay: false };
+    }
+
+    const existing = await client.query<OrderDeliveryIdempotencyRow>(
+      `
+        SELECT request_hash, status, result, operation_reference
+        FROM order_delivery_idempotency
+        WHERE tenant_id = $1
+          AND order_id = $2
+          AND idempotency_key = $3
+        FOR UPDATE
+      `,
+      [tenantId, orderId, idempotencyKey]
+    );
+    const row = existing.rows[0];
+    if (!row) {
+      throw new ConflictException("idempotency operation could not be recovered");
+    }
+    if (row.request_hash !== requestHash) {
+      throw new ConflictException(
+        "Idempotency-Key was already used with a different payload"
+      );
+    }
+    if (row.status === "COMPLETED" && row.result !== null) {
+      return { replay: true, result: row.result };
+    }
+    throw new ConflictException(
+      "Idempotency-Key is already being processed or has failed"
+    );
+  }
+
+  private async completeOrderDeliveryIdempotency(
+    client: PoolClient,
+    tenantId: string,
+    orderId: string,
+    idempotencyKey: string,
+    requestHash: string,
+    result: unknown
+  ) {
+    const completed = await client.query(
+      `
+        UPDATE order_delivery_idempotency
+        SET status = 'COMPLETED',
+            result = $4::jsonb,
+            operation_reference = $5,
+            completed_at = NOW(),
+            updated_at = NOW()
+        WHERE tenant_id = $1
+          AND order_id = $2
+          AND idempotency_key = $3
+          AND request_hash = $6
+          AND status = 'PENDING'
+      `,
+      [
+        tenantId,
+        orderId,
+        idempotencyKey,
+        JSON.stringify(result),
+        `order-delivery:${orderId}:${idempotencyKey}`,
+        requestHash,
+      ]
+    );
+    if (completed.rowCount !== 1) {
+      throw new ConflictException("order delivery idempotency completion failed");
+    }
+  }
+
   async deliverOrder(
     id: string,
     tenantId: string,
     itemsToDeliver: Array<{ productId: string; quantity: number }>,
     context?: InventoryContext,
-    actor?: BranchScopedActor
+    actor?: BranchScopedActor,
+    idempotencyKey?: string | string[]
   ) {
     if (!Array.isArray(itemsToDeliver) || itemsToDeliver.length === 0) {
       throw new BadRequestException("deliver items are required");
     }
+    const normalizedIdempotencyKey =
+      idempotencyKey !== undefined
+        ? normalizeOrderDeliveryIdempotencyKey(idempotencyKey)
+        : undefined;
+    const requestHash = normalizedIdempotencyKey
+      ? this.buildOrderDeliveryRequestHash({
+          orderId: id,
+          tenantId,
+          items: itemsToDeliver,
+          context,
+          actor,
+        })
+      : undefined;
 
     const client = await this.db.getClient();
     try {
@@ -1674,6 +1836,7 @@ export class OrderService {
           FROM orders
           WHERE id = $1 AND tenant_id = $2
           LIMIT 1
+          FOR UPDATE
         `,
         [id, tenantId]
       );
@@ -1681,6 +1844,19 @@ export class OrderService {
       const orderRow = orderResult.rows[0];
       if (!orderRow) {
         throw new NotFoundException("order not found");
+      }
+      if (normalizedIdempotencyKey && requestHash) {
+        const idempotency = await this.claimOrderDeliveryIdempotency(
+          client,
+          tenantId,
+          id,
+          normalizedIdempotencyKey,
+          requestHash
+        );
+        if (idempotency.replay) {
+          await client.query("COMMIT");
+          return idempotency.result;
+        }
       }
       if (orderRow.status === "CANCELLED") {
         throw new BadRequestException("cancelled orders cannot be delivered");
@@ -1934,15 +2110,27 @@ export class OrderService {
         [id, tenantId, nextStatus]
       );
 
+      const deliveryResult = {
+        ...this.mapOrder(updatedOrderResult.rows[0]),
+        items: updatedItems,
+      };
+      if (normalizedIdempotencyKey && requestHash) {
+        await this.completeOrderDeliveryIdempotency(
+          client,
+          tenantId,
+          id,
+          normalizedIdempotencyKey,
+          requestHash,
+          deliveryResult
+        );
+      }
+
       await client.query("COMMIT");
       createdMovements.forEach((movement) =>
         this.stockMovementService.logMovementAuditEvent(movement)
       );
 
-      return {
-        ...this.mapOrder(updatedOrderResult.rows[0]),
-        items: updatedItems,
-      };
+      return deliveryResult;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

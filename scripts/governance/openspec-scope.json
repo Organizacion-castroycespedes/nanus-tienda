@@ -665,6 +665,24 @@
         "web/modules/inventory/components/OrderDeliverForm.tsx"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "idempotencia-entrega-pedidos",
+      "paths": [
+        "openspec/changes/idempotencia-entrega-pedidos/**",
+        "scripts/governance/openspec-scope.json",
+        "scripts/database/migrations/V116__order_delivery_idempotency.sql",
+        "scripts/database/rollbacks/V116__order_delivery_idempotency_rollback.sql",
+        "scripts/database/tests/test_v116_order_delivery_idempotency_migration.py",
+        "api/src/modules/inventory/services/order.service.ts",
+        "api/src/modules/inventory/services/order.service.spec.ts",
+        "api/src/modules/inventory/controllers/order.controller.ts",
+        "api/src/modules/inventory/controllers/order.controller.spec.ts",
+        "web/modules/inventory/services/order.service.ts",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "docs/evidencia-idempotencia-entrega-pedidos.md"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
@@ -915,14 +933,21 @@
       "reason": "Owner-authorized (2026-11-13) current ownership for the inventory lots and locations modernization: Phase 1A frontend (lots/locations pages, lot detail modal, lot/location web services and pure helpers; new reusable design-system SearchableSelect used by the lots Producto filter; additive, backward-compatible ReportSummary options (6 columns, per-segment detail/title) for the lots indicators, previously unowned) and Phase 1B additive read-only contract (productName/productSku in lot and lot-balance list queries). Current ownership of the scope manifest later moved to corregir-lotes-entrega-pedidos; web/modules/inventory/list-filters/** stays with its owner and is consumed read-only. No database, migration, permission, POS, sales or purchase path is claimed."
     },
     {
-      "change_id": "corregir-lotes-entrega-pedidos",
+      "change_id": "idempotencia-entrega-pedidos",
       "paths": [
         "scripts/governance/openspec-scope.json",
+        "scripts/database/migrations/V116__order_delivery_idempotency.sql",
+        "scripts/database/rollbacks/V116__order_delivery_idempotency_rollback.sql",
+        "scripts/database/tests/test_v116_order_delivery_idempotency_migration.py",
         "api/src/modules/inventory/services/order.service.ts",
         "api/src/modules/inventory/services/order.service.spec.ts",
-        "web/modules/inventory/components/OrderDeliverForm.tsx"
+        "api/src/modules/inventory/controllers/order.controller.ts",
+        "api/src/modules/inventory/controllers/order.controller.spec.ts",
+        "web/modules/inventory/services/order.service.ts",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "docs/evidencia-idempotencia-entrega-pedidos.md"
       ],
-      "reason": "Owner-requested (2026-11-13) current ownership for consuming inventory lots (FEFO, ACTIVE, not expired) when delivering orders. Claims order.service.ts and its spec (previously unowned) and reassigns current ownership of OrderDeliverForm.tsx (from modernizar-captura-barcode-orders-purchases, only lot-shortage error messages) and the scope manifest (from modernizar-inventario-lotes-ubicaciones); historical associations remain intact. No POS, sales (inventory_create_sale_v2, sale.service, sale.repository), schema, migration or permission path is claimed; the historical data correction SQL in the change folder is documentation only and runs separately with explicit owner approval."
+      "reason": "Owner-requested (2026-11-14) current ownership for idempotent and per-order serialized order delivery (Idempotency-Key required on POST /orders/:id/deliver, order_delivery_idempotency table V116, SELECT ... FOR UPDATE on the order). Reassigns current ownership of order.service.ts, its spec, OrderDeliverForm.tsx and the scope manifest from corregir-lotes-entrega-pedidos (already merged into develop, commit 596bcc63); historical associations remain intact. FEFO lot consumption (consumeDeliveryLots), POS and sales (inventory_create_sale_v2, sale.service, sale.repository) are not claimed. Prerequisite of incorporar-trazabilidad-series-productos."
     }
   ]
 }

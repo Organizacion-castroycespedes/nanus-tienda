@@ -75,6 +75,13 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
+const createDeliveryIdempotencyKey = () => {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `order-delivery-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
 export const OrderDeliverForm = ({
   orderId,
   onCancel,
@@ -83,6 +90,8 @@ export const OrderDeliverForm = ({
   const confirm = useConfirm();
   const authUser = useAppSelector((state) => state.auth.user);
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
+  // Una clave por apertura del formulario: un reintento (doble clic o red) no entrega dos veces.
+  const [idempotencyKey] = useState(createDeliveryIdempotencyKey);
   const [values, setValues] = useState<DeliverItemValue[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -444,7 +453,9 @@ export const OrderDeliverForm = ({
         variant: "warning",
       });
 
-      const response = await deliverOrder(orderId, payload);
+      const response = await deliverOrder(orderId, payload, {
+        "Idempotency-Key": idempotencyKey,
+      });
       const peripheralContext: OrderPeripheralContext | undefined = order
         ? {
             orderId: response.id,
