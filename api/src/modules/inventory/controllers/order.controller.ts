@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -252,6 +253,10 @@ export class OrderController {
     @Body() body: DeliverOrderBody,
     @Req() request: AuthRequest
   ) {
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (!idempotencyKey) {
+      throw new BadRequestException("Idempotency-Key is required");
+    }
     return this.orderService.deliverOrder(
       id,
       this.getTenantId(request),
@@ -260,7 +265,8 @@ export class OrderController {
         quantity: Number(item.quantity),
       })),
       this.getInventoryContext(request),
-      this.buildActor(request)
+      this.buildActor(request),
+      idempotencyKey
     );
   }
 
