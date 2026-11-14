@@ -967,7 +967,7 @@ export class OperationalSalesService {
     await this.runQuery(
       `UPDATE sale_void_requests
           SET attempt_count = $2,
-              status = CASE WHEN $2 > $5 THEN 'FAILED' ELSE status END,
+              status = CASE WHEN $2::int > $5::int THEN 'FAILED' ELSE status END,
               next_attempt_at = NOW() + ($3::int * INTERVAL '1 millisecond'),
               last_error = $4,
               credit_note_electronic_document_id = COALESCE($6, credit_note_electronic_document_id),
