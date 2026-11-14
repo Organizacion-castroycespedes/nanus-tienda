@@ -5,6 +5,7 @@ import { ApiError } from "../../../lib/request";
 import {
   acquireSaleSubmission,
   isSaleIdempotencyConflict,
+  readDefinitiveSerialRejection,
   readDefinitiveStockRejection,
   releaseSaleSubmission,
 } from "./sale-recovery";
@@ -56,6 +57,35 @@ describe("POS sale recovery error classification", () => {
       aggregateAvailableQuantity: 8,
       eligibleLotQuantity: 2,
     });
+  });
+
+  it("reads a structured serial rejection as definitive (the sale was rolled back)", () => {
+    const error = new ApiError("Serie no disponible", 409, "SERIAL_NOT_AVAILABLE", {
+      code: "SERIAL_NOT_AVAILABLE",
+      message: "Una o más series ya no están disponibles. Selecciona otra serie.",
+      productId: "product-s",
+    });
+
+    assert.deepEqual(readDefinitiveSerialRejection(error), {
+      code: "SERIAL_NOT_AVAILABLE",
+      productId: "product-s",
+      message: "Una o más series ya no están disponibles. Selecciona otra serie.",
+    });
+    assert.equal(
+      readDefinitiveSerialRejection(
+        new ApiError("Cantidad", 400, "SERIAL_COUNT_MISMATCH", { code: "SERIAL_COUNT_MISMATCH" }),
+      )?.productId,
+      null,
+    );
+  });
+
+  it("does not classify other errors as serial rejections", () => {
+    assert.equal(readDefinitiveSerialRejection(new ApiError("Conflict", 409)), null);
+    assert.equal(
+      readDefinitiveSerialRejection(new ApiError("Down", 503, "SERIAL_NOT_AVAILABLE", { code: "SERIAL_NOT_AVAILABLE" })),
+      null,
+    );
+    assert.equal(readDefinitiveSerialRejection(new Error("network")), null);
   });
 
   it("does not classify an unstructured 409 as definitive stock", () => {

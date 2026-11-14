@@ -39,6 +39,13 @@ export type PosCartAppliedTax = {
   isIncluded: boolean;
 };
 
+/** Serie seleccionada en el POS para un producto con requires_serial. */
+export type PosCartSerial = {
+  id: string;
+  serialNumber: string;
+  locationCode?: string | null;
+};
+
 export type PosCartItem = {
   productId: string;
   saleMode?: "UNIT" | "WEIGHT";
@@ -50,6 +57,9 @@ export type PosCartItem = {
   stock: number;
   /** Missing in legacy persisted carts means the original physical-product behavior. */
   isInventoryable?: boolean;
+  /** Producto con número de serie: la cantidad es la cantidad de series seleccionadas. */
+  requiresSerial?: boolean;
+  serials?: PosCartSerial[];
   taxId: string | null;
   priceWithoutTax: number;
   pricingStatus?: PosCartPricingStatus;
@@ -512,6 +522,29 @@ const posCartSlice = createSlice({
         loadAccountIntoState(state, account);
       }
     },
+    applyDefinitiveSerialRejection(
+      state,
+      action: PayloadAction<PosSaleOperationTarget & { productId: string | null }>
+    ) {
+      const account = findSaleOperationTarget(state, action.payload);
+      if (!account) {
+        return;
+      }
+
+      // La venta se revirtió completa: se limpian las series del producto (o de todos
+      // los productos con serie si el API no indicó cuál) para elegirlas de nuevo.
+      account.items = account.items.map((item) =>
+        item.requiresSerial &&
+        (action.payload.productId === null || item.productId === action.payload.productId)
+          ? { ...item, serials: [] }
+          : item,
+      );
+      account.saleStatus = POS_SALE_STATUSES.DRAFT;
+      account.saleAttempt = null;
+      if (state.activeAccountId === account.id) {
+        loadAccountIntoState(state, account);
+      }
+    },
     confirmSaleForAccount(
       state,
       action: PayloadAction<
@@ -770,6 +803,7 @@ export const {
   markSaleSubmissionUnknown,
   markUnknownForAccount,
   applyDefinitiveStockRejection,
+  applyDefinitiveSerialRejection,
   confirmSaleForAccount,
   allowSaleSubmissionRetry,
   allowUnknownSaleRetry,

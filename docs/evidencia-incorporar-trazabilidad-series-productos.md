@@ -70,6 +70,23 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
   - `tsc --noEmit` web: sin errores fuera de los specs (los errores en specs ya existían);
   - gobernanza: manifiesto válido; se reasignó la propiedad actual de los archivos de compras (de `modernizar-captura-barcode-orders-purchases` y `soportar-productos-no-inventariables`; la entrada de este último quedó vacía y se retiró de `current_ownership`, su asociación histórica en `changes[]` se conserva).
 
+## Fase 5 — POS y anulaciones (cambio mínimo en venta)
+- Regla del propietario respetada: `inventory_create_sale_v2`, `consumeDeliveryLots`, FEFO y las migraciones no cambian. El payload que recibe la función de venta es el mismo (las líneas no llevan `serialIds`).
+- API:
+  - `SaleLineRequest` (UNIT) acepta `serialIds` opcional; `ensureSaleInput` exige UUIDs (máximo 2000) y rechaza `serialIds` en líneas de peso.
+  - `prepareSaleItemsForPricing` arma la lista de líneas con serie solo si el producto tiene `requiresSerial` o la línea trae series; para el resto no hay llamadas nuevas.
+  - `createSale`: justo después de `createSaleWithFunction`, en la misma transacción, `ProductSerialService.assignForSale` → `fnc_product_serials_assign_sale` (conteo = cantidad, serie AVAILABLE de la misma sucursal y producto, bloqueo por fila). Cualquier error revierte la venta completa; el error informa el `productId` de la línea.
+  - `cancelSale` (devuelve inventario): `markReturnedForSale` con devolución → series `RETURNED`.
+  - `applySaleVoid` (anulación local, con nota crédito y reintento del worker): `returnInventory` ≠ false → `RETURNED`; `returnInventory` = false → evento `VOIDED_NOT_RETURNED` (la serie sigue SOLD).
+  - Pruebas: `sale.service.spec.ts` 45/45 (7 nuevas), `operational-sales.service.spec.ts` + `product-serial.service.spec.ts` 38/38 y 15/15 (4 nuevas).
+- Web (POS):
+  - Al agregar un producto con serie (búsqueda, catálogo o escáner) se abre `PosSerialPickerDialog`: lista de series disponibles con ubicación ("SERIE · UBICACIÓN"), búsqueda y escaneo con Enter (si hay más de 200, busca la serie exacta en el servidor); la cantidad es la cantidad de series elegidas, limitada al stock.
+  - En el carrito, la línea muestra "N de M series", las series y "Cambiar series"; los botones de cantidad abren el selector.
+  - Antes de cobrar se valida que cada producto con serie tenga sus series; el payload agrega `serialIds` solo en esas líneas.
+  - Rechazo `SERIAL_*` del API: es definitivo (la venta se revirtió). El carrito vuelve a borrador, se limpian las series del producto y se reabre el selector con el mensaje; el siguiente cobro usa una nueva Idempotency-Key.
+  - Las series quedan en el carrito persistido (localStorage).
+  - Pruebas: `pos-serials.spec.ts`, `sale-recovery.spec.ts`, `posCart.spec.ts`: 25/25; `tsc --noEmit` web sin errores nuevos.
+
 ## Validación en Windows (propietario, 2026-11-14)
 - `openspec.cmd validate incorporar-trazabilidad-series-productos --strict`: válido.
 - API `npx tsx --test src/**/*.spec.ts`: 1149 pruebas, 1141 pass, 0 fail, 8 omitidas (5 más que la línea base de 1136: las nuevas de producto). `npm run build` OK.
@@ -77,6 +94,10 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
 - V117 aplicada en la base local real `manus_prd_local_test` con `node "Claude outputs\aplicar-V117-local.cjs" --aplicar`: SHA-256 `89e6d21052a051a5c3c057c158f3353672dec286d23184f66777fd60935b9410`; 9 funciones, columna `requires_serial` y menú "Series" en 3 tenants. Esto confirma las FK y columnas contra el esquema real. Sin registro en `migrations_history` (método local, igual que V116).
 
 ## Pendiente
-- [ ] QA de la fase 4: recibir una compra con un producto con serie (escáner, pegado y archivo), una recepción parcial, una serie repetida (rechazo y rollback) y una serie que existe en otro producto (aviso).
+- [x] QA de la fase 5 (propietario, 2026-11-14, local, FE en habilitación): ventas e01f29ee (012), 4ddeb2de (020 + 301), 32a426ba (017), 8a44074f (018) y 27380bf0 (019, venta mixta con licor y producto normal), todas con FE aceptada. Misma serie en dos cuentas: la cuenta 1 cobró y la cuenta 2 fue rechazada ("ya no están disponibles"), el selector se reabrió y la venta se cobró con otra serie. Anulación de 32a426ba con nota crédito NCC1500004 y devolución: 017 quedó RETURNED con su evento. Kardex = series: stock 1 (la 017 devuelta, pendiente de inspección).
+- Ajuste tras la QA: el selector marca "En Cuenta N" y no deja elegir las series que ya están en otra cuenta del mismo POS (`collectSerialsInOtherAccounts`); entre cajas distintas sigue protegiendo el API al cobrar.
+- Pendiente de QA: cancelar venta (`cancelSale`) y anular sin devolución (evento VOIDED_NOT_RETURNED).
+- [x] QA de la fase 4 (propietario, 2026-11-14, local): compra 04DB607A con 4 unidades de "Inverter 12.000 BTU, 110V" recibida con 4 series y ubicación 002 - Licores; compra 6CC170C6 rechazó en el diálogo las series ya registradas (3H61260000017, 3H61260000018) y luego quedó RECEIVED (2 de 2). Pendiente opcional: recepción parcial y aviso de serie existente en otro producto.
+- Validación en Windows de la fase 4 (commit 5bee8a69): OpenSpec strict válido; API 1168 pruebas, 1160 pass, 0 fail, 8 omitidas, `npm run build` OK; web 19/19, lint sin advertencias, `next build` OK.
 - [ ] QA del formulario: crear un producto con serie (UNIT, sin lote); la casilla se deshabilita al editar; no se combina con lote ni vencimiento.
 - Nota: el menú "Series" ya aparece en local, pero la página `/inventory/serials` llega en la fase 7; mientras tanto abre la página de "no encontrado".

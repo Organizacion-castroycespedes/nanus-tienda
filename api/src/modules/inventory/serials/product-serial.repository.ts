@@ -273,6 +273,36 @@ export class ProductSerialRepository {
     return result.rows;
   }
 
+  /** Asigna series a las líneas de una venta ya creada (misma transacción). */
+  async assignSale(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      saleId: string;
+      lines: Array<{ saleItemId: string; serialIds: string[] }>;
+      userId: string | null;
+    }
+  ) {
+    const result = await client.query<{ assigned: number }>(
+      `SELECT public.fnc_product_serials_assign_sale($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5::uuid) AS assigned`,
+      [input.tenantId, input.branchId, input.saleId, JSON.stringify(input.lines), input.userId]
+    );
+    return Number(result.rows[0]?.assigned ?? 0);
+  }
+
+  /** Anulación: RETURNED si el inventario vuelve, o evento VOIDED_NOT_RETURNED si no. */
+  async markSaleReturned(
+    client: PoolClient,
+    input: { tenantId: string; saleId: string; returnInventory: boolean; userId: string | null; reason: string | null }
+  ) {
+    const result = await client.query<{ affected: number }>(
+      `SELECT public.prc_product_serials_mark_returned($1::uuid, $2::uuid, $3::boolean, $4::uuid, $5::text) AS affected`,
+      [input.tenantId, input.saleId, input.returnInventory, input.userId, input.reason]
+    );
+    return Number(result.rows[0]?.affected ?? 0);
+  }
+
   async findEvents(tenantId: string, serialId: string) {
     const result = await this.query<ProductSerialEventRow>(
       `SELECT

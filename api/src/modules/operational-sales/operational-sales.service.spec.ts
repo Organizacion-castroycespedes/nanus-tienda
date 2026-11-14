@@ -627,3 +627,45 @@ test("issueDebitNote dispatches to Factucore and saves document", async () => {
 });
 
 
+
+// --- Series (fase 5): la anulación marca las series en la misma transacción ---
+
+const attachSerialService = (service: OperationalSalesService) => {
+  const calls: Array<Record<string, unknown>> = [];
+  (service as unknown as Record<string, unknown>).productSerialService = {
+    markReturnedForSale: async (_client: unknown, input: Record<string, unknown>) => {
+      calls.push(input);
+      return 0;
+    },
+  };
+  return calls;
+};
+
+test("voidSale con devolución de inventario marca las series como RETURNED", async () => {
+  const { service } = createService();
+  const serialCalls = attachSerialService(service);
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.voidSale(actor, "sale-a", { reason: "Cliente desistió de la compra", returnInventory: true });
+
+  assert.deepEqual(serialCalls, [
+    {
+      tenantId: "tenant-a",
+      saleId: "sale-a",
+      returnInventory: true,
+      userId: "user-a",
+      reason: "Cliente desistió de la compra",
+    },
+  ]);
+});
+
+test("voidSale sin devolución de inventario deja las series vendidas y registra el evento", async () => {
+  const { service } = createService();
+  const serialCalls = attachSerialService(service);
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.voidSale(actor, "sale-a", { reason: "Producto entregado y no devuelto", returnInventory: false });
+
+  assert.equal(serialCalls.length, 1);
+  assert.equal(serialCalls[0].returnInventory, false);
+});

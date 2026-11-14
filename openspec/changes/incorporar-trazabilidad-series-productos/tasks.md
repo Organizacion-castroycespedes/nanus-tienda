@@ -31,10 +31,10 @@
 
 ## 5. POS y anulaciones (cambio mínimo en venta)
 
-- [ ] 5.1 Specs en `sale.service.spec.ts`: asignación correcta; conteo distinto, otra sucursal o serie vendida → rechazo con rollback total; producto sin serie: mismas llamadas que hoy, más el retorno temprano; replay idempotente.
-- [ ] 5.2 `ensureSaleInput` acepta `serialIds`; `createSale` llama a `assignForSale` tras `createSaleWithFunction`. **Verificar en el diff que `inventory_create_sale_v2` no cambia.**
-- [ ] 5.3 `cancelSale` y `applySaleVoid` llaman a `markReturnedForSale` / `markVoidedNotReturned`; specs de ambos caminos y del worker.
-- [ ] 5.4 Web: `PosCartItem.serialIds`, selector con búsqueda al agregar, cantidad bloqueada, persistencia y reemplazo ante 409.
+- [x] 5.1 Specs en `sale.service.spec.ts`: asignación correcta; conteo distinto, otra sucursal o serie vendida → rechazo con rollback total; producto sin serie: mismas llamadas que hoy, más el retorno temprano; replay idempotente.
+- [x] 5.2 `ensureSaleInput` acepta `serialIds`; `createSale` llama a `assignForSale` tras `createSaleWithFunction`. **Verificar en el diff que `inventory_create_sale_v2` no cambia.**
+- [x] 5.3 `cancelSale` y `applySaleVoid` llaman a `markReturnedForSale` / `markVoidedNotReturned`; specs de ambos caminos y del worker.
+- [x] 5.4 Web: `PosCartItem.serialIds`, selector con búsqueda al agregar, cantidad bloqueada, persistencia y reemplazo ante 409.
 
 ## 6. Pedidos
 

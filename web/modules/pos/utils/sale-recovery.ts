@@ -32,6 +32,41 @@ export const isSaleIdempotencyConflict = (error: unknown) => {
   return message.includes("idempotency") || message.includes("reconciliation");
 };
 
+export type DefinitiveSerialRejection = {
+  code: string;
+  productId: string | null;
+  message: string;
+};
+
+/**
+ * Errores SERIAL_* del API al crear la venta: la transacción se revirtió completa,
+ * así que el rechazo es definitivo y el carrito puede corregirse y cobrarse otra vez.
+ */
+export const readDefinitiveSerialRejection = (
+  error: unknown,
+): DefinitiveSerialRejection | null => {
+  if (!(error instanceof ApiError) || ![400, 404, 409].includes(error.status)) {
+    return null;
+  }
+  const payload = error.details;
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const candidate = payload as Record<string, unknown>;
+  if (typeof candidate.code !== "string" || !candidate.code.startsWith("SERIAL_")) {
+    return null;
+  }
+  return {
+    code: candidate.code,
+    productId:
+      typeof candidate.productId === "string" && candidate.productId ? candidate.productId : null,
+    message:
+      typeof candidate.message === "string" && candidate.message
+        ? candidate.message
+        : "Revisa las series seleccionadas.",
+  };
+};
+
 const finiteNonNegative = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) && value >= 0
     ? value

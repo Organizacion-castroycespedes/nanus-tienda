@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -217,6 +218,62 @@ export class ProductSerialService {
     }
     try {
       return await this.repository.registerSerials(client, input);
+    } catch (error) {
+      throw mapSerialDatabaseError(error) ?? error;
+    }
+  }
+
+  /**
+   * Venta POS (opción A): asigna las series después de inventory_create_sale_v2, en la
+   * misma transacción. Un error deja la venta completa en ROLLBACK. Si el error trae la
+   * línea de venta (generada en el servidor), se informa el productId para que el POS
+   * pueda reemplazar la serie.
+   */
+  async assignForSale(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      saleId: string;
+      lines: Array<{ saleItemId: string; productId: string; serialIds: string[] }>;
+      userId: string | null;
+    }
+  ) {
+    try {
+      return await this.repository.assignSale(client, {
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        saleId: input.saleId,
+        lines: input.lines.map((line) => ({ saleItemId: line.saleItemId, serialIds: line.serialIds })),
+        userId: input.userId,
+      });
+    } catch (error) {
+      const mapped = mapSerialDatabaseError(error);
+      if (!mapped) {
+        throw error;
+      }
+      const detail = String((error as { detail?: unknown })?.detail ?? "");
+      const line = input.lines.find((candidate) => detail.includes(candidate.saleItemId));
+      if (!line) {
+        throw mapped;
+      }
+      const body = mapped.getResponse() as { code?: string; message?: string };
+      const enriched = { code: body.code, message: body.message, productId: line.productId };
+      throw mapped instanceof ConflictException
+        ? new ConflictException(enriched)
+        : mapped instanceof NotFoundException
+          ? new NotFoundException(enriched)
+          : new BadRequestException(enriched);
+    }
+  }
+
+  /** Anulación de venta: marca RETURNED (con devolución) o registra VOIDED_NOT_RETURNED. */
+  async markReturnedForSale(
+    client: PoolClient,
+    input: { tenantId: string; saleId: string; returnInventory: boolean; userId: string | null; reason: string | null }
+  ) {
+    try {
+      return await this.repository.markSaleReturned(client, input);
     } catch (error) {
       throw mapSerialDatabaseError(error) ?? error;
     }

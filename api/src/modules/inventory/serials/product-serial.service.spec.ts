@@ -301,3 +301,65 @@ test("ProductSerialController: permisos por endpoint", () => {
   assert.deepEqual(permissionOf("search").menuKey, ["INVENTORY_SERIALS", "INVENTORY"]);
   assert.deepEqual(permissionOf("history").menuKey, ["INVENTORY_SERIALS", "INVENTORY"]);
 });
+
+test("ProductSerialService.assignForSale traduce el error e informa el producto de la línea", async () => {
+  const saleItemId = "30000000-0000-4000-8000-000000000001";
+  const dbError = Object.assign(new Error("SERIAL_NOT_AVAILABLE"), { code: "P0001", detail: saleItemId });
+  const repository = {
+    assignSale: async () => {
+      throw dbError;
+    },
+  };
+  const service = new ProductSerialService(repository as never, {} as never);
+
+  await assert.rejects(
+    service.assignForSale({} as never, {
+      tenantId,
+      branchId: branchA,
+      saleId: "30000000-0000-4000-8000-000000000002",
+      lines: [{ saleItemId, productId: serialProduct, serialIds: ["30000000-0000-4000-8000-000000000003"] }],
+      userId: null,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpException);
+      assert.equal(error.getStatus(), 409);
+      assert.deepEqual(error.getResponse(), {
+        code: "SERIAL_NOT_AVAILABLE",
+        message: "Una o más series ya no están disponibles. Selecciona otra serie.",
+        productId: serialProduct,
+      });
+      return true;
+    }
+  );
+});
+
+test("ProductSerialService.assignForSale y markReturnedForSale envían solo las series al repositorio", async () => {
+  const calls: Record<string, unknown> = {};
+  const repository = {
+    assignSale: async (_client: unknown, input: unknown) => {
+      calls.assign = input;
+      return 1;
+    },
+    markSaleReturned: async (_client: unknown, input: unknown) => {
+      calls.returned = input;
+      return 1;
+    },
+  };
+  const service = new ProductSerialService(repository as never, {} as never);
+  const line = { saleItemId: "s-item", productId: serialProduct, serialIds: ["serial-1"] };
+
+  assert.equal(
+    await service.assignForSale({} as never, { tenantId, branchId: branchA, saleId: "sale-1", lines: [line], userId: "u1" }),
+    1
+  );
+  assert.deepEqual((calls.assign as { lines: unknown[] }).lines, [{ saleItemId: "s-item", serialIds: ["serial-1"] }]);
+
+  await service.markReturnedForSale({} as never, {
+    tenantId,
+    saleId: "sale-1",
+    returnInventory: false,
+    userId: "u1",
+    reason: "Anulada sin devolución",
+  });
+  assert.equal((calls.returned as { returnInventory: boolean }).returnInventory, false);
+});

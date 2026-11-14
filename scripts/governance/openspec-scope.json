@@ -718,7 +718,23 @@
         "web/modules/inventory/components/purchase-receive-lines.spec.ts",
         "web/modules/inventory/services/purchase.service.ts",
         "web/modules/inventory/serials/**",
-        "web/modules/inventory/services/product-serial.service.ts"
+        "web/modules/inventory/services/product-serial.service.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/services/sale.service.spec.ts",
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "api/src/modules/operational-sales/operational-sales.service.spec.ts",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/modules/pos/services/pos.service.ts",
+        "web/modules/pos/components/PosSerialPickerDialog.tsx",
+        "web/modules/pos/utils/pos-serials.ts",
+        "web/modules/pos/utils/pos-serials.spec.ts"
       ],
       "exemptions": []
     }
@@ -740,19 +756,11 @@
     {
       "change_id": "corregir-stock-insuficiente-y-recuperacion-carrito-pos",
       "paths": [
-        "api/src/modules/inventory/repositories/sale.repository.ts",
-        "api/src/modules/inventory/services/sale.service.ts",
         "api/src/modules/inventory/services/sale-stock-rejection.spec.ts",
         "web/lib/http.ts",
         "web/modules/pos/components/catalog/PosProductCard.tsx",
-        "web/modules/pos/components/cart/CartSaleModal.tsx",
         "web/modules/pos/components/PosScreen.integration.test.tsx",
         "web/modules/pos/hooks/useSalePrintWorkflow.spec.ts",
-        "web/modules/pos/hooks/usePosCartStore.ts",
-        "web/modules/pos/utils/sale-recovery.ts",
-        "web/modules/pos/utils/sale-recovery.spec.ts",
-        "web/store/posCart.ts",
-        "web/store/posCart.spec.ts",
         "openspec/changes/corregir-stock-insuficiente-y-recuperacion-carrito-pos/**"
       ],
       "reason": "Current branch diff implements the P1 definitive stock rejection and safe POS cart recovery. Historical HU paths remain unchanged."
@@ -806,7 +814,6 @@
         "web/modules/finance/utils/active-financial-institutions.spec.ts",
         "web/modules/finance/utils/active-financial-institutions.ts",
         "web/modules/finance/types.ts",
-        "web/modules/pos/components/PosScreen.tsx",
         "web/modules/pos/components/PosScreen.financial-institutions.spec.ts",
         "web/modules/pos/components/payment/FinancialInstitutionSelector.spec.tsx",
         "web/modules/pos/components/payment/FinancialInstitutionSelector.tsx",
@@ -993,9 +1000,25 @@
         "web/modules/inventory/components/purchase-receive-lines.spec.ts",
         "web/modules/inventory/services/purchase.service.ts",
         "web/modules/inventory/serials/**",
-        "web/modules/inventory/services/product-serial.service.ts"
+        "web/modules/inventory/services/product-serial.service.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/services/sale.service.spec.ts",
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "api/src/modules/operational-sales/operational-sales.service.spec.ts",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/modules/pos/services/pos.service.ts",
+        "web/modules/pos/components/PosSerialPickerDialog.tsx",
+        "web/modules/pos/utils/pos-serials.ts",
+        "web/modules/pos/utils/pos-serials.spec.ts"
       ],
-      "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase. Phase 3 adds the read-only serials module (api/src/modules/inventory/serials/**) and registers it in inventory.module.ts. Fase 4: recepción de compras con series (purchase.service/controller y formulario de recepción web)."
+      "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase. Phase 3 adds the read-only serials module (api/src/modules/inventory/serials/**) and registers it in inventory.module.ts. Fase 4: recepción de compras con series (purchase.service/controller y formulario de recepción web). Fase 5: venta POS con series (llamado a fnc_product_serials_assign_sale después de inventory_create_sale_v2, sin modificar esa función), anulaciones (cancelSale y applySaleVoid) y selector de series en el POS."
     }
   ]
 }

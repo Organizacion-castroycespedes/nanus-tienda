@@ -89,6 +89,7 @@ import {
 } from "../../integration-outbox/contracts/electronic-billing-mode";
 import { ParametersService } from "../../parameters/parameters.service";
 import { StockMovementService } from "./stock-movement.service";
+import { ProductSerialService } from "../serials/product-serial.service";
 import {
   normalizeVatResponsibility,
   type VatResponsibility,
@@ -487,6 +488,9 @@ export class SaleService {
     @Optional()
     @Inject(WeightCapturePersistence)
     private readonly weightCapturePersistence?: WeightCapturePersistence,
+    @Optional()
+    @Inject(ProductSerialService)
+    private readonly productSerialService?: ProductSerialService,
   ) {}
 
   private toNumber(value: string | number) {
@@ -731,7 +735,7 @@ export class SaleService {
       }
       const line = item as unknown as Record<string, unknown>;
       if (item.saleMode === "WEIGHT") {
-        if (["quantity", "weight", "unit", "source", "price"].some((key) =>
+        if (["quantity", "weight", "unit", "source", "price", "serialIds"].some((key) =>
           Object.prototype.hasOwnProperty.call(line, key)
         )) {
           throw new BadRequestException("WEIGHT sale line cannot provide measurement or price authority");
@@ -753,6 +757,19 @@ export class SaleService {
         }
         if (typeof item.quantity !== "number" || typeof item.price !== "number") {
           throw new BadRequestException("UNIT sale line quantity and price are required");
+        }
+        if (item.serialIds !== undefined) {
+          if (
+            !Array.isArray(item.serialIds) ||
+            item.serialIds.length > 2000 ||
+            item.serialIds.some(
+              (serialId) =>
+                typeof serialId !== "string" ||
+                !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serialId)
+            )
+          ) {
+            throw new BadRequestException("serialIds must be a list of serial UUIDs");
+          }
         }
       }
     }
@@ -826,6 +843,8 @@ export class SaleService {
 
     const preparedItems: CreateSaleInput["items"] = [];
     const captures: PreparedWeightCapture[] = [];
+    // Solo líneas de productos con serie (o que enviaron series): el resto no agrega llamadas.
+    const serialLines: Array<{ saleItemId: string; productId: string; serialIds: string[] }> = [];
     let posTerminalId: string | null = null;
 
     for (const item of items) {
@@ -856,6 +875,9 @@ export class SaleService {
           price: unitItem.price,
           orderItemId: unitItem.orderItemId ?? null,
         });
+        if (product.requiresSerial || (unitItem.serialIds?.length ?? 0) > 0) {
+          serialLines.push({ saleItemId, productId: item.productId, serialIds: unitItem.serialIds ?? [] });
+        }
         continue;
       }
 
@@ -926,7 +948,7 @@ export class SaleService {
       });
     }
 
-    return { items: preparedItems, captures };
+    return { items: preparedItems, captures, serialLines };
   }
 
   private normalizePayments(payments: CreateSalePaymentInput[] | undefined) {
@@ -3277,6 +3299,19 @@ export class SaleService {
         throw new BadRequestException("sale could not be created");
       }
 
+      if (preparedSaleItems.serialLines.length > 0) {
+        if (!this.productSerialService) {
+          throw new BadRequestException("serial assignment is unavailable");
+        }
+        await this.productSerialService.assignForSale(client, {
+          tenantId: saleContext.tenantId,
+          branchId: saleContext.branchId,
+          saleId: saleRow.id,
+          lines: preparedSaleItems.serialLines,
+          userId: saleContext.userId ?? null,
+        });
+      }
+
       for (const capture of preparedSaleItems.captures) {
         const saleItem = pricedItems.find((item) => item.saleItemId === capture.saleItemId);
         if (!saleItem || !this.weightCapturePersistence) {
@@ -3942,6 +3977,17 @@ export class SaleService {
             [item.order_item_id, this.toNumber(item.quantity), Boolean(originalMovement)]
           );
         }
+      }
+
+      // Series vendidas: el inventario vuelve, así que pasan a RETURNED (inspección posterior).
+      if (this.productSerialService) {
+        await this.productSerialService.markReturnedForSale(client, {
+          tenantId: sale.tenant_id,
+          saleId: id,
+          returnInventory: true,
+          userId: actor.userId ?? sale.user_id ?? null,
+          reason: "Cancelación de venta",
+        });
       }
 
       const allocatedPayments = await this.paymentsRepository.listAllocatedPayments(
