@@ -707,7 +707,9 @@
         "web/modules/inventory/components/product-form/payload.ts",
         "web/modules/inventory/components/product-form/types.ts",
         "web/modules/inventory/services/product.service.ts",
-        "docs/evidencia-incorporar-trazabilidad-series-productos.md"
+        "docs/evidencia-incorporar-trazabilidad-series-productos.md",
+        "api/src/modules/inventory/serials/**",
+        "api/src/modules/inventory/inventory.module.ts"
       ],
       "exemptions": []
     }
@@ -984,9 +986,11 @@
         "web/modules/inventory/components/product-form/payload.ts",
         "web/modules/inventory/components/product-form/types.ts",
         "web/modules/inventory/services/product.service.ts",
-        "docs/evidencia-incorporar-trazabilidad-series-productos.md"
+        "docs/evidencia-incorporar-trazabilidad-series-productos.md",
+        "api/src/modules/inventory/serials/**",
+        "api/src/modules/inventory/inventory.module.ts"
       ],
-      "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase."
+      "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase. Phase 3 adds the read-only serials module (api/src/modules/inventory/serials/**) and registers it in inventory.module.ts."
     }
   ]
 }

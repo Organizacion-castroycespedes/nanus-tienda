@@ -107,11 +107,12 @@ Para cada (producto con serie, sucursal): `#series en {AVAILABLE, RETURNED, BLOC
 - `POST /purchases/:id/receive`: `items[].serialNumbers?: string[]` (incluido en el hash de idempotencia porque viaja en los items mapeados).
 - `POST /sales`: `items[].serialIds?: string[]`. `POST /orders/:id/deliver`: `items[].serialIds?: string[]`.
 - `POST /inventory/stock-adjustments`: `serialNumbers` (entrada) o `serialIds` (salida).
-- `POST /inventory/products/:productId/serials/validate` `{branchId, serialNumbers[]}` → `{valid, duplicatesInPayload, alreadyRegistered, invalidFormat, existsInOtherProduct}` (solo lectura).
-- `POST /inventory/products/:productId/serials/parse` (multipart CSV/XLSX, `exceljs`) → misma respuesta, más la lista leída.
-- `GET /inventory/products/:productId/serials?branchId&status&search&limit&cursor`.
-- `GET /inventory/serials/lookup?serial=&branchId=` (escaneo en POS y entregas).
-- `GET /inventory/serials?search&productId&branchId&status` y `GET /inventory/serials/:id/history`.
+- Lectura y prevalidación (fase 3, controlador `inventory/serials`; el de productos vive en `/products`):
+  - `POST /inventory/serials/validate` `{productId, branchId, serialNumbers[]}` → `{total, valid, invalidFormat, duplicatesInPayload, alreadyRegistered, existsInOtherProduct, ok}` (solo lectura, máximo 2000).
+  - `POST /inventory/serials/parse` (multipart `file`: .csv/.txt una serie por línea, o .xlsx con columna "Serie" o la primera columna; máximo 2 MB y 2000 series) → `{serialNumbers}`.
+  - `GET /inventory/serials/available?productId&branchId&status=AVAILABLE&search&limit&offset`.
+  - `GET /inventory/serials/lookup?serial&branchId&productId` (búsqueda exacta para escaneo).
+  - `GET /inventory/serials?search&productId&branchId&status&limit&offset` y `GET /inventory/serials/:id/history`.
 - `POST /inventory/serials/:id/inspection` `{result, reason}`; `PATCH /inventory/serials/:id/block|unblock` `{reason}`.
 - `GET /inventory/serials/reconciliation?branchId`.
 - `PATCH /inventory/serials/location` `{serialIds[], locationId, reason?}` (mover una o varias series).

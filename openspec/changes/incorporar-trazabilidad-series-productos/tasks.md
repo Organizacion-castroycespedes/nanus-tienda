@@ -20,8 +20,8 @@
 
 ## 3. Módulo de series (lectura y prevalidación)
 
-- [ ] 3.1 `inventory/serials`: repositorio, servicio (traducción de errores), controlador, permisos y alcance por sucursal.
-- [ ] 3.2 `validate`, `parse` (CSV/XLSX con `exceljs`), disponibilidad, `lookup`, búsqueda, historial, conciliación.
+- [x] 3.1 `inventory/serials`: repositorio, servicio (traducción de errores), controlador, permisos y alcance por sucursal.
+- [x] 3.2 `validate`, `parse` (CSV/TXT/XLSX con `exceljs`), disponibilidad, `lookup`, búsqueda e historial. La conciliación pasa a la fase 7 (página de series).
 
 ## 4. Recepción de compras
 

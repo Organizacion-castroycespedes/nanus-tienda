@@ -41,6 +41,18 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
   - tipos, DTO y `payload.ts` (campo inmutable).
 - Pruebas: `product.service.spec.ts` 51/51 (5 nuevas, más `requiresSerial` en la prueba de campos estructurales). `tsc --noEmit` del API OK; `tsc` de la web sin errores en código de producción.
 
+## Fase 3 — Módulo de series (lectura y prevalidación)
+- `api/src/modules/inventory/serials/`:
+  - `product-serial.repository.ts`, `product-serial.service.ts`, `product-serial.controller.ts`;
+  - `product-serial.normalize.ts` (misma regla de formato que V117);
+  - `product-serial.errors.ts` (traduce `SERIAL_*` a 400/404/409 con mensaje en español, para las fases 4–7).
+  - Registrado en `inventory.module.ts` (también exporta `ProductSerialService`).
+- Endpoints (solo lectura): `POST inventory/serials/validate`, `POST inventory/serials/parse`, `GET inventory/serials/available`, `GET inventory/serials/lookup`, `GET inventory/serials`, `GET inventory/serials/:id/history`. Las consultas se filtran por tenant y por las sucursales permitidas al usuario (SUPER_ADMIN/SUPER_USER: todas).
+- Validación (Cowork, 2026-11-14):
+  - `product-serial.service.spec.ts` 13/13: prevalidación, archivos CSV/XLSX, límites, sucursales, traducción de errores, permisos por endpoint;
+  - `tsc --noEmit` del API OK;
+  - las 8 consultas del repositorio ejecutadas contra PostgreSQL 16 con V117 y datos de los escenarios, con resultados esperados.
+
 ## Validación en Windows (propietario, 2026-11-14)
 - `openspec.cmd validate incorporar-trazabilidad-series-productos --strict`: válido.
 - API `npx tsx --test src/**/*.spec.ts`: 1149 pruebas, 1141 pass, 0 fail, 8 omitidas (5 más que la línea base de 1136: las nuevas de producto). `npm run build` OK.

@@ -15,6 +15,9 @@ import { InventoryController } from "./controllers/inventory.controller";
 import { InventoryLotReconciliationController } from "./controllers/inventory-lot-reconciliation.controller";
 import { InventoryLotBalanceController } from "./controllers/inventory-lot-balance.controller";
 import { InventoryLotController } from "./controllers/inventory-lot.controller";
+import { ProductSerialController } from "./serials/product-serial.controller";
+import { ProductSerialRepository } from "./serials/product-serial.repository";
+import { ProductSerialService } from "./serials/product-serial.service";
 import { InventoryLocationController } from "./controllers/inventory-location.controller";
 import { OrderController } from "./controllers/order.controller";
 import { ProductImportController } from "./product-import/product-import.controller";
@@ -92,6 +95,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryLotReconciliationController,
     InventoryLotBalanceController,
     InventoryLotController,
+    ProductSerialController,
     InventoryLocationController,
     ProductImportController,
     ProductController,
@@ -115,6 +119,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryService,
     InventoryLotBalanceService,
     InventoryLotService,
+    ProductSerialService,
     InventoryLocationService,
     InventoryLotReconciliationService,
     OrderService,
@@ -141,6 +146,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     InventoryRepository,
     InventoryLotBalanceRepository,
     InventoryLotRepository,
+    ProductSerialRepository,
     InventoryLocationRepository,
     InventoryLotReconciliationRepository,
     ProductRepository,
@@ -156,6 +162,7 @@ import { UnitRepository } from "./repositories/unit.repository";
     FinanceAccessRepository,
   ],
   exports: [
+    ProductSerialService,
     CustomerService,
     InventoryFefoService,
     InventoryService,
