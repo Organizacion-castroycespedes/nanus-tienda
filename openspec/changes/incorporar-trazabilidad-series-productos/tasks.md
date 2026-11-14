@@ -25,9 +25,9 @@
 
 ## 4. Recepción de compras
 
-- [ ] 4.1 Specs en `purchase.service.spec.ts`: series = cantidad recibida, parcial, duplicados, idempotencia con series, producto sin serie sin cambios.
-- [ ] 4.2 `PurchaseController.receive` mapea `serialNumbers`; `receivePurchase` llama a `registerForReceipt` con el movimiento `IN`.
-- [ ] 4.3 Web: diálogo "Registrar series" (escáner, pegado, archivo, manual, vista previa) en `PurchaseReceiveForm`.
+- [x] 4.1 Specs en `purchase.service.spec.ts`: series = cantidad recibida, parcial, duplicados, idempotencia con series, producto sin serie sin cambios. (6 pruebas; el conteo exacto y los duplicados los valida `fnc_product_serials_register` y se prueban con su error traducido; el replay idempotente responde antes de registrar.)
+- [x] 4.2 `PurchaseController.receive` mapea `serialNumbers`; `receivePurchase` llama a `registerForReceipt` con el movimiento `IN`.
+- [x] 4.3 Web: diálogo "Registrar series" (escáner, pegado, archivo, manual, vista previa) en `PurchaseReceiveForm`. (`web/modules/inventory/serials/SerialCaptureDialog.tsx` + `serial-capture.ts`.)
 
 ## 5. POS y anulaciones (cambio mínimo en venta)
 
@@ -53,7 +53,7 @@
 
 - [ ] 7b.1 Specs: ubicación en la recepción (por línea y por serie), ubicación de otra sucursal o inactiva rechazada, mover sin movimiento de kardex, producto sin lote ni serie con el rechazo actual, inactivar una ubicación con series en existencia bloqueado.
 - [ ] 7b.2 `fnc_product_serials_move_location`, `PATCH /inventory/serials/location`, `locationId` en disponibilidad y búsqueda, conteo en `GET /inventory/locations`.
-- [ ] 7b.3 `validateReceiveLotPayload`: permitir `locationId` solo para productos con serie.
+- [x] 7b.3 `validateReceiveLotPayload`: permitir `locationId` solo para productos con serie.
 - [ ] 7b.4 Web: ubicación en el diálogo de recepción, "SERIE · Ubicación" en los selectores, acción "Mover ubicación", columna en `/inventory/locations`.
 
 ## 8. Validación

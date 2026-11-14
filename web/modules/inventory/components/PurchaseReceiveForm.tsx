@@ -54,6 +54,8 @@ import { InventoryProductSearchResults } from "../barcode/InventoryProductSearch
 import { InventoryQuantityDialog } from "../barcode/InventoryQuantityDialog";
 import { InventoryScanBar } from "../barcode/InventoryScanBar";
 import { useInventoryBarcodeCapture } from "../barcode/use-inventory-barcode-capture";
+import { SerialCaptureDialog } from "../serials/SerialCaptureDialog";
+import { formatSerialProgress, isWholeSerialQuantity } from "../serials/serial-capture";
 
 type ReceiveFormErrors = {
   items?: string;
@@ -155,6 +157,7 @@ export const PurchaseReceiveForm = ({
     product: ReceiptScanProduct;
     max: number;
   } | null>(null);
+  const [serialDialogKey, setSerialDialogKey] = useState<string | null>(null);
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
   const [invoiceFromPreviousReceipt, setInvoiceFromPreviousReceipt] = useState(false);
   const invoicePrefilledRef = useRef(false);
@@ -355,7 +358,7 @@ export const PurchaseReceiveForm = ({
     purchase?.status === "RECEIVED" ||
     purchase?.status === "CERRADA_PARCIAL";
 
-  const getItemPolicy = (item: { productId: string; requiresLot?: boolean; requiresExpiration?: boolean; isPerishable?: boolean; isInventoryable?: boolean }) => {
+  const getItemPolicy = (item: { productId: string; requiresLot?: boolean; requiresExpiration?: boolean; requiresSerial?: boolean; isPerishable?: boolean; isInventoryable?: boolean }) => {
     const product = productById.get(item.productId);
     const isInventoryable = product?.isInventoryable ?? item.isInventoryable ?? true;
     return {
@@ -365,6 +368,7 @@ export const PurchaseReceiveForm = ({
       requiresExpiration:
         isInventoryable && Boolean(product?.requiresExpiration ?? item.requiresExpiration),
       isPerishable: isInventoryable && Boolean(product?.isPerishable ?? item.isPerishable),
+      requiresSerial: isInventoryable && Boolean(product?.requiresSerial ?? item.requiresSerial),
     };
   };
 
@@ -466,11 +470,15 @@ export const PurchaseReceiveForm = ({
   );
 
   const captureEnabled =
-    receiveStep === "products" && !isBlockedStatus && !isSubmitting && rows.length > 0;
+    receiveStep === "products" &&
+    !isBlockedStatus &&
+    !isSubmitting &&
+    rows.length > 0 &&
+    serialDialogKey === null;
 
   const capture = useInventoryBarcodeCapture({
     enabled: captureEnabled,
-    focusReleased: quantityDialog !== null,
+    focusReleased: quantityDialog !== null || serialDialogKey !== null,
     // En recepción hay campos de lote; el foco inicial lo da el paso de productos.
     autoFocus: true,
     onScan: handleScan,
@@ -563,8 +571,19 @@ export const PurchaseReceiveForm = ({
       if (!item) {
         continue;
       }
-      const { requiresLot, requiresExpiration } = getItemPolicy(item);
+      const { requiresLot, requiresExpiration, requiresSerial } = getItemPolicy(item);
       const label = item.productName || item.productId;
+
+      if (requiresSerial) {
+        if (!isWholeSerialQuantity(quantity)) {
+          itemErrors.push(`${label}: los productos con serie se reciben por unidades enteras.`);
+        } else if (entry.serialNumbers.length !== quantity) {
+          itemErrors.push(`${label}: ${formatSerialProgress(entry.serialNumbers.length, quantity)} capturadas.`);
+        }
+        if (entry.locationId && !locationIds.has(entry.locationId)) {
+          itemErrors.push(`${label}: ubicacion no valida.`);
+        }
+      }
 
       if (requiresLot) {
         if (!entry.lotCode.trim()) {
@@ -619,6 +638,10 @@ export const PurchaseReceiveForm = ({
     return Object.keys(nextErrors).length === 0;
   };
 
+  const serialDialogEntry = serialDialogKey
+    ? entries.find((entry) => entry.key === serialDialogKey) ?? null
+    : null;
+
   const receivableEntries = useMemo(() => {
     const pendingItemIds = new Set(rows.map(({ item }) => item.id));
     return getReceivableEntries(entries).filter((entry) => pendingItemIds.has(entry.purchaseItemId));
@@ -656,7 +679,7 @@ export const PurchaseReceiveForm = ({
         items: receivableEntries.map((entry) => {
           const quantity = getReceiveQuantity(entry);
           const item = purchase?.items.find((candidate) => candidate.id === entry.purchaseItemId);
-          const { requiresLot } = getItemPolicy(item ?? { productId: entry.productId });
+          const { requiresLot, requiresSerial } = getItemPolicy(item ?? { productId: entry.productId });
           const payloadItem: ReceivePurchasePayload["items"][number] = {
             product_id: entry.productId,
             productId: entry.productId,
@@ -664,6 +687,14 @@ export const PurchaseReceiveForm = ({
             quantity,
             receivedQuantity: quantity,
           };
+
+          if (requiresSerial) {
+            return {
+              ...payloadItem,
+              serialNumbers: entry.serialNumbers,
+              locationId: entry.locationId || undefined,
+            };
+          }
 
           if (!requiresLot) {
             return payloadItem;
@@ -881,13 +912,15 @@ export const PurchaseReceiveForm = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {rows.map(({ item, pending }) => {
-                    const { product, isInventoryable, requiresLot, requiresExpiration, isPerishable } =
+                    const { product, isInventoryable, requiresLot, requiresExpiration, isPerishable, requiresSerial } =
                       getItemPolicy(item);
                     const itemEntries = entries.filter((entry) => entry.purchaseItemId === item.id);
                     const prepared = preparedByItem[item.id] ?? 0;
                     const progress = pending > 0 ? Math.min(prepared / pending, 1) : 0;
                     const isSplit = itemEntries.length > 1;
                     const showLotFields = requiresLot && (prepared > 0 || isSplit);
+                    const serialEntry = requiresSerial ? itemEntries[0] : undefined;
+                    const showSerialFields = Boolean(serialEntry) && prepared > 0;
                     const productLabel = item.productName || product?.name || item.productId;
 
                     return (
@@ -928,6 +961,11 @@ export const PurchaseReceiveForm = ({
                                     Requiere lote
                                   </span>
                                 ) : null}
+                                {requiresSerial ? (
+                                  <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                                    Requiere serie
+                                  </span>
+                                ) : null}
                                 {requiresExpiration ? (
                                   <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                                     Requiere vencimiento
@@ -954,6 +992,55 @@ export const PurchaseReceiveForm = ({
                             ) : null}
                           </td>
                         </tr>
+                        {showSerialFields && serialEntry ? (
+                          <tr className="bg-indigo-50/40">
+                            <td colSpan={5} className="px-4 py-4">
+                              <div className="grid grid-cols-[minmax(220px,1fr)_minmax(250px,1.2fr)] items-end gap-3">
+                                <div className="space-y-2">
+                                  <p className="text-xs font-medium uppercase tracking-wide text-indigo-700">
+                                    Este producto requiere número de serie por unidad.
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <span
+                                      className={`text-sm font-semibold ${
+                                        serialEntry.serialNumbers.length === prepared
+                                          ? "text-emerald-700"
+                                          : "text-slate-700 dark:text-slate-200"
+                                      }`}
+                                    >
+                                      {formatSerialProgress(serialEntry.serialNumbers.length, prepared)}
+                                    </span>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={!isWholeSerialQuantity(prepared) || !purchase.branchId}
+                                      onClick={() => setSerialDialogKey(serialEntry.key)}
+                                    >
+                                      Capturar series
+                                    </Button>
+                                  </div>
+                                  {!isWholeSerialQuantity(prepared) ? (
+                                    <p className="text-xs text-rose-600">Usa una cantidad entera para capturar series.</p>
+                                  ) : null}
+                                </div>
+                                <Select
+                                  label="Ubicacion"
+                                  value={serialEntry.locationId}
+                                  onChange={(event) =>
+                                    updateEntry(serialEntry.key, { locationId: event.target.value })
+                                  }
+                                >
+                                  <option value="">Sin ubicacion</option>
+                                  {locations.map((location) => (
+                                    <option key={location.id} value={location.id}>
+                                      {location.code} - {location.name}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
                         {showLotFields ? (
                           <tr className="bg-blue-50/40">
                             <td colSpan={5} className="px-4 py-4">
@@ -1123,6 +1210,35 @@ export const PurchaseReceiveForm = ({
             </Button>
           </div>
         </form>
+      ) : null}
+
+      {serialDialogEntry && purchase?.branchId ? (
+        <SerialCaptureDialog
+          productId={serialDialogEntry.productId}
+          productName={
+            purchase.items.find((item) => item.id === serialDialogEntry.purchaseItemId)?.productName ||
+            productById.get(serialDialogEntry.productId)?.name ||
+            serialDialogEntry.productId
+          }
+          branchId={purchase.branchId}
+          expected={getReceiveQuantity(serialDialogEntry)}
+          initialSerials={serialDialogEntry.serialNumbers}
+          takenElsewhere={entries
+            .filter(
+              (entry) =>
+                entry.key !== serialDialogEntry.key && entry.productId === serialDialogEntry.productId
+            )
+            .flatMap((entry) => entry.serialNumbers)}
+          onCancel={() => {
+            setSerialDialogKey(null);
+            capture.focusScanInput();
+          }}
+          onSave={(serialNumbers) => {
+            updateEntry(serialDialogEntry.key, { serialNumbers });
+            setSerialDialogKey(null);
+            capture.focusScanInput();
+          }}
+        />
       ) : null}
 
       {quantityDialog ? (

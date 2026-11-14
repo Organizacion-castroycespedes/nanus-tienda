@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import {
   BadRequestException,
   ForbiddenException,
@@ -9,6 +10,7 @@ import ExcelJS from "exceljs";
 import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
 import { cellValueToText } from "../imports/xlsx-import.parser";
 import { canViewAllBranches, type BranchScopedActor } from "../utils/access";
+import { mapSerialDatabaseError } from "./product-serial.errors";
 import {
   isSerialHeader,
   isValidSerialNumber,
@@ -35,6 +37,32 @@ export type SerialPrevalidationResult = {
 };
 
 export type SerialFile = { originalname?: string; buffer?: Buffer; size?: number };
+
+/** Serie tal como llega en el payload: texto o {serialNumber, locationId}. */
+export type SerialInput = string | { serialNumber?: unknown; serial?: unknown; locationId?: unknown };
+
+export const normalizeSerialInputs = (value: unknown): Array<{ serial: string; locationId: string | null }> | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new BadRequestException("serialNumbers debe ser una lista");
+  }
+  if (value.length > MAX_SERIALS_PER_REQUEST) {
+    throw new BadRequestException(`Máximo ${MAX_SERIALS_PER_REQUEST} series por línea`);
+  }
+  return value.map((item: SerialInput) => {
+    if (typeof item === "string") {
+      return { serial: item, locationId: null };
+    }
+    if (item && typeof item === "object") {
+      const serial = typeof item.serialNumber === "string" ? item.serialNumber : typeof item.serial === "string" ? item.serial : "";
+      const locationId = typeof item.locationId === "string" && item.locationId.trim() ? item.locationId.trim() : null;
+      return { serial, locationId };
+    }
+    return { serial: "", locationId: null };
+  });
+};
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -163,6 +191,35 @@ export class ProductSerialService {
       throw new BadRequestException({ code: "SERIAL_NOT_REQUIRED", message: "El producto no maneja número de serie." });
     }
     return product;
+  }
+
+  /**
+   * Registra las series de una línea recibida (compra o ajuste de entrada) en la transacción del llamador.
+   * La función de BD valida formato, duplicados, ubicación y que la cantidad coincida con el movimiento IN.
+   */
+  async registerForReceipt(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      productId: string;
+      sourceType: "PURCHASE" | "ADJUSTMENT";
+      sourceId: string | null;
+      sourceItemId: string | null;
+      stockMovementId: string;
+      serials: Array<{ serial: string; locationId: string | null }>;
+      defaultLocationId: string | null;
+      userId: string | null;
+    }
+  ) {
+    if (input.serials.length === 0) {
+      throw new BadRequestException({ code: "SERIAL_REQUIRED", message: "Debes indicar las series del producto." });
+    }
+    try {
+      return await this.repository.registerSerials(client, input);
+    } catch (error) {
+      throw mapSerialDatabaseError(error) ?? error;
+    }
   }
 
   /** Prevalidación de solo lectura para escáner, pegado masivo o archivo, antes de recibir. */

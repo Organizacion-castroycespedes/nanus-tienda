@@ -55,6 +55,7 @@ export type PurchaseItemResponse = {
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
+  requiresSerial?: boolean;
   orderedQuantity: number;
   receivedQuantity: number;
   pendingQuantity?: number | null;
@@ -106,6 +107,7 @@ export type ReceivePurchasePayload = {
     expirationDate?: string | null;
     locationId?: string | null;
     unitCost?: number;
+    serialNumbers?: string[];
   }>;
 };
 

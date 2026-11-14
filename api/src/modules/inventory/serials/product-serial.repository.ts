@@ -236,6 +236,43 @@ export class ProductSerialRepository {
     return result.rows[0] ?? null;
   }
 
+  /** fnc_product_serials_register (V117) dentro de la transacción del llamador. */
+  async registerSerials(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      productId: string;
+      sourceType: "PURCHASE" | "ADJUSTMENT";
+      sourceId: string | null;
+      sourceItemId: string | null;
+      stockMovementId: string | null;
+      serials: Array<{ serial: string; locationId: string | null }>;
+      defaultLocationId: string | null;
+      userId: string | null;
+    }
+  ) {
+    const result = await client.query<{ serial_id: string; serial_number: string }>(
+      `SELECT serial_id, serial_number
+         FROM public.fnc_product_serials_register(
+           $1::uuid, $2::uuid, $3::uuid, $4::text, $5::uuid, $6::uuid, $7::uuid, $8::jsonb, $9::uuid, $10::uuid
+         )`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.productId,
+        input.sourceType,
+        input.sourceId,
+        input.sourceItemId,
+        input.stockMovementId,
+        JSON.stringify(input.serials),
+        input.defaultLocationId,
+        input.userId,
+      ]
+    );
+    return result.rows;
+  }
+
   async findEvents(tenantId: string, serialId: string) {
     const result = await this.query<ProductSerialEventRow>(
       `SELECT

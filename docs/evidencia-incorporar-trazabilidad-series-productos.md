@@ -53,6 +53,23 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
   - `tsc --noEmit` del API OK;
   - las 8 consultas del repositorio ejecutadas contra PostgreSQL 16 con V117 y datos de los escenarios, con resultados esperados.
 
+## Fase 4 — Recepción de compras con series
+- API:
+  - `PurchaseController.receive` acepta `serialNumbers` (o `serial_numbers`) por línea;
+  - `PurchaseService.receivePurchase`, para productos con `requires_serial`, llama a `ProductSerialService.registerForReceipt` dentro de la misma transacción, con el movimiento `IN` de la línea y la ubicación de la línea como predeterminada (`fnc_product_serials_register`);
+  - sin series → `SERIAL_REQUIRED`; series en un producto sin serie → `SERIAL_NOT_REQUIRED`; lote, vencimiento o costo de lote en un producto con serie → rechazo; cualquier error revierte toda la recepción;
+  - `validateReceiveLotPayload` admite `locationId` solo para productos con serie (7b.3); el resto de productos sin lote mantiene el rechazo actual.
+- Web:
+  - `PurchaseReceiveForm`: etiqueta "Requiere serie", fila con contador "N de M series", botón "Capturar series" y ubicación de la línea; no deja revisar ni confirmar si el conteo no coincide con la cantidad o la cantidad no es entera; el payload envía `serialNumbers` y `locationId`;
+  - `SerialCaptureDialog`: escáner o teclado (Enter), pegado de varias líneas, archivo `.csv/.txt/.xlsx` vía `POST inventory/serials/parse`, lista con quitar, y "Validar y guardar" con `POST inventory/serials/validate`; si la serie existe en otro producto muestra el aviso y pide "Guardar de todas formas" (no bloquea);
+  - mientras el diálogo está abierto se pausa la captura de códigos de barras del formulario;
+  - la ubicación es por línea; la ubicación distinta por serie (el API ya la admite) queda para la fase 7b.4.
+- Validación (Cowork, 2026-11-14):
+  - `purchase.service.spec.ts` + `product-serial.service.spec.ts`: 74/74;
+  - `serial-capture.spec.ts` + `purchase-receive-lines.spec.ts`: 19/19;
+  - `tsc --noEmit` web: sin errores fuera de los specs (los errores en specs ya existían);
+  - gobernanza: manifiesto válido; se reasignó la propiedad actual de los archivos de compras (de `modernizar-captura-barcode-orders-purchases` y `soportar-productos-no-inventariables`; la entrada de este último quedó vacía y se retiró de `current_ownership`, su asociación histórica en `changes[]` se conserva).
+
 ## Validación en Windows (propietario, 2026-11-14)
 - `openspec.cmd validate incorporar-trazabilidad-series-productos --strict`: válido.
 - API `npx tsx --test src/**/*.spec.ts`: 1149 pruebas, 1141 pass, 0 fail, 8 omitidas (5 más que la línea base de 1136: las nuevas de producto). `npm run build` OK.
@@ -60,5 +77,6 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
 - V117 aplicada en la base local real `manus_prd_local_test` con `node "Claude outputs\aplicar-V117-local.cjs" --aplicar`: SHA-256 `89e6d21052a051a5c3c057c158f3353672dec286d23184f66777fd60935b9410`; 9 funciones, columna `requires_serial` y menú "Series" en 3 tenants. Esto confirma las FK y columnas contra el esquema real. Sin registro en `migrations_history` (método local, igual que V116).
 
 ## Pendiente
+- [ ] QA de la fase 4: recibir una compra con un producto con serie (escáner, pegado y archivo), una recepción parcial, una serie repetida (rechazo y rollback) y una serie que existe en otro producto (aviso).
 - [ ] QA del formulario: crear un producto con serie (UNIT, sin lote); la casilla se deshabilita al editar; no se combina con lote ni vencimiento.
 - Nota: el menú "Series" ya aparece en local, pero la página `/inventory/serials` llega en la fase 7; mientras tanto abre la página de "no encontrado".

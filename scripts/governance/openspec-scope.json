@@ -709,7 +709,16 @@
         "web/modules/inventory/services/product.service.ts",
         "docs/evidencia-incorporar-trazabilidad-series-productos.md",
         "api/src/modules/inventory/serials/**",
-        "api/src/modules/inventory/inventory.module.ts"
+        "api/src/modules/inventory/inventory.module.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts",
+        "api/src/modules/inventory/controllers/purchase.controller.ts",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
+        "web/modules/inventory/services/purchase.service.ts",
+        "web/modules/inventory/serials/**",
+        "web/modules/inventory/services/product-serial.service.ts"
       ],
       "exemptions": []
     }
@@ -751,20 +760,12 @@
     {
       "change_id": "soportar-productos-no-inventariables",
       "paths": [
-        "api/src/modules/inventory/controllers/purchase.controller.ts",
         "api/src/modules/inventory/entities/purchase.entity.ts",
         "api/src/modules/inventory/entities/purchase-item.entity.ts",
         "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
         "scripts/database/migrations/V110__inventory_create_sale_v2_non_inventoryable_products.sql"
       ],
       "reason": "Owner-authorized current ownership for purchase creation, reception, commercial states, purchase-line contracts, tests, V109 structural migration and the V110 sale-function migration; no other functional ownership is reassigned."
-    },
-    {
-      "change_id": "soportar-productos-no-inventariables",
-      "paths": [
-        "web/modules/inventory/services/purchase.service.ts"
-      ],
-      "reason": "Owner-authorized additive ownership for the product classification contract and the purchase receipt client contract; historical associations remain intact and no active owner path is reassigned."
     },
     {
       "change_id": "bloquear-tipo-producto-edicion",
@@ -901,12 +902,7 @@
         "web/modules/inventory/purchase-capture/**",
         "web/modules/inventory/components/OrderForm.tsx",
         "web/modules/inventory/components/PurchaseForm.tsx",
-        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
-        "web/modules/inventory/components/purchase-receive-lines.ts",
-        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
-        "docs/evidencia-hu-scan-001.md",
-        "api/src/modules/inventory/services/purchase.service.ts",
-        "api/src/modules/inventory/services/purchase.service.spec.ts"
+        "docs/evidencia-hu-scan-001.md"
       ],
       "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) purchase.service.ts and its spec (from soportar-productos-no-inventariables, only to expose the supplier invoice in getPurchaseById) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS or database path is claimed."
     },
@@ -988,9 +984,18 @@
         "web/modules/inventory/services/product.service.ts",
         "docs/evidencia-incorporar-trazabilidad-series-productos.md",
         "api/src/modules/inventory/serials/**",
-        "api/src/modules/inventory/inventory.module.ts"
+        "api/src/modules/inventory/inventory.module.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts",
+        "api/src/modules/inventory/controllers/purchase.controller.ts",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
+        "web/modules/inventory/services/purchase.service.ts",
+        "web/modules/inventory/serials/**",
+        "web/modules/inventory/services/product-serial.service.ts"
       ],
-      "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase. Phase 3 adds the read-only serials module (api/src/modules/inventory/serials/**) and registers it in inventory.module.ts."
+      "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase. Phase 3 adds the read-only serials module (api/src/modules/inventory/serials/**) and registers it in inventory.module.ts. Fase 4: recepción de compras con series (purchase.service/controller y formulario de recepción web)."
     }
   ]
 }

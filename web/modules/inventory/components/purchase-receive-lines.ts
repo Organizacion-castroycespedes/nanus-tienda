@@ -69,6 +69,8 @@ export type ReceiveEntryValue = {
   expirationDate: string;
   locationId: string;
   unitCost: string;
+  /** Series capturadas (productos con requires_serial); vacío en los demás. */
+  serialNumbers: string[];
 };
 
 const toCents = (value: number) => Math.round(value * 100);
@@ -85,6 +87,7 @@ export const createReceiveEntry = (
   lotCode: "",
   expirationDate: "",
   locationId: "",
+  serialNumbers: [],
   unitCost: Number.isFinite(Number(item.cost)) && item.cost !== null && item.cost !== undefined ? String(item.cost) : "",
 });
 
@@ -150,6 +153,7 @@ export const splitReceiveItem = (
     quantity: "",
     lotCode: "",
     expirationDate: "",
+    serialNumbers: [],
   });
   return next;
 };

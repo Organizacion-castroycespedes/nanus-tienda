@@ -76,6 +76,8 @@ type ReceivePurchaseBody = {
     lotCode?: string | null;
     expiration_date?: string | null;
     expirationDate?: string | null;
+    serial_numbers?: unknown;
+    serialNumbers?: unknown;
     location_id?: string | null;
     locationId?: string | null;
     unit_cost?: number;
@@ -230,6 +232,7 @@ export class PurchaseController {
             : item.unit_cost !== undefined
               ? Number(item.unit_cost)
               : undefined,
+        serialNumbers: item.serialNumbers ?? item.serial_numbers,
       })),
       this.getInventoryContext(request),
       this.buildActor(request),
