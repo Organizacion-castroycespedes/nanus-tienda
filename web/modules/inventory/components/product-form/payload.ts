@@ -7,6 +7,7 @@ const immutableProductFields = [
   "isPerishable",
   "requiresLot",
   "requiresExpiration",
+  "requiresSerial",
   "isInventoryable",
   "inventoryabilityChangeReason",
 ] as const;

@@ -86,6 +86,7 @@ export type ProductProps = {
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
+  requiresSerial?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass;
   saleType?: ProductSaleType;
@@ -124,6 +125,7 @@ export class ProductEntity {
   readonly isPerishable: boolean;
   readonly requiresLot: boolean;
   readonly requiresExpiration: boolean;
+  readonly requiresSerial: boolean;
   readonly operationalStatus: ProductOperationalStatus;
   readonly rotationClass: ProductRotationClass;
   readonly saleType: ProductSaleType;
@@ -279,6 +281,17 @@ export class ProductEntity {
         "isPerishable requires requiresLot or requiresExpiration"
       );
     }
+    if (props.requiresSerial === true) {
+      if (!isInventoryable) {
+        throw new Error("requiresSerial requires an inventoryable product");
+      }
+      if (saleType !== "UNIT" || measurementUnit !== "UND") {
+        throw new Error("requiresSerial requires UNIT saleType and UND measurementUnit");
+      }
+      if (props.requiresLot === true || props.requiresExpiration === true) {
+        throw new Error("requiresSerial cannot be combined with requiresLot or requiresExpiration");
+      }
+    }
 
     this.id = props.id;
     this.tenantId = props.tenantId;
@@ -304,6 +317,7 @@ export class ProductEntity {
     this.isPerishable = props.isPerishable ?? false;
     this.requiresLot = props.requiresLot ?? false;
     this.requiresExpiration = props.requiresExpiration ?? false;
+    this.requiresSerial = props.requiresSerial ?? false;
     this.operationalStatus = props.operationalStatus ?? "ACTIVE";
     this.rotationClass = props.rotationClass ?? null;
     this.saleType = saleType;

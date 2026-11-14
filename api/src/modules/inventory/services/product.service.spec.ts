@@ -910,6 +910,78 @@ describe("ProductService enriched product rules", () => {
     assert.equal(created.requiresExpiration, true);
   });
 
+  it("creates a serialized unit product without lot control", async () => {
+    const service = buildService();
+
+    const created = await service.createProduct({
+      ...baseCreateInput(),
+      requiresSerial: true,
+    });
+
+    assert.equal(created.requiresSerial, true);
+    assert.equal(created.requiresLot, false);
+    assert.equal(created.saleType, "UNIT");
+  });
+
+  it("defaults requiresSerial to false", async () => {
+    const service = buildService();
+
+    const created = await service.createProduct(baseCreateInput());
+
+    assert.equal(created.requiresSerial, false);
+  });
+
+  it("rejects requiresSerial combined with lot or expiration control", async () => {
+    for (const extra of [
+      { requiresLot: true },
+      { requiresLot: true, requiresExpiration: true },
+    ]) {
+      const service = buildService();
+      await assert.rejects(
+        () =>
+          service.createProduct({
+            ...baseCreateInput(),
+            requiresSerial: true,
+            ...extra,
+          }),
+        /requiresSerial cannot be combined with requiresLot or requiresExpiration/
+      );
+    }
+  });
+
+  it("rejects requiresSerial for weighted or non-inventory products", async () => {
+    await assert.rejects(
+      () =>
+        buildService().createProduct({
+          ...baseCreateInput(),
+          requiresSerial: true,
+          saleType: "WEIGHT",
+          measurementUnit: "KG",
+        }),
+      /requiresSerial requires UNIT saleType and UND measurementUnit/
+    );
+    await assert.rejects(
+      () =>
+        buildService().createProduct({
+          ...baseCreateInput(),
+          requiresSerial: true,
+          isInventoryable: false,
+        }),
+      /requiresSerial requires an inventoryable product/
+    );
+  });
+
+  it("rejects a non-boolean requiresSerial", async () => {
+    await assert.rejects(
+      () =>
+        buildService().createProduct({
+          ...baseCreateInput(),
+          requiresSerial: "true" as unknown as boolean,
+        }),
+      /requiresSerial/
+    );
+  });
+
   it("rejects all structural changes even when the product has no movements", async () => {
     const structuralChanges: Array<[keyof ProductProps, unknown]> = [
       ["unitId", secondUnitId],
@@ -918,6 +990,7 @@ describe("ProductService enriched product rules", () => {
       ["isPerishable", true],
       ["requiresLot", true],
       ["requiresExpiration", true],
+      ["requiresSerial", true],
     ];
 
     for (const [field, value] of structuralChanges) {

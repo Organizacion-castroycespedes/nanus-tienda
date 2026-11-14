@@ -31,6 +31,7 @@ const values: ProductFormValues = {
   isPerishable: false,
   requiresLot: false,
   requiresExpiration: false,
+  requiresSerial: false,
   operationalStatus: "ACTIVE",
   rotationClass: "",
   saleType: "UNIT",

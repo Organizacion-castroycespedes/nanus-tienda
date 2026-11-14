@@ -55,6 +55,7 @@ export type ProductFormValues = {
   isPerishable: boolean;
   requiresLot: boolean;
   requiresExpiration: boolean;
+  requiresSerial: boolean;
   operationalStatus: ProductOperationalStatus;
   rotationClass: "" | ProductRotationClass;
   saleType: ProductSaleType;

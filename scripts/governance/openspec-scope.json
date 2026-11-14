@@ -683,6 +683,33 @@
         "docs/evidencia-idempotencia-entrega-pedidos.md"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "incorporar-trazabilidad-series-productos",
+      "paths": [
+        "openspec/changes/incorporar-trazabilidad-series-productos/**",
+        "scripts/governance/openspec-scope.json",
+        "scripts/database/migrations/V117__product_serials.sql",
+        "scripts/database/rollbacks/V117__product_serials_rollback.sql",
+        "scripts/database/tests/test_v117_product_serials_migration.py",
+        "scripts/database/tests/v117_product_serials_scenarios.sql",
+        "scripts/database/tests/fixtures/v117_minimal_schema.sql",
+        "api/src/modules/inventory/controllers/product.controller.ts",
+        "api/src/modules/inventory/entities/product.entity.ts",
+        "api/src/modules/inventory/repositories/product.repository.ts",
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/product.service.spec.ts",
+        "web/domains/products/dtos.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/ProductForm.spec.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/types.ts",
+        "web/modules/inventory/services/product.service.ts",
+        "docs/evidencia-incorporar-trazabilidad-series-productos.md"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
@@ -733,14 +760,6 @@
     {
       "change_id": "soportar-productos-no-inventariables",
       "paths": [
-        "api/src/modules/inventory/controllers/product.controller.ts",
-        "api/src/modules/inventory/entities/product.entity.ts",
-        "api/src/modules/inventory/repositories/product.repository.ts",
-        "api/src/modules/inventory/services/product.service.ts",
-        "api/src/modules/inventory/services/product.service.spec.ts",
-        "web/domains/products/dtos.ts",
-        "web/modules/inventory/components/product-form/types.ts",
-        "web/modules/inventory/services/product.service.ts",
         "web/modules/inventory/services/purchase.service.ts"
       ],
       "reason": "Owner-authorized additive ownership for the product classification contract and the purchase receipt client contract; historical associations remain intact and no active owner path is reassigned."
@@ -748,9 +767,6 @@
     {
       "change_id": "bloquear-tipo-producto-edicion",
       "paths": [
-        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
-        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
-        "web/modules/inventory/components/product-form/payload.ts",
         "web/modules/inventory/components/product-form/payload.spec.ts",
         "openspec/changes/bloquear-tipo-producto-edicion/**"
       ],
@@ -759,8 +775,6 @@
     {
       "change_id": "habilitar-fiscal-avanzado-productos-admin",
       "paths": [
-        "web/modules/inventory/components/ProductForm.tsx",
-        "web/modules/inventory/components/ProductForm.spec.tsx",
         "openspec/changes/habilitar-fiscal-avanzado-productos-admin/**"
       ],
       "reason": "Current branch fixes the ADMIN-only frontend regression for advanced product fiscal configuration while preserving backend authorization, tenant scope and fiscal calculation contracts."
@@ -935,7 +949,6 @@
     {
       "change_id": "idempotencia-entrega-pedidos",
       "paths": [
-        "scripts/governance/openspec-scope.json",
         "scripts/database/migrations/V116__order_delivery_idempotency.sql",
         "scripts/database/rollbacks/V116__order_delivery_idempotency_rollback.sql",
         "scripts/database/tests/test_v116_order_delivery_idempotency_migration.py",
@@ -948,6 +961,32 @@
         "docs/evidencia-idempotencia-entrega-pedidos.md"
       ],
       "reason": "Owner-requested (2026-11-14) current ownership for idempotent and per-order serialized order delivery (Idempotency-Key required on POST /orders/:id/deliver, order_delivery_idempotency table V116, SELECT ... FOR UPDATE on the order). Reassigns current ownership of order.service.ts, its spec, OrderDeliverForm.tsx and the scope manifest from corregir-lotes-entrega-pedidos (already merged into develop, commit 596bcc63); historical associations remain intact. FEFO lot consumption (consumeDeliveryLots), POS and sales (inventory_create_sale_v2, sale.service, sale.repository) are not claimed. Prerequisite of incorporar-trazabilidad-series-productos."
+    },
+    {
+      "change_id": "incorporar-trazabilidad-series-productos",
+      "paths": [
+        "scripts/governance/openspec-scope.json",
+        "scripts/database/migrations/V117__product_serials.sql",
+        "scripts/database/rollbacks/V117__product_serials_rollback.sql",
+        "scripts/database/tests/test_v117_product_serials_migration.py",
+        "scripts/database/tests/v117_product_serials_scenarios.sql",
+        "scripts/database/tests/fixtures/v117_minimal_schema.sql",
+        "api/src/modules/inventory/controllers/product.controller.ts",
+        "api/src/modules/inventory/entities/product.entity.ts",
+        "api/src/modules/inventory/repositories/product.repository.ts",
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/product.service.spec.ts",
+        "web/domains/products/dtos.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/ProductForm.spec.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/types.ts",
+        "web/modules/inventory/services/product.service.ts",
+        "docs/evidencia-incorporar-trazabilidad-series-productos.md"
+      ],
+      "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase."
     }
   ]
 }
