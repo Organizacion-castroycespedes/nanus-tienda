@@ -271,6 +271,7 @@ const defaultSaleItemTaxRows = [
 
 class FakeCreateSaleClient {
   readonly queries: RecordedQuery[] = [];
+  recordedPaymentAllocations: Array<Record<string, unknown>> = [];
 
   constructor(
     private readonly includeTaxSnapshot = false,
@@ -409,6 +410,14 @@ class FakeCreateSaleClient {
 
     if (sql.includes("SELECT config FROM tenants")) {
       return { rows: [{ config: {} }] as T[] };
+    }
+
+    if (sql.includes("FROM payment_allocations")) {
+      return { rows: this.recordedPaymentAllocations as T[] };
+    }
+
+    if (sql.startsWith("SELECT payment_method_id, amount, reference_number, notes, cash_session_id FROM payments")) {
+      return { rows: [] as T[] };
     }
 
     throw new Error(`Unexpected SQL in create sale test: ${sql}`);
@@ -1623,6 +1632,159 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
   assert.equal(event.totals.totalAmount, "3000.00");
   assert.equal(event.currencyCode, "COP");
   assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });
+});
+
+test("SaleService.createSaleFromOrderDelivery bills the recorded order payments when the request has none", async () => {
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({
+        id: ids.tax,
+        name: "IVA",
+        rate: 19,
+      }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service, outboxEvents, client } = buildCreateSaleService([], billing, true) as any;
+  client.recordedPaymentAllocations = [{
+    payment_method_id: ids.paymentMethod,
+    amount: "3000.00",
+    reference_number: null,
+    notes: null,
+    cash_session_id: null,
+  }];
+
+  await service.createSaleFromOrderDelivery(
+    { orderId: ids.order, type: "CASH", payments: [] },
+    posContext
+  );
+
+  const event = outboxEvents[0] as { payments: Array<{ amount: string }> };
+  assert.equal(event.payments.length, 1, "Order paid beforehand still sends its payment to billing");
+  assert.equal(Number(event.payments[0].amount), 3000);
+  assert.ok(
+    client.queries.some((query: { text: string }) => query.text.includes("FROM payment_allocations")),
+    "Recorded allocations are read when the request carries no payments",
+  );
+});
+
+test("SaleService.createSaleFromOrderDelivery keeps the request payments when they settle the sale", async () => {
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({
+        id: ids.tax,
+        name: "IVA",
+        rate: 19,
+      }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service, outboxEvents, client } = buildCreateSaleService([], billing, true) as any;
+
+  await service.createSaleFromOrderDelivery(
+    { orderId: ids.order, type: "CASH", payments: [{ paymentMethodId: ids.paymentMethod, amount: 3000 }] },
+    posContext
+  );
+
+  const event = outboxEvents[0] as { payments: Array<{ amount: string }> };
+  assert.equal(event.payments.length, 1);
+  assert.equal(Number(event.payments[0].amount), 3000);
+  assert.ok(
+    !client.queries.some((query: { text: string }) => query.text.includes("FROM payment_allocations")),
+    "Request payments that cover the total are used as before",
+  );
 });
 
 test("SaleService.createSale rejects CASH mismatch using backend lineTotal and skips repository", async () => {

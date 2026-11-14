@@ -545,6 +545,55 @@ test("processDueVoidRequests skips quietly when V096 is not applied", async () =
   assert.deepEqual(await service.processDueVoidRequests(), { processed: 0 });
 });
 
+test("processDueVoidRequests reschedules with typed parameters when credit note issuing fails", async () => {
+  const queries: Array<{ text: string; params: unknown[] }> = [];
+  const service = new OperationalSalesService(
+    {} as never,
+    {} as never,
+    {
+      issueCreditNote: async () => {
+        throw new Error("billing unavailable");
+      },
+    } as never,
+    undefined,
+    undefined,
+    {
+      getClient: async () => ({
+        query: async (text: string, params: unknown[]) => {
+          queries.push({ text, params });
+          if (text.includes("RETURNING id, tenant_id, sale_id")) {
+            return {
+              rows: [{
+                id: "void-request-a",
+                tenant_id: "tenant-a",
+                sale_id: "sale-a",
+                invoice_electronic_document_id: "invoice-a",
+                request_payload: { reason: "Anulación por error de digitación" },
+                actor: { id: "user-a", roles: ["ADMIN"] },
+                attempt_count: 1,
+              }],
+            };
+          }
+          return { rows: [] };
+        },
+        release: () => undefined,
+      }),
+    } as never,
+    {} as never,
+  );
+
+  assert.deepEqual(await service.processDueVoidRequests(), { processed: 1 });
+
+  const reschedule = queries.find((q) => q.text.includes("SET attempt_count = $2"));
+  assert.ok(reschedule, "the failed void request must be rescheduled");
+  // Postgres rejects reusing $2 as integer and text ("inconsistent types deduced").
+  assert.match(reschedule!.text, /CASE WHEN \$2::int > \$5::int THEN 'FAILED'/);
+  assert.equal(reschedule!.params[0], "void-request-a");
+  assert.equal(reschedule!.params[1], 2);
+  assert.equal(reschedule!.params[3], "billing unavailable");
+});
+
+
 test("issueDebitNote rejects sale without accepted electronic invoice", async () => {
   const { service } = createService();
   const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
