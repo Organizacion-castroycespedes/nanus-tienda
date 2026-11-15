@@ -314,6 +314,26 @@ export class ProductSerialRepository {
     return Number(result.rows[0]?.assigned ?? 0);
   }
 
+  /** Series en existencia (AVAILABLE, RETURNED, BLOCKED) agrupadas por ubicación. */
+  async countInStockByLocation(input: { tenantId: string; branchIds: string[] | null }) {
+    const params: unknown[] = [input.tenantId];
+    let branchFilter = "";
+    if (input.branchIds) {
+      params.push(input.branchIds);
+      branchFilter = `AND s.branch_id = ANY($2::uuid[])`;
+    }
+    const result = await this.query<{ location_id: string | null; branch_id: string; serial_count: string | number }>(
+      `SELECT s.location_id, s.branch_id, count(*) AS serial_count
+         FROM public.product_serials s
+        WHERE s.tenant_id = $1
+          AND s.status IN ('AVAILABLE', 'RETURNED', 'BLOCKED')
+          ${branchFilter}
+        GROUP BY s.location_id, s.branch_id`,
+      params
+    );
+    return result.rows;
+  }
+
   /** Ramas de un conjunto de series (para validar el alcance antes de escribir). */
   async findBranchesForSerials(tenantId: string, serialIds: string[]) {
     const result = await this.query<{ id: string; branch_id: string }>(

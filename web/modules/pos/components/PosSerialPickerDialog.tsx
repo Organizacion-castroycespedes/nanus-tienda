@@ -58,13 +58,19 @@ export const PosSerialPickerDialog = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(notice ?? null);
+  const [returnedPending, setReturnedPending] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await listAvailableSerials({ productId, branchId, limit: PAGE_SIZE });
+      const [response, returned] = await Promise.all([
+        listAvailableSerials({ productId, branchId, limit: PAGE_SIZE }),
+        // Aviso: unidades devueltas que no se pueden vender hasta inspeccionarlas.
+        listAvailableSerials({ productId, branchId, limit: 1, status: "RETURNED" }).catch(() => ({ total: 0 })),
+      ]);
+      setReturnedPending(Number(returned.total ?? 0));
       const items = (response.items ?? []).map((item) => ({
         id: item.id,
         serialNumber: item.serialNumber,
@@ -179,6 +185,14 @@ export const PosSerialPickerDialog = ({
           onChange={(event) => setSearch(event.target.value)}
           onKeyDown={(event) => void handleSearchKeyDown(event)}
         />
+
+        {returnedPending > 0 ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Hay {returnedPending} {returnedPending === 1 ? "unidad devuelta" : "unidades devueltas"} de este producto
+            pendiente{returnedPending === 1 ? "" : "s"} de inspección. No se pueden vender hasta inspeccionarlas en
+            Inventario &gt; Series.
+          </p>
+        ) : null}
 
         {message ? <p className="text-sm text-amber-700">{message}</p> : null}
         {error ? (

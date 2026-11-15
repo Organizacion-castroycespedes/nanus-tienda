@@ -71,6 +71,8 @@ export type ReceiveEntryValue = {
   unitCost: string;
   /** Series capturadas (productos con requires_serial); vacío en los demás. */
   serialNumbers: string[];
+  /** Ubicación propia de una serie (si difiere de la de la línea). */
+  serialLocations?: Record<string, string>;
 };
 
 const toCents = (value: number) => Math.round(value * 100);

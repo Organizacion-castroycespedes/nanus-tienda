@@ -110,7 +110,12 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
 - Página `/inventory/serials` (el menú "Series" ya existía): búsqueda por serie/producto/SKU, filtros de estado y sucursal, aviso "N series devueltas pendientes de inspección", historial de eventos, inspeccionar/bloquear y mover ubicación (una o varias).
 - Pruebas: `stock-adjustment.service.spec.ts`, `product-serial.service.spec.ts`, `stock-import.resolver.spec.ts` y `stock-import.service.spec.ts`: 66/66; web `serial-labels.spec.ts` 2/2; `tsc --noEmit` API y web sin errores.
 - Corrección tras la QA: el listado `/inventory/products` (de donde sale el producto del formulario de ajuste) no traía `requiresSerial`, así que el formulario no mostraba la sección de series y el API respondía "Debes indicar las series del producto". `InventoryRepository`/`InventoryService` ahora lo incluyen (`inventory.service.spec.ts` 6/6).
-- Pendiente de esta fase: aviso de devueltas pendientes dentro del selector del POS/entregas, conteo de series por ubicación en /inventory/locations y ubicación distinta por serie en la recepción.
+- Pendientes de la fase 7 cerrados antes del PR:
+  - Selector de series (POS y entregas): aviso "Hay N unidades devueltas de este producto pendientes de inspección" (consulta `available?status=RETURNED`).
+  - `GET /inventory/serials/location-counts` (series AVAILABLE, RETURNED y BLOCKED por ubicación, limitado a las sucursales del usuario) y columna "Series" en /inventory/locations.
+  - Recepción de compras: en el diálogo de captura cada serie puede tener una ubicación distinta a la de la línea; el payload envía `{serialNumber, locationId}` solo para esas series.
+  - Inactivar una ubicación con series en existencia: el API responde 409 `LOCATION_HAS_SERIALS` y la web deshabilita "Inactivar" con el mensaje para moverlas antes (`inventory-location.service.spec.ts` 13/13).
+  - Pruebas: `product-serial.service.spec.ts` 22/22; `tsc --noEmit` y ESLint web sin errores.
 
 ## Validación en Windows (propietario, 2026-11-14)
 - `openspec.cmd validate incorporar-trazabilidad-series-productos --strict`: válido.
@@ -119,6 +124,7 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
 - V117 aplicada en la base local real `manus_prd_local_test` con `node "Claude outputs\aplicar-V117-local.cjs" --aplicar`: SHA-256 `89e6d21052a051a5c3c057c158f3353672dec286d23184f66777fd60935b9410`; 9 funciones, columna `requires_serial` y menú "Series" en 3 tenants. Esto confirma las FK y columnas contra el esquema real. Sin registro en `migrations_history` (método local, igual que V116).
 
 ## Pendiente
+- [ ] QA de los pendientes de la fase 7: aviso de devueltas en el selector (POS y entrega), columna "Series" en Ubicaciones, intentar inactivar una ubicación con series (bloqueado) y una compra con 2 series en ubicaciones distintas.
 - [x] QA de la fase 7 (propietario, 2026-11-14, local): inspección de la 3H61260000017 a disponible (aparece en el selector del POS), bloqueo/desbloqueo, baja, mover ubicación; ajuste de entrada de 2 unidades con las series 3H61260000023 y 3H61260000024 en 002 - Licores (stock 0 → 2) y ajuste de salida de la 023 (stock 2 → 1, serie de baja); carga masiva con el inverter en cantidad 5: fila rechazada con el mensaje de series y "Confirmar carga" bloqueado.
 - Ajuste tras la QA: la fila rechazada de la carga masiva mostraba "Antes 0"; ahora muestra el stock real y la diferencia pedida (`stock-import` 27/27).
 - [x] QA de la fase 6 (propietario, 2026-11-14, local): pedido cbe7d30e entregado por un ADMIN en otro navegador con la serie 3H61260000021 (evento DELIVERED, SOLD con order_id). En el POS (otra sesión) la cuenta 2 tenía la 021 en el carrito: al cobrar fue rechazada, el selector se reabrió con la 022 y la venta aee0b605 (SETP990900015) se cobró. Regresión de lotes: lote LT122112 de CEC01002003 con salida por entrega de pedido (-2) y venta POS 238537db (-1, SETP990900016) desde la misma ubicación 002, sin discrepancias.

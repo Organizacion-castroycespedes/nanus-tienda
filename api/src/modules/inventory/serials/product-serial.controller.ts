@@ -217,6 +217,18 @@ export class ProductSerialController {
     );
   }
 
+  /** Series en existencia por ubicación (para la columna de /inventory/locations). */
+  @Get("location-counts")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: ["INVENTORY", "INVENTORY_SERIALS"], level: "READ" })
+  locationCounts(@Query("branchId") branchId: string | undefined, @Req() request: AuthRequest) {
+    return this.service.countByLocation(
+      this.getTenantId(request),
+      { branchId: this.optionalUuid(branchId, "branchId") },
+      this.buildActor(request)
+    );
+  }
+
   @Get(":serialId/history")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: ["INVENTORY_SERIALS", "INVENTORY"], level: "READ" })

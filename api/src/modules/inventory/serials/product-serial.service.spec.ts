@@ -7,7 +7,7 @@ import { PERMISSION_KEY } from "../../../common/decorators/require-permission.de
 import { ProductSerialController } from "./product-serial.controller";
 import { mapSerialDatabaseError, SERIAL_ERROR_CODES } from "./product-serial.errors";
 import { normalizeSerialNumber, parseSerialText } from "./product-serial.normalize";
-import { ProductSerialService } from "./product-serial.service";
+import { normalizeSerialInputs, ProductSerialService } from "./product-serial.service";
 import type { ProductSerialRow } from "./product-serial.repository";
 
 const tenantId = "00000000-0000-0000-0000-0000000000a1";
@@ -302,6 +302,7 @@ test("ProductSerialController: permisos por endpoint", () => {
   assert.deepEqual(permissionOf("history").menuKey, ["INVENTORY_SERIALS", "INVENTORY"]);
   assert.deepEqual(permissionOf("inspect"), { menuKey: "INVENTORY_SERIALS", level: "WRITE" });
   assert.deepEqual(permissionOf("moveLocation"), { menuKey: "INVENTORY_SERIALS", level: "WRITE" });
+  assert.deepEqual(permissionOf("locationCounts").menuKey, ["INVENTORY", "INVENTORY_SERIALS"]);
 });
 
 test("ProductSerialService.assignForSale traduce el error e informa el producto de la línea", async () => {
@@ -491,4 +492,34 @@ test("ProductSerialService.moveLocation valida y mueve en una transacción", asy
   assert.deepEqual(statements, ["BEGIN", "COMMIT"]);
   assert.equal((calls.move[0] as { locationId: string }).locationId, "30000000-0000-4000-8000-0000000000aa");
   await assert.rejects(service.moveLocation(tenantId, { serialIds: ["x"], locationId: null }, admin));
+});
+
+test("ProductSerialService.countByLocation limita a las sucursales del usuario", async () => {
+  const calls: unknown[] = [];
+  const service = new ProductSerialService(
+    {
+      countInStockByLocation: async (input: unknown) => {
+        calls.push(input);
+        return [{ location_id: "loc-1", branch_id: branchA, serial_count: "3" }];
+      },
+    } as never,
+    { findAccessibleBranchIds: async () => [branchA] } as never
+  );
+
+  const result = await service.countByLocation(tenantId, {}, admin);
+
+  assert.deepEqual(result, { items: [{ locationId: "loc-1", branchId: branchA, count: 3 }] });
+  assert.deepEqual(calls, [{ tenantId, branchIds: [branchA] }]);
+});
+
+test("normalizeSerialInputs acepta series con ubicación propia mezcladas con texto", () => {
+  assert.deepEqual(
+    normalizeSerialInputs(["A-1", { serialNumber: "A-2", locationId: "loc-9" }, { serial: "A-3" }]),
+    [
+      { serial: "A-1", locationId: null },
+      { serial: "A-2", locationId: "loc-9" },
+      { serial: "A-3", locationId: null },
+    ]
+  );
+  assert.equal(normalizeSerialInputs(undefined), undefined);
 });

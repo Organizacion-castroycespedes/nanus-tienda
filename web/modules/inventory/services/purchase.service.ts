@@ -107,7 +107,7 @@ export type ReceivePurchasePayload = {
     expirationDate?: string | null;
     locationId?: string | null;
     unitCost?: number;
-    serialNumbers?: string[];
+    serialNumbers?: Array<string | { serialNumber: string; locationId: string }>;
   }>;
 };
 

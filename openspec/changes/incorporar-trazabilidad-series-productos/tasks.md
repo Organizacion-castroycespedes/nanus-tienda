@@ -46,15 +46,15 @@
 
 - [x] 7.1 `stock-adjustment.service.ts`: entrada con series nuevas, salida con baja; web `StockAdjustmentForm`.
 - [x] 7.2 `stock-import`: rechazar productos con serie en la prevalidación.
-- [ ] 7.3 Inspección y bloqueo: endpoints + `WRITTEN_OFF` con ajuste `OUT`; aviso de unidades devueltas pendientes en POS y entregas. (Hecho: `POST /inventory/serials/:id/inspect` con baja y OUT de 1 unidad, y el aviso de devueltas pendientes en la página de Series. Pendiente: aviso en el selector del POS y de entregas.)
+- [x] 7.3 Inspección y bloqueo: endpoints + `WRITTEN_OFF` con ajuste `OUT`; aviso de unidades devueltas pendientes en POS y entregas.
 - [x] 7.4 Página `/inventory/serials` (búsqueda, historial, inspección, conciliación) y entrada de menú.
 
 ## 7b. Ubicación por serie
 
-- [ ] 7b.1 Specs: ubicación en la recepción (por línea y por serie), ubicación de otra sucursal o inactiva rechazada, mover sin movimiento de kardex, producto sin lote ni serie con el rechazo actual, inactivar una ubicación con series en existencia bloqueado.
-- [ ] 7b.2 `fnc_product_serials_move_location`, `PATCH /inventory/serials/location`, `locationId` en disponibilidad y búsqueda, conteo en `GET /inventory/locations`. (Hecho: `PATCH /inventory/serials/location` y ubicación en disponibilidad y búsqueda. Pendiente: conteo de series en `GET /inventory/locations`.)
+- [x] 7b.1 Specs: ubicación en la recepción (por línea y por serie), ubicación de otra sucursal o inactiva rechazada, mover sin movimiento de kardex, producto sin lote ni serie con el rechazo actual, inactivar una ubicación con series en existencia bloqueado.
+- [x] 7b.2 `fnc_product_serials_move_location`, `PATCH /inventory/serials/location`, `locationId` en disponibilidad y búsqueda, conteo en `GET /inventory/locations`.
 - [x] 7b.3 `validateReceiveLotPayload`: permitir `locationId` solo para productos con serie.
-- [ ] 7b.4 Web: ubicación en el diálogo de recepción, "SERIE · Ubicación" en los selectores, acción "Mover ubicación", columna en `/inventory/locations`. (Hecho: ubicación por línea en recepción y ajustes, "SERIE · Ubicación" en los selectores y "Mover ubicación" en /inventory/serials. Pendiente: columna en /inventory/locations y ubicación distinta por serie en la recepción.)
+- [x] 7b.4 Web: ubicación en el diálogo de recepción, "SERIE · Ubicación" en los selectores, acción "Mover ubicación", columna en `/inventory/locations`.
 
 ## 8. Validación
 

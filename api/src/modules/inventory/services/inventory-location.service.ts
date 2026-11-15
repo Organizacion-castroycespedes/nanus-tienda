@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -360,6 +361,18 @@ export class InventoryLocationService {
       await this.inventoryLocationRepository.findById(tenantId, locationId)
     );
     await this.assertBranchAccess(tenantId, current.branchId, actor);
+
+    // Series con ubicación: no se inactiva una ubicación que todavía las guarda.
+    const serialsInStock =
+      (await this.inventoryLocationRepository.countSerialsInStock?.(tenantId, locationId)) ?? 0;
+    if (serialsInStock > 0) {
+      throw new ConflictException({
+        code: "LOCATION_HAS_SERIALS",
+        message: `La ubicación tiene ${serialsInStock} ${
+          serialsInStock === 1 ? "serie" : "series"
+        } en existencia. Muévelas a otra ubicación antes de inactivarla.`,
+      });
+    }
 
     const deactivated = await this.inventoryLocationRepository.deactivate(
       tenantId,

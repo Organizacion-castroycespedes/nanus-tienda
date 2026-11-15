@@ -18,7 +18,13 @@ type SerialCaptureDialogProps = {
   initialSerials: string[];
   /** Series ya capturadas en otras líneas del mismo producto. */
   takenElsewhere?: string[];
-  onSave: (serials: string[]) => void;
+  /**
+   * Ubicaciones de la sucursal: si se envían, cada serie puede tener una ubicación distinta
+   * a la de la línea (vacío = la de la línea).
+   */
+  locations?: Array<{ id: string; code: string; name: string }>;
+  initialLocations?: Record<string, string>;
+  onSave: (serials: string[], locationsBySerial: Record<string, string>) => void;
   onCancel: () => void;
 };
 
@@ -49,10 +55,16 @@ export const SerialCaptureDialog = ({
   expected,
   initialSerials,
   takenElsewhere = [],
+  locations,
+  initialLocations,
   onSave,
   onCancel,
 }: SerialCaptureDialogProps) => {
   const [serials, setSerials] = useState<string[]>(initialSerials);
+  const [locationsBySerial, setLocationsBySerial] = useState<Record<string, string>>(initialLocations ?? {});
+  // Solo se guardan las ubicaciones de series que siguen en la lista.
+  const savedLocations = () =>
+    Object.fromEntries(Object.entries(locationsBySerial).filter(([serial, id]) => id && serials.includes(serial)));
   const [scanValue, setScanValue] = useState("");
   const [pasteValue, setPasteValue] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -130,7 +142,7 @@ export const SerialCaptureDialog = ({
       return;
     }
     if (validation?.ok && (warnings.length === 0 || acknowledgedWarning)) {
-      onSave(serials);
+      onSave(serials, savedLocations());
       return;
     }
     setBusy(true);
@@ -155,7 +167,7 @@ export const SerialCaptureDialog = ({
         return;
       }
       if (result.existsInOtherProduct.length === 0) {
-        onSave(serials);
+        onSave(serials, savedLocations());
       }
     } catch (validationError) {
       setError(getErrorMessage(validationError, "No se pudieron validar las series."));
@@ -166,7 +178,7 @@ export const SerialCaptureDialog = ({
 
   const confirmWithWarning = () => {
     setAcknowledgedWarning(true);
-    onSave(serials);
+    onSave(serials, savedLocations());
   };
 
   return (
@@ -250,6 +262,23 @@ export const SerialCaptureDialog = ({
                   <span className="mr-2 text-xs text-slate-400">{index + 1}.</span>
                   {serial}
                 </span>
+                {locations && locations.length > 0 ? (
+                  <select
+                    aria-label={`Ubicación de la serie ${serial}`}
+                    className="ml-auto mr-2 max-w-[45%] rounded border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                    value={locationsBySerial[serial] ?? ""}
+                    onChange={(event) =>
+                      setLocationsBySerial((current) => ({ ...current, [serial]: event.target.value }))
+                    }
+                  >
+                    <option value="">Ubicación de la línea</option>
+                    {locations.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {location.code} - {location.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
                 <button
                   type="button"
                   aria-label={`Quitar serie ${serial}`}

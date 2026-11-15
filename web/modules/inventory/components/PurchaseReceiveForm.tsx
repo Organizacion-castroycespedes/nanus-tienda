@@ -691,7 +691,11 @@ export const PurchaseReceiveForm = ({
           if (requiresSerial) {
             return {
               ...payloadItem,
-              serialNumbers: entry.serialNumbers,
+              serialNumbers: entry.serialNumbers.map((serial) =>
+                entry.serialLocations?.[serial]
+                  ? { serialNumber: serial, locationId: entry.serialLocations[serial] }
+                  : serial
+              ),
               locationId: entry.locationId || undefined,
             };
           }
@@ -1223,6 +1227,8 @@ export const PurchaseReceiveForm = ({
           branchId={purchase.branchId}
           expected={getReceiveQuantity(serialDialogEntry)}
           initialSerials={serialDialogEntry.serialNumbers}
+          locations={locations}
+          initialLocations={serialDialogEntry.serialLocations}
           takenElsewhere={entries
             .filter(
               (entry) =>
@@ -1233,8 +1239,8 @@ export const PurchaseReceiveForm = ({
             setSerialDialogKey(null);
             capture.focusScanInput();
           }}
-          onSave={(serialNumbers) => {
-            updateEntry(serialDialogEntry.key, { serialNumbers });
+          onSave={(serialNumbers, serialLocations) => {
+            updateEntry(serialDialogEntry.key, { serialNumbers, serialLocations });
             setSerialDialogKey(null);
             capture.focusScanInput();
           }}

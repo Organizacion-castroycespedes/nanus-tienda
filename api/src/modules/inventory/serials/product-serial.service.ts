@@ -673,6 +673,23 @@ export class ProductSerialService {
     };
   }
 
+  /** Conteo de series en existencia por ubicación (columna en /inventory/locations). */
+  async countByLocation(tenantId: string, input: { branchId?: string }, actor: BranchScopedActor) {
+    let branchIds = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (input.branchId) {
+      await this.assertBranchAccess(tenantId, input.branchId, actor);
+      branchIds = [input.branchId];
+    }
+    const rows = await this.repository.countInStockByLocation({ tenantId, branchIds });
+    return {
+      items: rows.map((row) => ({
+        locationId: row.location_id,
+        branchId: row.branch_id,
+        count: Number(row.serial_count),
+      })),
+    };
+  }
+
   async getHistory(tenantId: string, serialId: string, actor: BranchScopedActor) {
     const serial = await this.repository.findById(tenantId, serialId);
     if (!serial) {

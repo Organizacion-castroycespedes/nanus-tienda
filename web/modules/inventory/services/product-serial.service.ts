@@ -34,10 +34,20 @@ export type ProductSerialListItem = {
 
 /** Series disponibles de un producto en una sucursal (POS y entregas). */
 export const listAvailableSerials = (
-  params: { productId: string; branchId: string; search?: string; limit?: number },
+  params: {
+    productId: string;
+    branchId: string;
+    search?: string;
+    limit?: number;
+    /** Por defecto AVAILABLE; RETURNED para contar las devueltas pendientes de inspección. */
+    status?: "AVAILABLE" | "RETURNED" | "BLOCKED";
+  },
   headers?: HeadersInit
 ) => {
   const query = new URLSearchParams({ productId: params.productId, branchId: params.branchId });
+  if (params.status) {
+    query.set("status", params.status);
+  }
   if (params.search?.trim()) {
     query.set("search", params.search.trim());
   }
@@ -107,6 +117,13 @@ export const searchSerials = (
     { headers }
   );
 };
+
+/** Series en existencia por ubicación (columna "Series" en /inventory/locations). */
+export const getSerialCountsByLocation = (params: { branchId?: string } = {}, headers?: HeadersInit) =>
+  apiClient<{ items: Array<{ locationId: string | null; branchId: string; count: number }> }>(
+    `/inventory/serials/location-counts${params.branchId ? `?branchId=${encodeURIComponent(params.branchId)}` : ""}`,
+    { headers }
+  );
 
 export const getSerialHistory = (serialId: string, headers?: HeadersInit) =>
   apiClient<{ serial: ProductSerialDetail; events: ProductSerialEvent[] }>(

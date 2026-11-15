@@ -752,7 +752,11 @@
         "web/app/[tenant]/inventory/serials/page.tsx",
         "api/src/modules/inventory/repositories/inventory.repository.ts",
         "api/src/modules/inventory/services/inventory.service.ts",
-        "api/src/modules/inventory/services/inventory.service.spec.ts"
+        "api/src/modules/inventory/services/inventory.service.spec.ts",
+        "web/app/[tenant]/inventory/locations/page.tsx",
+        "api/src/modules/inventory/services/inventory-location.service.ts",
+        "api/src/modules/inventory/services/inventory-location.service.spec.ts",
+        "api/src/modules/inventory/repositories/inventory-location.repository.ts"
       ],
       "exemptions": []
     }
@@ -947,7 +951,6 @@
       "change_id": "modernizar-inventario-lotes-ubicaciones",
       "paths": [
         "web/app/[tenant]/inventory/lots/page.tsx",
-        "web/app/[tenant]/inventory/locations/page.tsx",
         "web/modules/inventory/lots/**",
         "web/components/design-system/SearchableSelect.tsx",
         "web/components/design-system/SearchableSelect.spec.ts",
@@ -1046,7 +1049,11 @@
         "web/app/[tenant]/inventory/serials/page.tsx",
         "api/src/modules/inventory/repositories/inventory.repository.ts",
         "api/src/modules/inventory/services/inventory.service.ts",
-        "api/src/modules/inventory/services/inventory.service.spec.ts"
+        "api/src/modules/inventory/services/inventory.service.spec.ts",
+        "web/app/[tenant]/inventory/locations/page.tsx",
+        "api/src/modules/inventory/services/inventory-location.service.ts",
+        "api/src/modules/inventory/services/inventory-location.service.spec.ts",
+        "api/src/modules/inventory/repositories/inventory-location.repository.ts"
       ],
       "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase. Phase 3 adds the read-only serials module (api/src/modules/inventory/serials/**) and registers it in inventory.module.ts. Fase 4: recepción de compras con series (purchase.service/controller y formulario de recepción web). Fase 5: venta POS con series (llamado a fnc_product_serials_assign_sale después de inventory_create_sale_v2, sin modificar esa función), anulaciones (cancelSale y applySaleVoid) y selector de series en el POS. Fase 6: entrega de pedidos con series (llamado a fnc_product_serials_assign_order_delivery después de los OUT de deliverOrder; consumeDeliveryLots y FEFO sin cambios) y selector de series en OrderDeliverForm. Fase 7: ajustes de inventario con series, rechazo de productos con serie en la carga de stock, inspección/bloqueo/baja y mover ubicación (endpoints de series) y página /inventory/serials."
     }
