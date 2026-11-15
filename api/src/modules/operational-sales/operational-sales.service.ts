@@ -22,6 +22,7 @@ import { CorrectSalePaymentsDto } from "./dto/correct-sale-payments.dto";
 import { VoidOperationalSaleDto } from "./dto/void-operational-sale.dto";
 import { OperationalDebitNoteDto } from "./dto/operational-debit-note.dto";
 import { StockMovementService } from "../inventory/services/stock-movement.service";
+import { ProductSerialService } from "../inventory/serials/product-serial.service";
 
 const OPERATIONAL_FE_PROVIDER_RECOVERY_AUDIT_ACTION = "OP_FE_PROVIDER_RECOVERY";
 const VOID_REQUEST_RETRY_BASE_MS = 60_000;
@@ -48,6 +49,8 @@ export class OperationalSalesService {
     private readonly db?: DatabaseService,
     @Optional() @Inject(StockMovementService)
     private readonly stockMovementService?: StockMovementService,
+    @Optional() @Inject(ProductSerialService)
+    private readonly productSerialService?: ProductSerialService,
   ) {}
 
   async list(actor: OperationalSaleActor, queryDto: OperationalSalesQueryDto) {
@@ -1136,6 +1139,17 @@ export class OperationalSalesService {
             );
           }
         }
+      }
+
+      // 1b. Series: RETURNED si el inventario vuelve; si no, evento VOIDED_NOT_RETURNED.
+      if (this.productSerialService) {
+        await this.productSerialService.markReturnedForSale(client, {
+          tenantId,
+          saleId,
+          returnInventory: dto.returnInventory !== false,
+          userId: actor.id ?? null,
+          reason: dto.reason ?? null,
+        });
       }
 
       // 2. Payments & Cash session refund

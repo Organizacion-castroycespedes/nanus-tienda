@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, Optional } from "@nestjs/common";
 import crypto from "node:crypto";
 import type { PoolClient, QueryResultRow } from "pg";
 import { DatabaseService } from "../../../common/db/database.service";
@@ -10,12 +10,16 @@ import {
 import { InventoryLotService } from "./inventory-lot.service";
 import { InventoryLotBalanceService } from "./inventory-lot-balance.service";
 import { StockMovementLotService } from "./stock-movement-lot.service";
+import { normalizeSerialInputs, ProductSerialService } from "../serials/product-serial.service";
+
+const SERIAL_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type ProductAdjustmentPolicyRow = QueryResultRow & {
   id: string;
   cost: string | number | null;
   requires_lot: boolean;
   requires_expiration: boolean;
+  requires_serial?: boolean | null;
 };
 
 export type CreateStockAdjustmentInput = {
@@ -29,6 +33,8 @@ export type CreateStockAdjustmentInput = {
   expirationDate?: string | null;
   locationId?: string | null;
   unitCost?: number;
+  serialNumbers?: unknown;
+  serialIds?: unknown;
   context?: InventoryContext;
 };
 
@@ -50,8 +56,25 @@ export class StockAdjustmentService {
     @Inject(InventoryLotBalanceService)
     private readonly inventoryLotBalanceService: InventoryLotBalanceService,
     @Inject(StockMovementLotService)
-    private readonly stockMovementLotService: StockMovementLotService
+    private readonly stockMovementLotService: StockMovementLotService,
+    @Optional()
+    @Inject(ProductSerialService)
+    private readonly productSerialService?: ProductSerialService
   ) {}
+
+  private normalizeSerialIds(value: unknown) {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+    if (
+      !Array.isArray(value) ||
+      value.length > 2000 ||
+      value.some((id) => typeof id !== "string" || !SERIAL_ID_PATTERN.test(id))
+    ) {
+      throw new BadRequestException("serialIds must be a list of serial UUIDs");
+    }
+    return [...value] as string[];
+  }
 
   private normalizeOptional(value: string | null | undefined) {
     if (value === null) {
@@ -141,7 +164,8 @@ export class StockAdjustmentService {
   ) {
     const result = await client.query<ProductAdjustmentPolicyRow>(
       `
-      SELECT id, cost, requires_lot, requires_expiration
+      SELECT id, cost, requires_lot, requires_expiration,
+        COALESCE((to_jsonb(products) ->> 'requires_serial')::boolean, FALSE) AS requires_serial
       FROM products
       WHERE id = $1 AND tenant_id = $2
       LIMIT 1
@@ -276,7 +300,24 @@ export class StockAdjustmentService {
         input.productId,
         client
       );
-      const lotPayload = this.validateLotPayload(input, policy);
+      const requiresSerial = Boolean(policy.requires_serial);
+      const serialInputs = normalizeSerialInputs(input.serialNumbers);
+      const serialIds = this.normalizeSerialIds(input.serialIds);
+      if (!requiresSerial && ((serialInputs?.length ?? 0) > 0 || (serialIds?.length ?? 0) > 0)) {
+        throw new BadRequestException({ code: "SERIAL_NOT_REQUIRED", message: "El producto no maneja número de serie." });
+      }
+      if (requiresSerial) {
+        if (input.lotCode?.trim() || input.expirationDate?.trim() || input.unitCost !== undefined) {
+          throw new BadRequestException("lot data is not allowed for products with serial control");
+        }
+        if (!input.branchId?.trim()) {
+          throw new BadRequestException("branchId is required for serial adjustment");
+        }
+        if (!this.productSerialService) {
+          throw new BadRequestException("serial registration is unavailable");
+        }
+      }
+      const lotPayload = requiresSerial ? null : this.validateLotPayload(input, policy);
 
       movement = await this.stockMovementService.createMovement(
         {
@@ -302,6 +343,33 @@ export class StockAdjustmentService {
           await this.applyLotIn(input, lotPayload, policy, movement, client);
         } else {
           await this.applyLotOut(input, lotPayload, movement, client);
+        }
+      }
+
+      if (requiresSerial && this.productSerialService && input.branchId) {
+        if (movement.type === "IN") {
+          await this.productSerialService.registerForReceipt(client, {
+            tenantId: input.tenantId,
+            branchId: input.branchId,
+            productId: input.productId,
+            sourceType: "ADJUSTMENT",
+            sourceId: movement.referenceId ?? null,
+            sourceItemId: null,
+            stockMovementId: movement.id,
+            serials: serialInputs ?? [],
+            defaultLocationId: this.normalizeOptional(input.locationId) ?? null,
+            userId: input.context?.userId ?? null,
+          });
+        } else {
+          await this.productSerialService.writeOffForAdjustment(client, {
+            tenantId: input.tenantId,
+            branchId: input.branchId,
+            productId: input.productId,
+            serialIds: serialIds ?? [],
+            stockMovementId: movement.id,
+            userId: input.context?.userId ?? null,
+            reason: input.reason ?? null,
+          });
         }
       }
 

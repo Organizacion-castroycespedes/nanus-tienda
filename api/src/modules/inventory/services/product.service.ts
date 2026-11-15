@@ -68,6 +68,7 @@ type CreateProductInput = {
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
+  requiresSerial?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass;
   saleType?: ProductSaleType;
@@ -102,6 +103,7 @@ type UpdateProductInput = Partial<
     | "isPerishable"
     | "requiresLot"
     | "requiresExpiration"
+    | "requiresSerial"
     | "operationalStatus"
     | "rotationClass"
     | "saleType"
@@ -134,6 +136,7 @@ type ProductOperationalRules = {
   isPerishable: boolean;
   requiresLot: boolean;
   requiresExpiration: boolean;
+  requiresSerial: boolean;
   operationalStatus: ProductOperationalStatus;
   rotationClass: ProductRotationClass;
   minStock: number | null;
@@ -152,6 +155,7 @@ const PRODUCT_STRUCTURAL_FIELDS = [
   "isPerishable",
   "requiresLot",
   "requiresExpiration",
+  "requiresSerial",
 ] as const satisfies ReadonlyArray<keyof ProductProps>;
 
 type ProductStructuralField = (typeof PRODUCT_STRUCTURAL_FIELDS)[number];
@@ -778,6 +782,30 @@ export class ProductService {
     }
   }
 
+  private validateSerialRules(
+    rules: ProductOperationalRules,
+    saleModel: ProductSaleModelRules
+  ) {
+    if (!rules.requiresSerial) {
+      return;
+    }
+    if (!rules.isInventoryable) {
+      throw new BadRequestException(
+        "requiresSerial requires an inventoryable product"
+      );
+    }
+    if (saleModel.saleType !== "UNIT" || saleModel.measurementUnit !== "UND") {
+      throw new BadRequestException(
+        "requiresSerial requires UNIT saleType and UND measurementUnit"
+      );
+    }
+    if (rules.requiresLot || rules.requiresExpiration) {
+      throw new BadRequestException(
+        "requiresSerial cannot be combined with requiresLot or requiresExpiration"
+      );
+    }
+  }
+
   private groupActiveBarcodesByProduct(barcodes: ProductBarcodeEntity[]) {
     return barcodes.reduce<Record<string, PosProductBarcode[]>>(
       (acc, barcode) => {
@@ -821,6 +849,7 @@ export class ProductService {
       isPerishable: product.isPerishable ?? false,
       requiresLot: product.requiresLot ?? false,
       requiresExpiration: product.requiresExpiration ?? false,
+      requiresSerial: product.requiresSerial ?? false,
       operationalStatus: product.operationalStatus ?? "ACTIVE",
       rotationClass: product.rotationClass ?? null,
       minStock: product.minStock ?? null,
@@ -857,6 +886,7 @@ export class ProductService {
       requiresLot: data.requiresLot ?? current.requiresLot,
       requiresExpiration:
         data.requiresExpiration ?? current.requiresExpiration,
+      requiresSerial: data.requiresSerial ?? current.requiresSerial,
       operationalStatus: data.operationalStatus ?? current.operationalStatus,
       rotationClass:
         data.rotationClass !== undefined
@@ -880,10 +910,12 @@ export class ProductService {
       product.requiresExpiration,
       "requiresExpiration"
     );
+    this.assertOptionalBoolean(product.requiresSerial, "requiresSerial");
     const operationalRules = this.buildCreateOperationalRules(product);
     this.validateOperationalRules(operationalRules);
     const saleModel = this.buildCreateSaleModel(product);
     this.validateSaleModel(saleModel);
+    this.validateSerialRules(operationalRules, saleModel);
     await this.validateProductClassification(
       product.tenantId,
       product.categoryId ?? null,
@@ -961,6 +993,7 @@ export class ProductService {
           isPerishable: entity.isPerishable,
           requiresLot: entity.requiresLot,
           requiresExpiration: entity.requiresExpiration,
+          requiresSerial: entity.requiresSerial,
           operationalStatus: entity.operationalStatus,
           rotationClass: entity.rotationClass,
           saleType: entity.saleType,
@@ -1194,11 +1227,13 @@ export class ProductService {
     this.assertOptionalBoolean(data.isInventoryable, "isInventoryable");
     this.assertOptionalBoolean(data.requiresLot, "requiresLot");
     this.assertOptionalBoolean(data.requiresExpiration, "requiresExpiration");
+    this.assertOptionalBoolean(data.requiresSerial, "requiresSerial");
 
     const operationalRules = this.buildUpdateOperationalRules(current, data);
     this.validateOperationalRules(operationalRules);
     const saleModel = this.buildUpdateSaleModel(current, data);
     this.validateSaleModel(saleModel);
+    this.validateSerialRules(operationalRules, saleModel);
     const categoryWasProvided = this.hasOwn(data, "categoryId");
     const subcategoryWasProvided = this.hasOwn(data, "subcategoryId");
     const nextCategoryId = categoryWasProvided

@@ -113,6 +113,7 @@ const existingProduct: ProductResponse = {
   isPerishable: false,
   requiresLot: false,
   requiresExpiration: false,
+  requiresSerial: false,
   operationalStatus: "ACTIVE",
   rotationClass: null,
   saleType: "UNIT",

@@ -111,6 +111,7 @@ const createInitialValues = (
     isPerishable: product?.isPerishable ?? false,
     requiresLot: product?.requiresLot ?? false,
     requiresExpiration: product?.requiresExpiration ?? false,
+    requiresSerial: product?.requiresSerial ?? false,
     operationalStatus: product?.operationalStatus ?? "ACTIVE",
     rotationClass: product?.rotationClass ?? "",
     saleType: product?.saleType ?? "UNIT",
@@ -484,6 +485,18 @@ export const ProductForm = ({
       if (field === "requiresLot" && value === false) {
         next.requiresExpiration = false;
       }
+      // Serie y lote son excluyentes en esta versión (FEFO elige el lote sin conocer la unidad).
+      if (field === "requiresSerial" && value === true) {
+        next.requiresLot = false;
+        next.requiresExpiration = false;
+        next.isPerishable = false;
+      }
+      if (
+        (field === "requiresLot" || field === "requiresExpiration" || field === "isPerishable") &&
+        value === true
+      ) {
+        next.requiresSerial = false;
+      }
 
       return next;
     });
@@ -492,6 +505,7 @@ export const ProductForm = ({
       [field]: undefined,
       requiresLot: undefined,
       requiresExpiration: undefined,
+      requiresSerial: undefined,
       isPerishable: undefined,
       submit: undefined,
     }));
@@ -649,6 +663,13 @@ export const ProductForm = ({
     ) {
       nextErrors.isPerishable =
         "Marca lote o vencimiento para productos perecederos.";
+    }
+    if (values.requiresSerial && !values.isInventoryable) {
+      nextErrors.requiresSerial = "Solo los productos inventariables pueden requerir serie.";
+    } else if (values.requiresSerial && values.saleType !== "UNIT") {
+      nextErrors.requiresSerial = "Los productos con serie se venden por unidad.";
+    } else if (values.requiresSerial && (values.requiresLot || values.requiresExpiration)) {
+      nextErrors.requiresSerial = "Un producto con serie no puede requerir lote ni vencimiento.";
     }
     if (!values.saleType) {
       nextErrors.saleType = "Debes seleccionar el modelo de venta.";
@@ -814,6 +835,7 @@ export const ProductForm = ({
       isPerishable: values.isPerishable,
       requiresLot: values.requiresLot,
       requiresExpiration: values.requiresExpiration,
+      requiresSerial: values.requiresSerial,
       operationalStatus: values.operationalStatus,
       rotationClass: values.rotationClass || null,
       saleType: values.saleType,

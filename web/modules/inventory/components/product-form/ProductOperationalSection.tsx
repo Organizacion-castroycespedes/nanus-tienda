@@ -146,6 +146,30 @@ export const ProductOperationalSection = ({
             </span>
           </span>
         </label>
+
+        <label className="flex min-h-20 items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={values.requiresSerial}
+            disabled={
+              structuralConfigurationLocked ||
+              !values.isInventoryable ||
+              values.saleType !== "UNIT"
+            }
+            onChange={(event) =>
+              onOperationalChange("requiresSerial", event.target.checked)
+            }
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+          />
+          <span>
+            <span className="block font-medium text-slate-900 dark:text-white">
+              Requiere número de serie
+            </span>
+            <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+              Cada unidad recibida registra su serie y al vender se elige cuál sale. Solo por unidad y sin lote.
+            </span>
+          </span>
+        </label>
       </div>
 
       {values.isInventoryable && values.isPerishable ? (
@@ -245,6 +269,9 @@ export const ProductOperationalSection = ({
       ) : null}
       {errors.requiresExpiration ? (
         <p className="text-xs text-rose-600">{errors.requiresExpiration}</p>
+      ) : null}
+      {errors.requiresSerial ? (
+        <p className="text-xs text-rose-600">{errors.requiresSerial}</p>
       ) : null}
     </div>
   </ProductSectionCard>

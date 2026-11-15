@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import crypto from "node:crypto";
 import type { PoolClient } from "pg";
@@ -15,6 +17,7 @@ import type { LinePricePreview } from "../../pricing/pricing.types";
 import { OrderItemEntity } from "../entities/order-item.entity";
 import { OrderEntity, type OrderStatus, type OrderType } from "../entities/order.entity";
 import { SaleService } from "./sale.service";
+import { ProductSerialService } from "../serials/product-serial.service";
 import {
   StockMovementService,
   type InventoryContext,
@@ -26,6 +29,42 @@ import {
   type BranchScopedActor,
   type BranchScopedFilters,
 } from "../utils/access";
+
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+};
+
+const normalizeOrderDeliveryIdempotencyKey = (value: string | string[] | undefined) => {
+  if (Array.isArray(value)) {
+    throw new BadRequestException("Idempotency-Key must be sent once");
+  }
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new BadRequestException("Idempotency-Key is required");
+  }
+  if (!/^[A-Za-z0-9._~-]{1,128}$/.test(normalized)) {
+    throw new BadRequestException("Idempotency-Key is invalid");
+  }
+  return normalized;
+};
+
+type OrderDeliveryIdempotencyRow = {
+  request_hash: string;
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  result: unknown;
+  operation_reference: string | null;
+};
 
 type CreateOrderItemInput = {
   id?: string;
@@ -176,7 +215,10 @@ export class OrderService {
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService,
     @Inject(PricingService)
-    private readonly pricingService: PricingService
+    private readonly pricingService: PricingService,
+    @Optional()
+    @Inject(ProductSerialService)
+    private readonly productSerialService?: ProductSerialService
   ) {}
 
   private toNullableNumber(value: string | number | null | undefined) {
@@ -1495,9 +1537,11 @@ export class OrderService {
       id: string;
       requires_lot: boolean | null;
       requires_expiration: boolean | null;
+      requires_serial?: boolean | null;
     }>(
       `
-        SELECT id, requires_lot, requires_expiration
+        SELECT id, requires_lot, requires_expiration,
+          COALESCE((to_jsonb(products) ->> 'requires_serial')::boolean, FALSE) AS requires_serial
         FROM products
         WHERE tenant_id = $1
           AND id = ANY($2::uuid[])
@@ -1510,6 +1554,7 @@ export class OrderService {
         {
           requiresLot: Boolean(row.requires_lot),
           requiresExpiration: Boolean(row.requires_expiration),
+          requiresSerial: Boolean(row.requires_serial),
         },
       ])
     );
@@ -1643,16 +1688,156 @@ export class OrderService {
     }
   }
 
+  private buildOrderDeliveryRequestHash(input: {
+    orderId: string;
+    tenantId: string;
+    items: Array<{ productId: string; quantity: number; serialIds?: string[] }>;
+    context?: InventoryContext;
+    actor?: BranchScopedActor;
+  }) {
+    return crypto
+      .createHash("sha256")
+      .update(
+        stableSerialize({
+          orderId: input.orderId,
+          tenantId: input.tenantId,
+          items: input.items,
+          context: input.context ?? null,
+          actor: input.actor ?? null,
+        })
+      )
+      .digest("hex");
+  }
+
+  private async claimOrderDeliveryIdempotency(
+    client: PoolClient,
+    tenantId: string,
+    orderId: string,
+    idempotencyKey: string,
+    requestHash: string
+  ): Promise<{ replay: false } | { replay: true; result: unknown }> {
+    const inserted = await client.query<OrderDeliveryIdempotencyRow>(
+      `
+        INSERT INTO order_delivery_idempotency (
+          tenant_id,
+          order_id,
+          idempotency_key,
+          request_hash,
+          status
+        ) VALUES ($1, $2, $3, $4, 'PENDING')
+        ON CONFLICT (tenant_id, order_id, idempotency_key) DO NOTHING
+        RETURNING request_hash, status, result, operation_reference
+      `,
+      [tenantId, orderId, idempotencyKey, requestHash]
+    );
+
+    if (inserted.rows[0]) {
+      return { replay: false };
+    }
+
+    const existing = await client.query<OrderDeliveryIdempotencyRow>(
+      `
+        SELECT request_hash, status, result, operation_reference
+        FROM order_delivery_idempotency
+        WHERE tenant_id = $1
+          AND order_id = $2
+          AND idempotency_key = $3
+        FOR UPDATE
+      `,
+      [tenantId, orderId, idempotencyKey]
+    );
+    const row = existing.rows[0];
+    if (!row) {
+      throw new ConflictException("idempotency operation could not be recovered");
+    }
+    if (row.request_hash !== requestHash) {
+      throw new ConflictException(
+        "Idempotency-Key was already used with a different payload"
+      );
+    }
+    if (row.status === "COMPLETED" && row.result !== null) {
+      return { replay: true, result: row.result };
+    }
+    throw new ConflictException(
+      "Idempotency-Key is already being processed or has failed"
+    );
+  }
+
+  private async completeOrderDeliveryIdempotency(
+    client: PoolClient,
+    tenantId: string,
+    orderId: string,
+    idempotencyKey: string,
+    requestHash: string,
+    result: unknown
+  ) {
+    const completed = await client.query(
+      `
+        UPDATE order_delivery_idempotency
+        SET status = 'COMPLETED',
+            result = $4::jsonb,
+            operation_reference = $5,
+            completed_at = NOW(),
+            updated_at = NOW()
+        WHERE tenant_id = $1
+          AND order_id = $2
+          AND idempotency_key = $3
+          AND request_hash = $6
+          AND status = 'PENDING'
+      `,
+      [
+        tenantId,
+        orderId,
+        idempotencyKey,
+        JSON.stringify(result),
+        `order-delivery:${orderId}:${idempotencyKey}`,
+        requestHash,
+      ]
+    );
+    if (completed.rowCount !== 1) {
+      throw new ConflictException("order delivery idempotency completion failed");
+    }
+  }
+
   async deliverOrder(
     id: string,
     tenantId: string,
-    itemsToDeliver: Array<{ productId: string; quantity: number }>,
+    itemsToDeliver: Array<{ productId: string; quantity: number; serialIds?: string[] }>,
     context?: InventoryContext,
-    actor?: BranchScopedActor
+    actor?: BranchScopedActor,
+    idempotencyKey?: string | string[]
   ) {
     if (!Array.isArray(itemsToDeliver) || itemsToDeliver.length === 0) {
       throw new BadRequestException("deliver items are required");
     }
+    for (const deliverItem of itemsToDeliver) {
+      const serialIds = deliverItem?.serialIds;
+      if (
+        serialIds !== undefined &&
+        (!Array.isArray(serialIds) ||
+          serialIds.length > 2000 ||
+          serialIds.some(
+            (serialId) =>
+              typeof serialId !== "string" ||
+              !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serialId)
+          ))
+      ) {
+        throw new BadRequestException("serialIds must be a list of serial UUIDs");
+      }
+    }
+    const normalizedIdempotencyKey =
+      idempotencyKey !== undefined
+        ? normalizeOrderDeliveryIdempotencyKey(idempotencyKey)
+        : undefined;
+    const requestHash = normalizedIdempotencyKey
+      ? this.buildOrderDeliveryRequestHash({
+          orderId: id,
+          tenantId,
+          items: itemsToDeliver,
+          context,
+          actor,
+        })
+      : undefined;
 
     const client = await this.db.getClient();
     try {
@@ -1674,6 +1859,7 @@ export class OrderService {
           FROM orders
           WHERE id = $1 AND tenant_id = $2
           LIMIT 1
+          FOR UPDATE
         `,
         [id, tenantId]
       );
@@ -1681,6 +1867,19 @@ export class OrderService {
       const orderRow = orderResult.rows[0];
       if (!orderRow) {
         throw new NotFoundException("order not found");
+      }
+      if (normalizedIdempotencyKey && requestHash) {
+        const idempotency = await this.claimOrderDeliveryIdempotency(
+          client,
+          tenantId,
+          id,
+          normalizedIdempotencyKey,
+          requestHash
+        );
+        if (idempotency.replay) {
+          await client.query("COMMIT");
+          return idempotency.result;
+        }
       }
       if (orderRow.status === "CANCELLED") {
         throw new BadRequestException("cancelled orders cannot be delivered");
@@ -1769,6 +1968,13 @@ export class OrderService {
         deliveryProductIds,
         client
       );
+      // Solo productos con serie (o líneas que enviaron series); el resto no agrega llamadas.
+      const serialLines: Array<{
+        productId: string;
+        quantity: number;
+        stockMovementId: string;
+        serialIds: string[];
+      }> = [];
 
       for (const deliverItem of itemsToDeliver) {
         const productId = deliverItem.productId;
@@ -1853,6 +2059,15 @@ export class OrderService {
           );
         }
 
+        if (lotPolicy?.requiresSerial || (deliverItem.serialIds?.length ?? 0) > 0) {
+          serialLines.push({
+            productId,
+            quantity,
+            stockMovementId: movement.id,
+            serialIds: deliverItem.serialIds ?? [],
+          });
+        }
+
         let remainingQuantity = quantity;
         for (const item of productItems) {
           if (remainingQuantity <= 0) {
@@ -1911,6 +2126,22 @@ export class OrderService {
         [id]
       );
 
+      if (serialLines.length > 0) {
+        if (!this.productSerialService) {
+          throw new BadRequestException("serial assignment is unavailable");
+        }
+        if (!deliveryBranchId) {
+          throw new BadRequestException("branch is required to deliver serial-controlled products");
+        }
+        await this.productSerialService.assignForOrderDelivery(client, {
+          tenantId,
+          branchId: deliveryBranchId,
+          orderId: id,
+          lines: serialLines,
+          userId: context?.userId ?? null,
+        });
+      }
+
       const updatedItems = updatedItemsResult.rows.map((row) => this.mapOrderItem(row));
       const nextStatus = this.resolveStatusFromItems(updatedItems);
 
@@ -1934,15 +2165,27 @@ export class OrderService {
         [id, tenantId, nextStatus]
       );
 
+      const deliveryResult = {
+        ...this.mapOrder(updatedOrderResult.rows[0]),
+        items: updatedItems,
+      };
+      if (normalizedIdempotencyKey && requestHash) {
+        await this.completeOrderDeliveryIdempotency(
+          client,
+          tenantId,
+          id,
+          normalizedIdempotencyKey,
+          requestHash,
+          deliveryResult
+        );
+      }
+
       await client.query("COMMIT");
       createdMovements.forEach((movement) =>
         this.stockMovementService.logMovementAuditEvent(movement)
       );
 
-      return {
-        ...this.mapOrder(updatedOrderResult.rows[0]),
-        items: updatedItems,
-      };
+      return deliveryResult;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

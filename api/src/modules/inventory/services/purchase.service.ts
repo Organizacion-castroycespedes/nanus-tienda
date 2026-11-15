@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import crypto from "node:crypto";
 import type { PoolClient } from "pg";
@@ -26,6 +27,10 @@ import {
 import { InventoryLotBalanceService } from "./inventory-lot-balance.service";
 import { InventoryLotService } from "./inventory-lot.service";
 import { StockMovementLotService } from "./stock-movement-lot.service";
+import {
+  normalizeSerialInputs,
+  ProductSerialService,
+} from "../serials/product-serial.service";
 import {
   canViewAllBranches,
   hasBranchScopedRole,
@@ -75,6 +80,7 @@ type ReceivePurchaseItemInput = {
   expirationDate?: string | null;
   locationId?: string | null;
   unitCost?: number;
+  serialNumbers?: unknown;
 };
 
 type ReceivePurchaseDocumentInput = {
@@ -186,6 +192,7 @@ type PurchaseItemRow = {
   is_perishable?: boolean | null;
   requires_lot?: boolean | null;
   requires_expiration?: boolean | null;
+  requires_serial?: boolean | null;
   quantity?: string | number | null;
   ordered_quantity?: string | number | null;
   received_quantity?: string | number | null;
@@ -204,6 +211,7 @@ type ProductLotPolicyRow = {
   id: string;
   requires_lot: boolean;
   requires_expiration: boolean;
+  requires_serial?: boolean | null;
   is_inventoryable: boolean;
 };
 
@@ -265,7 +273,10 @@ export class PurchaseService {
     private readonly stockMovementLotService: StockMovementLotService,
     @Inject(FinanceAccessRepository)
     private readonly financeAccessRepository: FinanceAccessRepository,
-    @Inject(AuditService) private readonly auditService: AuditService
+    @Inject(AuditService) private readonly auditService: AuditService,
+    @Optional()
+    @Inject(ProductSerialService)
+    private readonly productSerialService?: ProductSerialService
   ) {}
 
   private mapPurchase(row: PurchaseRow) {
@@ -500,6 +511,7 @@ export class PurchaseService {
            isPerishable: row.is_perishable ?? false,
           requiresLot: row.requires_lot ?? false,
           requiresExpiration: row.requires_expiration ?? false,
+          requiresSerial: row.requires_serial ?? false,
           pendingQuantity:
             row.pending_quantity == null ? pendingQuantity : Number(row.pending_quantity),
           receivedSubtotal:
@@ -1259,6 +1271,7 @@ export class PurchaseService {
            p.is_perishable,
           p.requires_lot,
           p.requires_expiration,
+          COALESCE((to_jsonb(p)->>'requires_serial')::boolean, FALSE) AS requires_serial,
           pi.ordered_quantity,
           pi.received_quantity,
           pi.cost,
@@ -1337,6 +1350,14 @@ export class PurchaseService {
     );
   }
 
+  private hasLotOnlyReceiptData(item: ReceivePurchaseItemInput) {
+    return (
+      this.normalizeOptionalReceiveId(item.lotCode) !== undefined ||
+      this.normalizeOptionalReceiveId(item.expirationDate) !== undefined ||
+      item.unitCost !== undefined
+    );
+  }
+
   private normalizeLotCodeForReceipt(value: string | null | undefined) {
     const normalized = this.normalizeOptionalReceiveId(value);
     if (!normalized) {
@@ -1361,6 +1382,8 @@ export class PurchaseService {
           id,
           requires_lot,
           requires_expiration,
+          COALESCE((to_jsonb(products)->>'requires_serial')::boolean, FALSE)
+            AS requires_serial,
           -- Compatibility bridge: before the forward-only migration, the
           -- absent JSON key resolves to TRUE for existing products.
           COALESCE((to_jsonb(products)->>'is_inventoryable')::boolean, TRUE)
@@ -1531,7 +1554,11 @@ export class PurchaseService {
     policy: ProductLotPolicyRow
   ) {
     if (!policy.requires_lot) {
-      if (this.hasLotReceiptData(receiveItem)) {
+      // Productos con serie: se permite la ubicación (se guarda en cada serie), no los datos de lote.
+      const hasForbiddenData = policy.requires_serial
+        ? this.hasLotOnlyReceiptData(receiveItem)
+        : this.hasLotReceiptData(receiveItem);
+      if (hasForbiddenData) {
         throw new BadRequestException(
           "lot data is not allowed for products without lot control"
         );
@@ -1844,6 +1871,30 @@ export class PurchaseService {
             `,
             [item.id, receivedDelta]
           );
+        }
+
+        const serialInputs = normalizeSerialInputs(receiveItem.serialNumbers);
+        if (productPolicy.requires_serial && isInventoryable && movement) {
+          if (!this.productSerialService) {
+            throw new BadRequestException("serial registration is unavailable");
+          }
+          await this.productSerialService.registerForReceipt(client, {
+            tenantId,
+            branchId: movement.branchId ?? receiptBranchId,
+            productId,
+            sourceType: "PURCHASE",
+            sourceId: id,
+            sourceItemId: purchaseItemId ?? allocations[0]?.item.id ?? null,
+            stockMovementId: movement.id,
+            serials: serialInputs ?? [],
+            defaultLocationId: this.normalizeOptionalReceiveId(receiveItem.locationId) ?? null,
+            userId: context?.userId ?? null,
+          });
+        } else if (serialInputs && serialInputs.length > 0) {
+          throw new BadRequestException({
+            code: "SERIAL_NOT_REQUIRED",
+            message: "El producto no maneja número de serie.",
+          });
         }
 
         if (lotPayload && movement) {

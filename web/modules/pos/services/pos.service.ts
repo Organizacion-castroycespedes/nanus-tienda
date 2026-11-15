@@ -16,6 +16,8 @@ export type PosSalePayload = {
     quantity: number;
     price: number;
     orderItemId?: string | null;
+    /** Series elegidas (productos con requires_serial). */
+    serialIds?: string[];
     taxes?: Array<{
       taxId: string;
       taxName: string;

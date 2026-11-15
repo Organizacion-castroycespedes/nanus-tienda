@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { OrderService } from "./order.service";
 import type {
@@ -981,7 +981,7 @@ class FakeDeliveryClient {
   constructor(
     private readonly options: {
       items: Array<{ id: string; productId: string; ordered: number; delivered?: number }>;
-      lotPolicies: Record<string, { requiresLot: boolean; requiresExpiration?: boolean }>;
+      lotPolicies: Record<string, { requiresLot: boolean; requiresExpiration?: boolean; requiresSerial?: boolean }>;
       balances: Record<string, DeliveryBalance[]>;
     }
   ) {}
@@ -1065,6 +1065,7 @@ class FakeDeliveryClient {
             id: productId,
             requires_lot: this.options.lotPolicies[productId].requiresLot,
             requires_expiration: this.options.lotPolicies[productId].requiresExpiration ?? false,
+            requires_serial: this.options.lotPolicies[productId].requiresSerial ?? false,
           })) as T[],
       };
     }
@@ -1266,4 +1267,238 @@ test("OrderService.deliverOrder: bloquea el alcance de stock en orden ascendente
   const lastLockIndex = client.queries.lastIndexOf(lockCalls[lockCalls.length - 1]);
   assert.ok(lastLockIndex < firstLotQueryIndex);
   assert.deepEqual(lockCalls[0].params.slice(0, 2), [ids.tenant, ids.branch]);
+});
+type DeliveryIdempotencyRow = {
+  request_hash: string;
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  result: unknown;
+  operation_reference: string | null;
+};
+
+class FakeIdempotentDeliveryClient extends FakeDeliveryClient {
+  idempotencyRows = new Map<string, DeliveryIdempotencyRow>();
+
+  async query<T>(text: string, params: unknown[] = []) {
+    const sql = text.replace(/\s+/g, " ").trim();
+    if (sql.startsWith("INSERT INTO order_delivery_idempotency")) {
+      this.queries.push({ text, params });
+      const key = `${params[0]}:${params[1]}:${params[2]}`;
+      if (this.idempotencyRows.has(key)) {
+        return { rows: [] as T[] };
+      }
+      const row: DeliveryIdempotencyRow = {
+        request_hash: String(params[3]),
+        status: "PENDING",
+        result: null,
+        operation_reference: null,
+      };
+      this.idempotencyRows.set(key, row);
+      return { rows: [row] as T[] };
+    }
+    if (sql.includes("FROM order_delivery_idempotency")) {
+      this.queries.push({ text, params });
+      const row = this.idempotencyRows.get(`${params[0]}:${params[1]}:${params[2]}`);
+      return { rows: (row ? [row] : []) as T[] };
+    }
+    if (sql.startsWith("UPDATE order_delivery_idempotency")) {
+      this.queries.push({ text, params });
+      const row = this.idempotencyRows.get(`${params[0]}:${params[1]}:${params[2]}`);
+      if (!row || row.status !== "PENDING" || row.request_hash !== params[5]) {
+        return { rows: [] as T[], rowCount: 0 };
+      }
+      row.status = "COMPLETED";
+      row.result = JSON.parse(String(params[3]));
+      row.operation_reference = String(params[4]);
+      return { rows: [] as T[], rowCount: 1 };
+    }
+    return super.query<T>(text, params);
+  }
+}
+
+const buildIdempotentDeliveryService = () => {
+  const client = new FakeIdempotentDeliveryClient({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 10 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+  const movements: Array<{ id: string; productId: string; quantity: number }> = [];
+  const stockMovementService = {
+    getStockByProduct: async () => ({ stock: 100 }),
+    createMovement: async (data: { productId: string; quantity: number }) => {
+      const movement = { id: `movement-${movements.length + 1}`, productId: data.productId, quantity: data.quantity };
+      movements.push(movement);
+      return movement;
+    },
+    logMovementAuditEvent: () => undefined,
+  };
+  const service = new OrderService(
+    { getClient: async () => client as unknown as PoolClient } as never,
+    { logEvent: () => undefined } as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {} as never,
+    stockMovementService as never,
+    {} as never
+  );
+  return { service, client, movements };
+};
+
+test("OrderService.deliverOrder: bloquea la fila del pedido antes de leer los ítems pendientes", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 2 }], deliveryContext, actor);
+
+  const orderQueryIndex = client.queries.findIndex((query) => {
+    const sql = query.text.replace(/\s+/g, " ");
+    return sql.includes("FROM orders") && sql.includes("LIMIT 1");
+  });
+  const itemsQueryIndex = client.queries.findIndex((query) => query.text.includes("FROM order_items"));
+  assert.match(client.queries[orderQueryIndex].text.replace(/\s+/g, " "), /LIMIT 1 FOR UPDATE/);
+  assert.ok(orderQueryIndex < itemsQueryIndex);
+});
+
+test("OrderService.deliverOrder: el reintento con la misma Idempotency-Key devuelve el resultado sin volver a entregar", async () => {
+  const { service, client, movements } = buildIdempotentDeliveryService();
+  const items = [{ productId: ids.product, quantity: 5 }];
+
+  const first = await service.deliverOrder(ids.order, ids.tenant, items, deliveryContext, actor, "delivery-key-1");
+  const second = await service.deliverOrder(ids.order, ids.tenant, items, deliveryContext, actor, "delivery-key-1");
+
+  assert.equal(movements.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(second)), JSON.parse(JSON.stringify(first)));
+  assert.equal(client.queries.filter((query) => query.text.startsWith("UPDATE order_items") || query.text.trim().startsWith("UPDATE order_items")).length, 1);
+  const [row] = [...client.idempotencyRows.values()];
+  assert.equal(row.status, "COMPLETED");
+  assert.equal(row.operation_reference, `order-delivery:${ids.order}:delivery-key-1`);
+});
+
+test("OrderService.deliverOrder: la misma Idempotency-Key con otro contenido responde conflicto sin efectos", async () => {
+  const { service, movements } = buildIdempotentDeliveryService();
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 5 }], deliveryContext, actor, "delivery-key-2");
+  await assert.rejects(
+    () => service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 3 }], deliveryContext, actor, "delivery-key-2"),
+    /Idempotency-Key was already used with a different payload/
+  );
+  assert.equal(movements.length, 1);
+});
+
+test("OrderService.deliverOrder: rechaza una Idempotency-Key inválida antes de abrir la transacción", async () => {
+  const { service, client } = buildIdempotentDeliveryService();
+
+  await assert.rejects(
+    () => service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 1 }], deliveryContext, actor, "clave con espacios"),
+    /Idempotency-Key is invalid/
+  );
+  assert.equal(client.queries.length, 0);
+});
+
+// --- Series (fase 6): asignación al entregar pedidos ---
+
+const deliverySerials = ["20000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000002"];
+
+const attachDeliverySerialService = (service: OrderService, error?: Error) => {
+  const calls: Array<Record<string, unknown>> = [];
+  (service as unknown as Record<string, unknown>).productSerialService = {
+    assignForOrderDelivery: async (_client: unknown, input: Record<string, unknown>) => {
+      calls.push(input);
+      if (error) {
+        throw error;
+      }
+      return 2;
+    },
+  };
+  return calls;
+};
+
+test("OrderService.deliverOrder: producto con serie asigna las series al OUT de la entrega", async () => {
+  const { service, client, movements } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+  const calls = attachDeliverySerialService(service);
+
+  await service.deliverOrder(
+    ids.order,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2, serialIds: deliverySerials }],
+    deliveryContext,
+    actor
+  );
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.deepEqual(calls, [
+    {
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      orderId: ids.order,
+      lines: [{ productId: ids.product, quantity: 2, stockMovementId: "movement-1", serialIds: deliverySerials }],
+      userId: ids.user,
+    },
+  ]);
+  assert.equal(client.lotLinks.length, 0);
+});
+
+test("OrderService.deliverOrder: error de series revierte toda la entrega", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+  attachDeliverySerialService(
+    service,
+    new ConflictException({ code: "SERIAL_NOT_AVAILABLE", message: "Serie no disponible", productId: ids.product })
+  );
+
+  await assert.rejects(
+    service.deliverOrder(
+      ids.order,
+      ids.tenant,
+      [{ productId: ids.product, quantity: 2, serialIds: deliverySerials }],
+      deliveryContext,
+      actor
+    ),
+    ConflictException
+  );
+  assert.equal(client.committed, false);
+  assert.equal(client.rolledBack, true);
+});
+
+test("OrderService.deliverOrder: producto sin serie no llama al servicio de series", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+  const calls = attachDeliverySerialService(service);
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 2 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(calls.length, 0);
+});
+
+test("OrderService.deliverOrder: valida serialIds antes de abrir la transacción", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+
+  await assert.rejects(
+    service.deliverOrder(
+      ids.order,
+      ids.tenant,
+      [{ productId: ids.product, quantity: 1, serialIds: ["no-es-uuid"] }],
+      deliveryContext,
+      actor
+    ),
+    BadRequestException
+  );
+  assert.equal(client.queries.length, 0);
 });

@@ -45,6 +45,7 @@ type Scenario = {
   itemCost?: number;
   productRequiresLot?: boolean;
   productRequiresExpiration?: boolean;
+  productRequiresSerial?: boolean;
   productIsInventoryable?: boolean;
   product2IsInventoryable?: boolean;
   existingLotStatus?: "ACTIVE" | "BLOCKED" | "CANCELLED";
@@ -239,6 +240,7 @@ class FakeClient {
           id: productId,
           requires_lot: this.scenario.productRequiresLot ?? false,
           requires_expiration: this.scenario.productRequiresExpiration ?? false,
+          requires_serial: this.scenario.productRequiresSerial ?? false,
           is_inventoryable:
             productId === ids.product2
               ? this.scenario.product2IsInventoryable ?? true
@@ -504,7 +506,7 @@ class FakeStockMovementLotService {
   }
 }
 
-const buildService = (scenario: Scenario = {}) => {
+const buildService = (scenario: Scenario = {}, productSerialService?: unknown) => {
   const db = new FakeDatabaseService(scenario);
   const stockMovementService = new FakeStockMovementService();
   const inventoryLotService = new FakeInventoryLotService(scenario);
@@ -523,7 +525,8 @@ const buildService = (scenario: Scenario = {}) => {
       logEvent: (event: unknown) => {
         auditEvents.push(event);
       },
-    } as never
+    } as never,
+    productSerialService as never
   );
   return {
     service,
@@ -1779,4 +1782,167 @@ test("PurchaseService.getPurchaseById expone la factura del proveedor de recepci
   assert.match(queries[0], /p\.supplier_invoice_date/);
   assert.equal(detail.supplierInvoiceNumber, "FV-002");
   assert.equal(detail.supplierInvoiceDate?.toISOString(), "2026-11-11T00:00:00.000Z");
+});
+
+class FakeProductSerialService {
+  readonly calls: any[] = [];
+
+  constructor(private readonly failure?: Error) {}
+
+  async registerForReceipt(_client: unknown, input: any) {
+    this.calls.push(input);
+    if (this.failure) {
+      throw this.failure;
+    }
+    return input.serials.map((serial: { serial: string }, index: number) => ({
+      serial_id: `serial-${index + 1}`,
+      serial_number: serial.serial,
+    }));
+  }
+}
+
+test("PurchaseService.receivePurchase: producto con serie registra las series con el movimiento IN y la ubicación", async () => {
+  const serials = new FakeProductSerialService();
+  const { service, db, stockMovementService, inventoryLotService } = buildService(
+    { status: "PENDING", productRequiresSerial: true },
+    serials
+  );
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [
+      {
+        productId: ids.product,
+        quantity: 2,
+        locationId: ids.location,
+        serialNumbers: ["lgac-0001", { serialNumber: "LGAC-0002", locationId: "loc-vitrina" }],
+      },
+    ],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+
+  const movement = stockMovementService.movements[0] as { id: string };
+  assert.equal(serials.calls.length, 1);
+  assert.deepEqual(serials.calls[0], {
+    tenantId: ids.tenant,
+    branchId: ids.branch,
+    productId: ids.product,
+    sourceType: "PURCHASE",
+    sourceId: ids.purchase,
+    sourceItemId: serials.calls[0].sourceItemId,
+    stockMovementId: movement.id,
+    serials: [
+      { serial: "lgac-0001", locationId: null },
+      { serial: "LGAC-0002", locationId: "loc-vitrina" },
+    ],
+    defaultLocationId: ids.location,
+    userId: ids.user,
+  });
+  assert.ok(serials.calls[0].sourceItemId);
+  assert.equal(inventoryLotService.calls.length, 0);
+  assert.equal(db.client.queries.includes("COMMIT"), true);
+});
+
+test("PurchaseService.receivePurchase: producto con serie sin series se rechaza y revierte", async () => {
+  const serials = new FakeProductSerialService(
+    new BadRequestException({ code: "SERIAL_REQUIRED", message: "Debes indicar las series del producto." })
+  );
+  const { service, db } = buildService({ status: "PENDING", productRequiresSerial: true }, serials);
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 2 }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    (error: any) => error.getResponse().code === "SERIAL_REQUIRED"
+  );
+  assert.deepEqual(serials.calls[0].serials, []);
+  assert.equal(db.client.queries.includes("ROLLBACK"), true);
+  assert.equal(db.client.queries.includes("COMMIT"), false);
+});
+
+test("PurchaseService.receivePurchase: error de series (duplicada) revierte toda la recepción", async () => {
+  const serials = new FakeProductSerialService(
+    new ConflictException({ code: "SERIAL_DUPLICATE", message: "La serie ya está registrada para este producto." })
+  );
+  const { service, db } = buildService({ status: "PENDING", productRequiresSerial: true }, serials);
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 1, serialNumbers: ["LGAC-0001"] }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /La serie ya está registrada|Conflict/
+  );
+  assert.equal(db.client.queries.includes("ROLLBACK"), true);
+});
+
+test("PurchaseService.receivePurchase: producto con serie rechaza datos de lote", async () => {
+  const serials = new FakeProductSerialService();
+  const { service } = buildService({ status: "PENDING", productRequiresSerial: true }, serials);
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 1, lotCode: "L1", serialNumbers: ["LGAC-0001"] }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /lot data is not allowed/
+  );
+  assert.equal(serials.calls.length, 0);
+});
+
+test("PurchaseService.receivePurchase: producto sin serie rechaza series y no llama al servicio de series", async () => {
+  const serials = new FakeProductSerialService();
+  const { service } = buildService({ status: "PENDING" }, serials);
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 1, serialNumbers: ["X1"] }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    (error: any) => error.getResponse().code === "SERIAL_NOT_REQUIRED"
+  );
+
+  await service.receivePurchase(
+    ids.purchase,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 1 }],
+    { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+    actor
+  );
+  assert.equal(serials.calls.length, 0);
+});
+
+test("PurchaseService.receivePurchase: producto sin serie sigue rechazando locationId sin lote", async () => {
+  const { service } = buildService({ status: "PENDING" }, new FakeProductSerialService());
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ productId: ids.product, quantity: 1, locationId: ids.location }],
+        { tenantId: ids.tenant, userId: ids.user, branchId: ids.branch },
+        actor
+      ),
+    /lot data is not allowed/
+  );
 });

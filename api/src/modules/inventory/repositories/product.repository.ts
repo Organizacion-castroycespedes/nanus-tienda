@@ -27,6 +27,7 @@ type ProductRow = QueryResultRow & {
   is_perishable: boolean;
   requires_lot: boolean;
   requires_expiration: boolean;
+  requires_serial: boolean | null;
   operational_status: ProductProps["operationalStatus"];
   rotation_class: ProductProps["rotationClass"];
   sale_type: ProductProps["saleType"];
@@ -81,6 +82,7 @@ type UpdateProductData = Partial<
     | "isPerishable"
     | "requiresLot"
     | "requiresExpiration"
+    | "requiresSerial"
     | "operationalStatus"
     | "rotationClass"
     | "saleType"
@@ -160,6 +162,7 @@ export class ProductRepository {
     is_perishable,
     requires_lot,
     requires_expiration,
+    requires_serial,
     operational_status,
     rotation_class,
     sale_type,
@@ -205,6 +208,7 @@ export class ProductRepository {
       isPerishable: row.is_perishable,
       requiresLot: row.requires_lot,
       requiresExpiration: row.requires_expiration,
+      requiresSerial: row.requires_serial ?? false,
       operationalStatus: row.operational_status,
       rotationClass: row.rotation_class,
       saleType: row.sale_type ?? "UNIT",
@@ -286,12 +290,13 @@ export class ProductRepository {
         image_size_bytes,
         image_updated_at,
         created_at,
-        updated_at
+        updated_at,
+        requires_serial
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19,
         $20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
-        $30, $31, $32, $33, $34
+        $30, $31, $32, $33, $34, $35
       )
       RETURNING
         ${this.selectColumns}
@@ -331,6 +336,7 @@ export class ProductRepository {
         product.imageUpdatedAt ?? null,
         product.createdAt,
         product.updatedAt,
+        product.requiresSerial ?? false,
       ],
       client
     );

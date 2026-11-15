@@ -27,6 +27,7 @@ export type InventoryProductRow = QueryResultRow & {
   is_perishable: boolean;
   requires_lot: boolean;
   requires_expiration: boolean;
+  requires_serial?: boolean | null;
   operational_status: ProductOperationalStatus;
   rotation_class: ProductRotationClass;
   min_stock: string | number | null;
@@ -236,6 +237,7 @@ export class InventoryRepository {
         p.is_perishable,
         p.requires_lot,
         p.requires_expiration,
+        COALESCE((to_jsonb(p) ->> 'requires_serial')::boolean, FALSE) AS requires_serial,
         p.operational_status,
         p.rotation_class,
         p.min_stock,

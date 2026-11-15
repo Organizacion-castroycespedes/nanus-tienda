@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -67,6 +68,8 @@ type DeliverOrderBody = {
   items: Array<{
     product_id: string;
     quantity: number;
+    serial_ids?: unknown;
+    serialIds?: unknown;
   }>;
 };
 
@@ -252,15 +255,24 @@ export class OrderController {
     @Body() body: DeliverOrderBody,
     @Req() request: AuthRequest
   ) {
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (!idempotencyKey) {
+      throw new BadRequestException("Idempotency-Key is required");
+    }
     return this.orderService.deliverOrder(
       id,
       this.getTenantId(request),
-      (body.items ?? []).map((item) => ({
-        productId: item.product_id,
-        quantity: Number(item.quantity),
-      })),
+      (body.items ?? []).map((item) => {
+        const serialIds = item.serialIds ?? item.serial_ids;
+        return {
+          productId: item.product_id,
+          quantity: Number(item.quantity),
+          ...(serialIds !== undefined ? { serialIds: serialIds as string[] } : {}),
+        };
+      }),
       this.getInventoryContext(request),
-      this.buildActor(request)
+      this.buildActor(request),
+      idempotencyKey
     );
   }
 

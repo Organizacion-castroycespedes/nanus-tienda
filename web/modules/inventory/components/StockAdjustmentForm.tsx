@@ -20,6 +20,11 @@ import {
   type InventoryLotResponse,
 } from "../services/inventory-lot.service";
 import { createStockAdjustment } from "../services/stock-adjustment.service";
+import { SerialCaptureDialog } from "../serials/SerialCaptureDialog";
+import { formatSerialProgress, isWholeSerialQuantity } from "../serials/serial-capture";
+import type { PosCartSerial } from "../../../store/posCart";
+import { PosSerialPickerDialog } from "../../pos/components/PosSerialPickerDialog";
+import { formatPosSerialLabel } from "../../pos/utils/pos-serials";
 
 type StockAdjustmentValues = {
   branchId: string;
@@ -115,8 +120,13 @@ export const StockAdjustmentForm = ({
   const [lotBalances, setLotBalances] = useState<InventoryLotBalanceResponse[]>([]);
   const [loadingLotData, setLoadingLotData] = useState(false);
   const [lotDataError, setLotDataError] = useState<string | null>(null);
+  // Producto con serie: entrada con series nuevas, salida eligiendo las series que salen.
+  const [serialNumbers, setSerialNumbers] = useState<string[]>([]);
+  const [outSerials, setOutSerials] = useState<PosCartSerial[]>([]);
+  const [serialDialogOpen, setSerialDialogOpen] = useState(false);
 
   const requiresLot = Boolean(product.requiresLot);
+  const requiresSerial = Boolean(product.requiresSerial);
   const requiresExpiration = Boolean(product.requiresExpiration);
   const isPerishable = Boolean(product.isPerishable);
 
@@ -127,7 +137,27 @@ export const StockAdjustmentForm = ({
     setLocations([]);
     setLots([]);
     setLotBalances([]);
+    setSerialNumbers([]);
+    setOutSerials([]);
   }, [currentBranch, product.id, product.branchId, product.cost]);
+
+  useEffect(() => {
+    setSerialNumbers([]);
+    setOutSerials([]);
+  }, [values.branchId, values.type]);
+
+  useEffect(() => {
+    if (!requiresSerial || !values.branchId) {
+      return;
+    }
+    let mounted = true;
+    listInventoryLocations({ branchId: values.branchId, isActive: true })
+      .then((result) => mounted && setLocations(result))
+      .catch(() => mounted && setLocations([]));
+    return () => {
+      mounted = false;
+    };
+  }, [requiresSerial, values.branchId]);
 
   useEffect(() => {
     let mounted = true;
@@ -299,6 +329,19 @@ export const StockAdjustmentForm = ({
       nextErrors.reason = "El motivo es requerido.";
     }
 
+    if (requiresSerial && !nextErrors.quantity) {
+      if (!isWholeSerialQuantity(quantity)) {
+        nextErrors.quantity = "Los productos con serie se ajustan por unidades enteras.";
+      } else if (values.type === "IN" && serialNumbers.length !== quantity) {
+        nextErrors.lot = `Captura las series: ${formatSerialProgress(serialNumbers.length, quantity)}.`;
+      } else if (values.type === "OUT" && outSerials.length !== quantity) {
+        nextErrors.lot = `Selecciona las series que salen: ${formatSerialProgress(outSerials.length, quantity)}.`;
+      }
+      if (values.locationId && !locationIds.has(values.locationId)) {
+        nextErrors.locationId = "La ubicacion seleccionada no es valida.";
+      }
+    }
+
     if (requiresLot) {
       if (values.type === "IN") {
         if (!values.lotCode.trim()) {
@@ -357,6 +400,12 @@ export const StockAdjustmentForm = ({
               unitCost: values.unitCost.trim() ? Number(values.unitCost) : undefined,
             }
           : {}),
+        ...(requiresSerial && values.type === "IN"
+          ? { serialNumbers, locationId: values.locationId || undefined }
+          : {}),
+        ...(requiresSerial && values.type === "OUT"
+          ? { serialIds: outSerials.map((serial) => serial.id) }
+          : {}),
         ...(requiresLot && values.type === "OUT" && selectedLotOption
           ? {
               lotId: selectedLotOption.lot.id,
@@ -398,6 +447,11 @@ export const StockAdjustmentForm = ({
             {requiresLot ? (
               <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
                 Requiere lote
+              </span>
+            ) : null}
+            {requiresSerial ? (
+              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                Requiere serie
               </span>
             ) : null}
             {requiresExpiration ? (
@@ -684,6 +738,77 @@ export const StockAdjustmentForm = ({
           </section>
         ) : null}
 
+        {requiresSerial ? (
+          <section className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+            <p className="text-sm font-semibold text-indigo-950">Números de serie</p>
+            <p className="mt-1 text-xs text-indigo-700">
+              {values.type === "IN"
+                ? "Captura una serie nueva por cada unidad que entra."
+                : "Elige las series disponibles que salen; quedarán dadas de baja. Las devueltas o bloqueadas se dan de baja desde Inventario > Series."}
+            </p>
+            <div className="mt-3 grid gap-4 md:grid-cols-[1fr_1fr] md:items-end">
+              <div className="space-y-2">
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  {formatSerialProgress(
+                    values.type === "IN" ? serialNumbers.length : outSerials.length,
+                    Number(values.quantity) || 0
+                  )}
+                </span>
+                <div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      !values.branchId ||
+                      !isWholeSerialQuantity(Number(values.quantity)) ||
+                      Number(values.quantity) <= 0
+                    }
+                    onClick={() => setSerialDialogOpen(true)}
+                  >
+                    {values.type === "IN" ? "Capturar series" : "Seleccionar series"}
+                  </Button>
+                </div>
+                {(values.type === "IN" ? serialNumbers.length : outSerials.length) > 0 ? (
+                  <ul className="flex flex-wrap gap-1">
+                    {(values.type === "IN"
+                      ? serialNumbers.map((serial) => ({ key: serial, label: serial }))
+                      : outSerials.map((serial) => ({ key: serial.id, label: formatPosSerialLabel(serial) }))
+                    ).map((item) => (
+                      <li
+                        key={item.key}
+                        className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        {item.label}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              {values.type === "IN" ? (
+                <div className="space-y-1">
+                  <Select
+                    label="Ubicación"
+                    value={values.locationId}
+                    onChange={(event) => {
+                      setValues((prev) => ({ ...prev, locationId: event.target.value }));
+                      setErrors((prev) => ({ ...prev, locationId: undefined, submit: undefined }));
+                    }}
+                  >
+                    <option value="">Sin ubicacion</option>
+                    {locations.map((location) => (
+                      <option key={location.id} value={location.id}>
+                        {location.code} - {location.name}
+                      </option>
+                    ))}
+                  </Select>
+                  {errors.locationId ? <p className="text-xs text-rose-600">{errors.locationId}</p> : null}
+                </div>
+              ) : null}
+            </div>
+            {errors.lot ? <p className="mt-2 text-xs text-rose-600">{errors.lot}</p> : null}
+          </section>
+        ) : null}
+
         {errors.submit ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {errors.submit}
@@ -699,6 +824,38 @@ export const StockAdjustmentForm = ({
           </Button>
         </div>
       </form>
+
+      {serialDialogOpen && values.type === "IN" && values.branchId ? (
+        <SerialCaptureDialog
+          productId={product.id}
+          productName={product.name}
+          branchId={values.branchId}
+          expected={Number(values.quantity) || 0}
+          initialSerials={serialNumbers}
+          onCancel={() => setSerialDialogOpen(false)}
+          onSave={(serials) => {
+            setSerialNumbers(serials);
+            setSerialDialogOpen(false);
+            setErrors((prev) => ({ ...prev, lot: undefined, submit: undefined }));
+          }}
+        />
+      ) : null}
+      {serialDialogOpen && values.type === "OUT" && values.branchId ? (
+        <PosSerialPickerDialog
+          productId={product.id}
+          productName={product.name}
+          branchId={values.branchId}
+          max={Number(values.quantity) || 0}
+          initialSerials={outSerials}
+          confirmLabel={(count) => `Dar de baja ${count > 0 ? count : ""} ${count === 1 ? "serie" : "series"}`}
+          onCancel={() => setSerialDialogOpen(false)}
+          onConfirm={(serials) => {
+            setOutSerials(serials);
+            setSerialDialogOpen(false);
+            setErrors((prev) => ({ ...prev, lot: undefined, submit: undefined }));
+          }}
+        />
+      ) : null}
     </section>
   );
 };

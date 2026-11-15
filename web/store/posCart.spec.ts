@@ -6,6 +6,7 @@ import posCartReducer, {
   allowSaleSubmissionRetry,
   allowUnknownSaleRetry,
   applyDefinitiveStockRejection,
+  applyDefinitiveSerialRejection,
   beginSaleSubmission,
   confirmSaleForAccount,
   buildPosCartStorageKey,
@@ -463,6 +464,41 @@ describe("POS sale submission recovery", () => {
     assert.equal(recovered.saleAttempt, null);
     assert.equal(recovered.items[0].quantity, 6);
     assert.equal(recovered.items[0].stock, 2);
+  });
+});
+
+describe("serialized sale rejection", () => {
+  it("returns the account to draft and clears only the rejected product serials", () => {
+    const context = { tenantId: "tenant-s", branchId: "branch-s", terminalId: "terminal-s", userId: "user-s", posSessionId: "session-s" };
+    const scoped = posCartReducer(initialPosCartState, setPosCartContext(context));
+    const serial = { id: "serial-1", serialNumber: "3H61260000017", locationCode: "002" };
+    const withItems = posCartReducer(scoped, setCartItems([
+      { productId: "serial-a", name: "Inverter", sku: "INV", quantity: 1, price: 100, stock: 4, taxId: null,
+        priceWithoutTax: 100, requiresSerial: true, serials: [serial] },
+      { productId: "serial-b", name: "Nevera", sku: "NEV", quantity: 1, price: 100, stock: 4, taxId: null,
+        priceWithoutTax: 100, requiresSerial: true, serials: [{ ...serial, id: "serial-2" }] },
+      { productId: "plain", name: "Cable", sku: "CAB", quantity: 2, price: 10, stock: 9, taxId: null, priceWithoutTax: 10 },
+    ]));
+    const submitting = posCartReducer(
+      withItems,
+      beginSaleSubmission({ attemptId: "attempt-serial", startedAt: "2026-11-14T12:00:00.000Z" }),
+    );
+    const recovered = posCartReducer(
+      submitting,
+      applyDefinitiveSerialRejection({
+        accountId: submitting.activeAccountId,
+        attemptId: "attempt-serial",
+        contextKey: submitting.contextKey!,
+        productId: "serial-a",
+      }),
+    );
+
+    assert.equal(recovered.saleStatus, POS_SALE_STATUSES.DRAFT);
+    assert.equal(recovered.saleAttempt, null);
+    assert.deepEqual(recovered.items[0].serials, []);
+    assert.equal(recovered.items[0].quantity, 1);
+    assert.equal(recovered.items[1].serials?.length, 1);
+    assert.equal(recovered.items[2].quantity, 2);
   });
 });
 
