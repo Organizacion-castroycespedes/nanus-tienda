@@ -2,13 +2,13 @@ import Link from "next/link";
 import { Button } from "../../../components/design-system/Button";
 
 type TenantUnauthorizedPageProps = {
-  params: {
+  params: Promise<{
     tenant: string;
-  };
+  }>;
 };
 
-const TenantUnauthorizedPage = ({ params }: TenantUnauthorizedPageProps) => {
-  const tenantSlug = params?.tenant;
+const TenantUnauthorizedPage = async ({ params }: TenantUnauthorizedPageProps) => {
+  const { tenant: tenantSlug } = await params;
   const dashboardHref = tenantSlug ? `/${tenantSlug}/dashboard` : "/login";
 
   return (
