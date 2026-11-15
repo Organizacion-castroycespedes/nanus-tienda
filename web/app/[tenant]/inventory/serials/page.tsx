@@ -4,6 +4,7 @@ import { History, MapPin, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "../../../../components/design-system/Button";
+import { RowActionsMenu, type RowActionItem } from "../../../../components/design-system/RowActionsMenu";
 import { Input } from "../../../../components/design-system/Input";
 import { Select } from "../../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../../components/design-system/Toast";
@@ -240,6 +241,7 @@ const InventorySerialsPage = () => {
                     />
                   </th>
                 ) : null}
+                <th className="w-14 px-3 py-2 text-center font-medium">Acciones</th>
                 <th className="px-3 py-2 font-medium">Serie</th>
                 <th className="px-3 py-2 font-medium">Producto</th>
                 <th className="px-3 py-2 font-medium">Estado</th>
@@ -247,12 +249,32 @@ const InventorySerialsPage = () => {
                 <th className="px-3 py-2 font-medium">Ubicación</th>
                 <th className="px-3 py-2 font-medium">Recibida</th>
                 <th className="px-3 py-2 font-medium">Vendida</th>
-                <th className="px-3 py-2 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {items.map((item) => {
                 const status = item.status as ProductSerialStatus;
+                const rowActions: RowActionItem[] = [
+                  {
+                    label: "Historial",
+                    icon: <History className="h-4 w-4" aria-hidden="true" />,
+                    onSelect: () => setHistoryId(item.id),
+                  },
+                ];
+                if (canWrite && allowedInspectionResults(item.status).length > 0) {
+                  rowActions.push({
+                    label: item.status === "AVAILABLE" ? "Bloquear" : "Inspeccionar",
+                    icon: <ShieldCheck className="h-4 w-4" aria-hidden="true" />,
+                    onSelect: () => setInspectTarget(item),
+                  });
+                }
+                if (canWrite && canMoveSerial(item.status)) {
+                  rowActions.push({
+                    label: "Mover ubicación",
+                    icon: <MapPin className="h-4 w-4" aria-hidden="true" />,
+                    onSelect: () => setMoveTargets([item]),
+                  });
+                }
                 return (
                   <tr key={item.id}>
                     {canWrite ? (
@@ -266,6 +288,11 @@ const InventorySerialsPage = () => {
                         />
                       </td>
                     ) : null}
+                    <td className="w-14 px-3 py-2">
+                      <div className="flex justify-center">
+                        <RowActionsMenu label={`Acciones de la serie ${item.serialNumber}`} items={rowActions} />
+                      </div>
+                    </td>
                     <td className="px-3 py-2 font-mono text-slate-900 dark:text-white">{item.serialNumber}</td>
                     <td className="px-3 py-2">
                       <p className="text-slate-900 dark:text-white">{item.productName}</p>
@@ -286,24 +313,6 @@ const InventorySerialsPage = () => {
                     </td>
                     <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{formatDate(item.receivedAt)}</td>
                     <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{formatDate(item.soldAt)}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex justify-end gap-1.5">
-                        <Button variant="ghost" size="sm" onClick={() => setHistoryId(item.id)}>
-                          <History className="h-4 w-4" aria-hidden="true" />
-                          Historial
-                        </Button>
-                        {canWrite && allowedInspectionResults(item.status).length > 0 ? (
-                          <Button variant="outline" size="sm" onClick={() => setInspectTarget(item)}>
-                            {item.status === "AVAILABLE" ? "Bloquear" : "Inspeccionar"}
-                          </Button>
-                        ) : null}
-                        {canWrite && canMoveSerial(item.status) ? (
-                          <Button variant="outline" size="sm" onClick={() => setMoveTargets([item])}>
-                            Mover
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
                   </tr>
                 );
               })}
