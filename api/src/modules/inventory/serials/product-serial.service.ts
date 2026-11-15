@@ -6,11 +6,14 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
+import crypto from "node:crypto";
 import ExcelJS from "exceljs";
 import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
 import { cellValueToText } from "../imports/xlsx-import.parser";
 import { canViewAllBranches, type BranchScopedActor } from "../utils/access";
+import { StockMovementService } from "../services/stock-movement.service";
 import { mapSerialDatabaseError } from "./product-serial.errors";
 import {
   isSerialHeader,
@@ -67,6 +70,7 @@ export const normalizeSerialInputs = (value: unknown): Array<{ serial: string; l
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_FILE_ROWS = MAX_SERIALS_PER_REQUEST;
 
 const toIso = (value: Date | string | null) =>
@@ -116,7 +120,10 @@ export class ProductSerialService {
     @Inject(ProductSerialRepository)
     private readonly repository: ProductSerialRepository,
     @Inject(FinanceAccessRepository)
-    private readonly financeAccessRepository: FinanceAccessRepository
+    private readonly financeAccessRepository: FinanceAccessRepository,
+    @Optional()
+    @Inject(StockMovementService)
+    private readonly stockMovementService?: StockMovementService
   ) {}
 
   private normalizeLimit(limit?: number) {
@@ -294,6 +301,165 @@ export class ProductSerialService {
       : mapped instanceof NotFoundException
         ? new NotFoundException(enriched)
         : new BadRequestException(enriched);
+  }
+
+  /**
+   * Ajuste de salida de un producto con serie: las series pasan a WRITTEN_OFF con el OUT
+   * del ajuste, en la transacción del llamador.
+   */
+  async writeOffForAdjustment(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      productId: string;
+      serialIds: string[];
+      stockMovementId: string;
+      userId: string | null;
+      reason: string | null;
+    }
+  ) {
+    if (input.serialIds.length === 0) {
+      throw new BadRequestException({ code: "SERIAL_REQUIRED", message: "Debes indicar las series del producto." });
+    }
+    try {
+      return await this.repository.writeOff(client, input);
+    } catch (error) {
+      throw mapSerialDatabaseError(error) ?? error;
+    }
+  }
+
+  private async assertSerialBranchesAccess(tenantId: string, branchIds: string[], actor: BranchScopedActor) {
+    const allowed = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (allowed !== null && branchIds.some((branchId) => !allowed.includes(branchId))) {
+      throw new ForbiddenException("not authorized for this branch");
+    }
+  }
+
+  /**
+   * Inspección de una serie devuelta o bloqueada: AVAILABLE, BLOCKED o WRITTEN_OFF.
+   * WRITTEN_OFF crea el OUT de 1 unidad (ajuste) en la misma transacción.
+   */
+  async inspect(
+    tenantId: string,
+    serialId: string,
+    input: { result?: unknown; reason?: unknown },
+    actor: BranchScopedActor
+  ) {
+    const result = typeof input.result === "string" ? input.result.trim().toUpperCase() : "";
+    if (!["AVAILABLE", "BLOCKED", "WRITTEN_OFF"].includes(result)) {
+      throw new BadRequestException({
+        code: "SERIAL_INSPECTION_RESULT_INVALID",
+        message: "Resultado de inspección no válido.",
+      });
+    }
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (reason.length < 5) {
+      throw new BadRequestException({ code: "SERIAL_REASON_REQUIRED", message: "Indica un motivo de al menos 5 caracteres." });
+    }
+    const serial = await this.repository.findById(tenantId, serialId);
+    if (!serial) {
+      throw new NotFoundException("Serie no encontrada");
+    }
+    await this.assertSerialBranchesAccess(tenantId, [serial.branch_id], actor);
+    if (result === "WRITTEN_OFF" && !this.stockMovementService) {
+      throw new BadRequestException("stock movements are unavailable");
+    }
+
+    const client = await this.repository.getClient();
+    let movement: Awaited<ReturnType<StockMovementService["createMovement"]>> | null = null;
+    try {
+      await client.query("BEGIN");
+      if (result === "WRITTEN_OFF" && this.stockMovementService) {
+        await this.repository.lockStockScope(client, tenantId, serial.branch_id, serial.product_id);
+        movement = await this.stockMovementService.createMovement(
+          {
+            id: crypto.randomUUID(),
+            tenantId,
+            productId: serial.product_id,
+            type: "OUT",
+            quantity: 1,
+            referenceType: "ADJUSTMENT",
+            referenceId: crypto.randomUUID(),
+            branchId: serial.branch_id,
+            terminalId: null,
+            posSessionCode: null,
+            userId: actor.userId ?? null,
+            referenceTable: "stock_adjustments",
+            createdAt: new Date(),
+          },
+          client
+        );
+      }
+      await this.repository.inspect(client, {
+        tenantId,
+        serialId,
+        result,
+        reason,
+        userId: actor.userId ?? null,
+        stockMovementId: movement?.id ?? null,
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw mapSerialDatabaseError(error) ?? error;
+    } finally {
+      client.release();
+    }
+    if (movement) {
+      this.stockMovementService?.logMovementAuditEvent(movement);
+    }
+    const updated = await this.repository.findById(tenantId, serialId);
+    return updated ? mapSerial(updated) : null;
+  }
+
+  /** Cambia la ubicación de varias series de la misma sucursal (sin movimiento de kardex). */
+  async moveLocation(
+    tenantId: string,
+    input: { serialIds?: unknown; locationId?: unknown; reason?: unknown },
+    actor: BranchScopedActor
+  ) {
+    const serialIds = Array.isArray(input.serialIds) ? input.serialIds : [];
+    if (
+      serialIds.length === 0 ||
+      serialIds.length > MAX_SERIALS_PER_REQUEST ||
+      serialIds.some((id) => typeof id !== "string" || !UUID_PATTERN.test(id))
+    ) {
+      throw new BadRequestException("serialIds must be a list of serial UUIDs");
+    }
+    const locationId =
+      input.locationId === null || input.locationId === undefined || input.locationId === ""
+        ? null
+        : String(input.locationId);
+    if (locationId !== null && !UUID_PATTERN.test(locationId)) {
+      throw new BadRequestException("locationId must be a valid UUID");
+    }
+    const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : null;
+    const uniqueIds = [...new Set(serialIds as string[])];
+    const rows = await this.repository.findBranchesForSerials(tenantId, uniqueIds);
+    if (rows.length !== uniqueIds.length) {
+      throw new NotFoundException({ code: "SERIAL_NOT_FOUND", message: "Serie no encontrada." });
+    }
+    await this.assertSerialBranchesAccess(tenantId, [...new Set(rows.map((row) => row.branch_id))], actor);
+
+    const client = await this.repository.getClient();
+    try {
+      await client.query("BEGIN");
+      const moved = await this.repository.moveLocation(client, {
+        tenantId,
+        serialIds: uniqueIds,
+        locationId,
+        userId: actor.userId ?? null,
+        reason,
+      });
+      await client.query("COMMIT");
+      return { moved };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw mapSerialDatabaseError(error) ?? error;
+    } finally {
+      client.release();
+    }
   }
 
   /** Anulación de venta: marca RETURNED (con devolución) o registra VOIDED_NOT_RETURNED. */

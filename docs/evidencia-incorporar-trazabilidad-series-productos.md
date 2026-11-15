@@ -101,6 +101,17 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
   - Rechazo `SERIAL_*`: se limpian las series del producto y, tras el aviso, se reabre el selector con el mensaje.
   - `tsc --noEmit` y ESLint de los archivos tocados sin errores.
 
+## Fase 7 — Ajustes, carga de stock, inspección y página de Series
+- Carga masiva de stock (`stock-import`): un producto con serie se rechaza si la fila cambia el stock ("ajusta su stock desde Ajustes de inventario indicando las series"); si deja el mismo stock la fila se omite. La plantilla precargada ya no incluye productos con serie.
+- Ajustes de inventario (`StockAdjustmentService`): producto con serie → entrada con series nuevas y ubicación (`fnc_product_serials_register`, origen ADJUSTMENT) o salida eligiendo series disponibles que quedan WRITTEN_OFF (`fnc_product_serials_write_off`) con el OUT del ajuste; rechaza datos de lote; un producto sin serie rechaza series. Web `StockAdjustmentForm`: "Capturar series" (mismo diálogo de compras) o "Seleccionar series" (selector del POS) y ubicación.
+- Endpoints nuevos (INVENTORY_SERIALS WRITE; SUPER_ADMIN, SUPER_USER y ADMIN):
+  - `POST /inventory/serials/:id/inspect` `{result, reason}`: RETURNED → AVAILABLE/BLOCKED/WRITTEN_OFF, BLOCKED → AVAILABLE/WRITTEN_OFF, AVAILABLE → BLOCKED. WRITTEN_OFF crea el OUT de 1 unidad (ajuste) con bloqueo de stock por producto, en la misma transacción.
+  - `PATCH /inventory/serials/location` `{serialIds, locationId|null, reason}`: cambio de ubicación sin kardex; valida sucursal del usuario.
+- Página `/inventory/serials` (el menú "Series" ya existía): búsqueda por serie/producto/SKU, filtros de estado y sucursal, aviso "N series devueltas pendientes de inspección", historial de eventos, inspeccionar/bloquear y mover ubicación (una o varias).
+- Pruebas: `stock-adjustment.service.spec.ts`, `product-serial.service.spec.ts`, `stock-import.resolver.spec.ts` y `stock-import.service.spec.ts`: 66/66; web `serial-labels.spec.ts` 2/2; `tsc --noEmit` API y web sin errores.
+- Corrección tras la QA: el listado `/inventory/products` (de donde sale el producto del formulario de ajuste) no traía `requiresSerial`, así que el formulario no mostraba la sección de series y el API respondía "Debes indicar las series del producto". `InventoryRepository`/`InventoryService` ahora lo incluyen (`inventory.service.spec.ts` 6/6).
+- Pendiente de esta fase: aviso de devueltas pendientes dentro del selector del POS/entregas, conteo de series por ubicación en /inventory/locations y ubicación distinta por serie en la recepción.
+
 ## Validación en Windows (propietario, 2026-11-14)
 - `openspec.cmd validate incorporar-trazabilidad-series-productos --strict`: válido.
 - API `npx tsx --test src/**/*.spec.ts`: 1149 pruebas, 1141 pass, 0 fail, 8 omitidas (5 más que la línea base de 1136: las nuevas de producto). `npm run build` OK.
@@ -108,7 +119,10 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
 - V117 aplicada en la base local real `manus_prd_local_test` con `node "Claude outputs\aplicar-V117-local.cjs" --aplicar`: SHA-256 `89e6d21052a051a5c3c057c158f3353672dec286d23184f66777fd60935b9410`; 9 funciones, columna `requires_serial` y menú "Series" en 3 tenants. Esto confirma las FK y columnas contra el esquema real. Sin registro en `migrations_history` (método local, igual que V116).
 
 ## Pendiente
-- [ ] QA de la fase 6: pedido con 1 producto con serie y 1 normal; entrega parcial (1 de 2) y luego el resto; la misma serie elegida en el POS y en una entrega (la segunda se rechaza); regresión de entrega con lote (FEFO).
+- [x] QA de la fase 7 (propietario, 2026-11-14, local): inspección de la 3H61260000017 a disponible (aparece en el selector del POS), bloqueo/desbloqueo, baja, mover ubicación; ajuste de entrada de 2 unidades con las series 3H61260000023 y 3H61260000024 en 002 - Licores (stock 0 → 2) y ajuste de salida de la 023 (stock 2 → 1, serie de baja); carga masiva con el inverter en cantidad 5: fila rechazada con el mensaje de series y "Confirmar carga" bloqueado.
+- Ajuste tras la QA: la fila rechazada de la carga masiva mostraba "Antes 0"; ahora muestra el stock real y la diferencia pedida (`stock-import` 27/27).
+- [x] QA de la fase 6 (propietario, 2026-11-14, local): pedido cbe7d30e entregado por un ADMIN en otro navegador con la serie 3H61260000021 (evento DELIVERED, SOLD con order_id). En el POS (otra sesión) la cuenta 2 tenía la 021 en el carrito: al cobrar fue rechazada, el selector se reabrió con la 022 y la venta aee0b605 (SETP990900015) se cobró. Regresión de lotes: lote LT122112 de CEC01002003 con salida por entrega de pedido (-2) y venta POS 238537db (-1, SETP990900016) desde la misma ubicación 002, sin discrepancias.
+- Validación en Windows de la fase 6 (commit e98484ce): OpenSpec strict válido; API 1185 pruebas, 1177 pass, 0 fail, 8 omitidas, build OK; web 30/30, lint y `next build` OK.
 - [x] QA de la fase 5 (propietario, 2026-11-14, local, FE en habilitación): ventas e01f29ee (012), 4ddeb2de (020 + 301), 32a426ba (017), 8a44074f (018) y 27380bf0 (019, venta mixta con licor y producto normal), todas con FE aceptada. Misma serie en dos cuentas: la cuenta 1 cobró y la cuenta 2 fue rechazada ("ya no están disponibles"), el selector se reabrió y la venta se cobró con otra serie. Anulación de 32a426ba con nota crédito NCC1500004 y devolución: 017 quedó RETURNED con su evento. Kardex = series: stock 1 (la 017 devuelta, pendiente de inspección).
 - Ajuste tras la QA: el selector marca "En Cuenta N" y no deja elegir las series que ya están en otra cuenta del mismo POS (`collectSerialsInOtherAccounts`); entre cajas distintas sigue protegiendo el API al cobrar.
 - Pendiente de QA: cancelar venta (`cancelSale`) y anular sin devolución (evento VOIDED_NOT_RETURNED).

@@ -300,6 +300,8 @@ test("ProductSerialController: permisos por endpoint", () => {
   assert.deepEqual(permissionOf("lookup").menuKey, ["POS", "ORDERS", "INVENTORY_SERIALS", "INVENTORY"]);
   assert.deepEqual(permissionOf("search").menuKey, ["INVENTORY_SERIALS", "INVENTORY"]);
   assert.deepEqual(permissionOf("history").menuKey, ["INVENTORY_SERIALS", "INVENTORY"]);
+  assert.deepEqual(permissionOf("inspect"), { menuKey: "INVENTORY_SERIALS", level: "WRITE" });
+  assert.deepEqual(permissionOf("moveLocation"), { menuKey: "INVENTORY_SERIALS", level: "WRITE" });
 });
 
 test("ProductSerialService.assignForSale traduce el error e informa el producto de la línea", async () => {
@@ -389,4 +391,104 @@ test("ProductSerialService.assignForOrderDelivery informa el producto rechazado"
       return true;
     }
   );
+});
+
+const buildOpsService = (options: { serialBranch?: string; inspectError?: Error } = {}) => {
+  const statements: string[] = [];
+  const calls: Record<string, unknown[]> = {};
+  const record = (name: string, value: unknown) => {
+    calls[name] = [...(calls[name] ?? []), value];
+  };
+  const client = {
+    query: async (text: string) => {
+      statements.push(text);
+      return { rows: [] };
+    },
+    release: () => record("release", true),
+  };
+  const repository = {
+    getClient: async () => client,
+    findById: async () => serialRow({ id: "serial-1", branch_id: options.serialBranch ?? branchA, status: "RETURNED" }),
+    lockStockScope: async (_c: unknown, ...args: unknown[]) => record("lock", args),
+    inspect: async (_c: unknown, input: unknown) => {
+      record("inspect", input);
+      if (options.inspectError) {
+        throw options.inspectError;
+      }
+      return "OK";
+    },
+    findBranchesForSerials: async (_t: string, ids: string[]) => ids.map((id) => ({ id, branch_id: options.serialBranch ?? branchA })),
+    moveLocation: async (_c: unknown, input: unknown) => {
+      record("move", input);
+      return 2;
+    },
+  };
+  const stockMovementService = {
+    createMovement: async (data: Record<string, unknown>) => {
+      record("movement", data);
+      return { ...data, id: "movement-1" };
+    },
+    logMovementAuditEvent: () => record("audit", true),
+  };
+  const service = new ProductSerialService(
+    repository as never,
+    { findAccessibleBranchIds: async () => [branchA] } as never,
+    stockMovementService as never
+  );
+  return { service, statements, calls };
+};
+
+test("ProductSerialService.inspect da de baja con un OUT de 1 unidad en la misma transacción", async () => {
+  const { service, statements, calls } = buildOpsService();
+
+  await service.inspect(tenantId, "serial-1", { result: "written_off", reason: "Equipo dañado" }, admin);
+
+  assert.deepEqual(statements, ["BEGIN", "COMMIT"]);
+  assert.equal((calls.movement[0] as { type: string; quantity: number }).type, "OUT");
+  assert.equal((calls.movement[0] as { quantity: number }).quantity, 1);
+  assert.equal((calls.inspect[0] as { stockMovementId: string }).stockMovementId, "movement-1");
+  assert.equal((calls.inspect[0] as { result: string }).result, "WRITTEN_OFF");
+  assert.equal(calls.audit.length, 1);
+});
+
+test("ProductSerialService.inspect a disponible no crea movimientos y revierte errores de la función", async () => {
+  const ok = buildOpsService();
+  await ok.service.inspect(tenantId, "serial-1", { result: "AVAILABLE", reason: "Revisado sin daños" }, admin);
+  assert.equal(ok.calls.movement, undefined);
+  assert.equal((ok.calls.inspect[0] as { stockMovementId: unknown }).stockMovementId, null);
+
+  const failing = buildOpsService({
+    inspectError: Object.assign(new Error("SERIAL_TRANSITION_INVALID"), { code: "P0001" }),
+  });
+  await assert.rejects(
+    failing.service.inspect(tenantId, "serial-1", { result: "AVAILABLE", reason: "Revisado sin daños" }, admin),
+    (error: unknown) => error instanceof HttpException && error.getStatus() === 409
+  );
+  assert.deepEqual(failing.statements, ["BEGIN", "ROLLBACK"]);
+});
+
+test("ProductSerialService.inspect valida resultado, motivo y sucursal", async () => {
+  const { service } = buildOpsService({ serialBranch: branchB });
+  await assert.rejects(service.inspect(tenantId, "serial-1", { result: "SOLD", reason: "motivo largo" }, admin));
+  await assert.rejects(service.inspect(tenantId, "serial-1", { result: "AVAILABLE", reason: "no" }, admin));
+  await assert.rejects(
+    service.inspect(tenantId, "serial-1", { result: "AVAILABLE", reason: "Revisado sin daños" }, admin),
+    (error: unknown) => error instanceof HttpException && error.getStatus() === 403
+  );
+});
+
+test("ProductSerialService.moveLocation valida y mueve en una transacción", async () => {
+  const { service, statements, calls } = buildOpsService();
+  const ids = ["30000000-0000-4000-8000-000000000001", "30000000-0000-4000-8000-000000000002"];
+
+  const result = await service.moveLocation(
+    tenantId,
+    { serialIds: ids, locationId: "30000000-0000-4000-8000-0000000000aa", reason: "Reubicación" },
+    admin
+  );
+
+  assert.deepEqual(result, { moved: 2 });
+  assert.deepEqual(statements, ["BEGIN", "COMMIT"]);
+  assert.equal((calls.move[0] as { locationId: string }).locationId, "30000000-0000-4000-8000-0000000000aa");
+  await assert.rejects(service.moveLocation(tenantId, { serialIds: ["x"], locationId: null }, admin));
 });

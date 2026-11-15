@@ -94,6 +94,11 @@ const SERIAL_FROM = `
 export class ProductSerialRepository {
   constructor(@Inject(DatabaseService) private readonly db: DatabaseService) {}
 
+  /** Cliente para operaciones propias de series (inspección, mover ubicación). */
+  getClient() {
+    return this.db.getClient();
+  }
+
   private async query<T extends QueryResultRow>(text: string, params: unknown[] = [], client?: PoolClient) {
     if (client) {
       return client.query<T>(text, params);
@@ -307,6 +312,84 @@ export class ProductSerialRepository {
       [input.tenantId, input.branchId, input.orderId, JSON.stringify(input.lines), input.userId]
     );
     return Number(result.rows[0]?.assigned ?? 0);
+  }
+
+  /** Ramas de un conjunto de series (para validar el alcance antes de escribir). */
+  async findBranchesForSerials(tenantId: string, serialIds: string[]) {
+    const result = await this.query<{ id: string; branch_id: string }>(
+      `SELECT s.id, s.branch_id
+         FROM public.product_serials s
+        WHERE s.tenant_id = $1 AND s.id = ANY($2::uuid[])`,
+      [tenantId, serialIds]
+    );
+    return result.rows;
+  }
+
+  async lockStockScope(client: PoolClient, tenantId: string, branchId: string, productId: string) {
+    await client.query(`SELECT public.inventory_lock_stock_scope($1::uuid, $2::uuid, $3::uuid)`, [
+      tenantId,
+      branchId,
+      productId,
+    ]);
+  }
+
+  /** Inspección o bloqueo (fnc_product_serials_inspect). */
+  async inspect(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      serialId: string;
+      result: string;
+      reason: string;
+      userId: string | null;
+      stockMovementId: string | null;
+    }
+  ) {
+    const result = await client.query<{ status: string }>(
+      `SELECT public.fnc_product_serials_inspect($1::uuid, $2::uuid, $3::text, $4::text, $5::uuid, $6::uuid) AS status`,
+      [input.tenantId, input.serialId, input.result, input.reason, input.userId, input.stockMovementId]
+    );
+    return result.rows[0]?.status ?? input.result;
+  }
+
+  /** Baja por ajuste de salida (fnc_product_serials_write_off). */
+  async writeOff(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      productId: string;
+      serialIds: string[];
+      stockMovementId: string;
+      userId: string | null;
+      reason: string | null;
+    }
+  ) {
+    const result = await client.query<{ written_off: number }>(
+      `SELECT public.fnc_product_serials_write_off($1::uuid, $2::uuid, $3::uuid, $4::uuid[], $5::uuid, $6::uuid, $7::text) AS written_off`,
+      [
+        input.tenantId,
+        input.branchId,
+        input.productId,
+        input.serialIds,
+        input.stockMovementId,
+        input.userId,
+        input.reason,
+      ]
+    );
+    return Number(result.rows[0]?.written_off ?? 0);
+  }
+
+  /** Cambio de ubicación sin movimiento de kardex (fnc_product_serials_move_location). */
+  async moveLocation(
+    client: PoolClient,
+    input: { tenantId: string; serialIds: string[]; locationId: string | null; userId: string | null; reason: string | null }
+  ) {
+    const result = await client.query<{ moved: number }>(
+      `SELECT public.fnc_product_serials_move_location($1::uuid, $2::uuid[], $3::uuid, $4::uuid, $5::text) AS moved`,
+      [input.tenantId, input.serialIds, input.locationId, input.userId, input.reason]
+    );
+    return Number(result.rows[0]?.moved ?? 0);
   }
 
   /** Anulación: RETURNED si el inventario vuelve, o evento VOIDED_NOT_RETURNED si no. */

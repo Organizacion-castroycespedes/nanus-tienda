@@ -11,6 +11,10 @@ export type CreateStockAdjustmentPayload = {
   expirationDate?: string | null;
   locationId?: string | null;
   unitCost?: number;
+  /** Entrada de producto con serie: series nuevas. */
+  serialNumbers?: string[];
+  /** Salida de producto con serie: series que se dan de baja. */
+  serialIds?: string[];
 };
 
 export const createStockAdjustment = (

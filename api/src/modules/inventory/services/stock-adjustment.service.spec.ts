@@ -16,6 +16,7 @@ type Scenario = {
   productRequiresLot?: boolean;
   productRequiresExpiration?: boolean;
   productCost?: number;
+  productRequiresSerial?: boolean;
   inLotStatus?: "ACTIVE" | "BLOCKED" | "CANCELLED";
   outLotMissing?: boolean;
   outLotStatus?: "ACTIVE" | "EXPIRED" | "BLOCKED" | "CANCELLED" | "CONSUMED";
@@ -59,6 +60,7 @@ class FakeClient {
             requires_lot: this.scenario.productRequiresLot ?? false,
             requires_expiration:
               this.scenario.productRequiresExpiration ?? false,
+            requires_serial: this.scenario.productRequiresSerial ?? false,
           },
         ],
       };
@@ -498,4 +500,74 @@ test("does not touch payment or cash queries", async () => {
     ),
     false
   );
+});
+
+// --- Series (fase 7.1): entrada con series nuevas y salida con baja ---
+
+const attachSerialService = (service: StockAdjustmentService) => {
+  const calls: Record<string, any[]> = { register: [], writeOff: [] };
+  (service as unknown as Record<string, unknown>).productSerialService = {
+    registerForReceipt: async (_client: unknown, input: any) => {
+      calls.register.push(input);
+      return [];
+    },
+    writeOffForAdjustment: async (_client: unknown, input: any) => {
+      calls.writeOff.push(input);
+      return input.serialIds.length;
+    },
+  };
+  return calls;
+};
+
+test("serial IN registers the new serials with the adjustment movement and location", async () => {
+  const { service, stockMovementService, db } = createService({ productRequiresSerial: true });
+  const calls = attachSerialService(service);
+
+  await service.create({
+    ...baseInput(),
+    quantity: 2,
+    locationId: ids.location,
+    serialNumbers: ["sn-1", "SN-2"],
+  });
+
+  assert.equal(stockMovementService.movements.length, 1);
+  assert.equal(calls.register.length, 1);
+  assert.equal(calls.register[0].sourceType, "ADJUSTMENT");
+  assert.equal(calls.register[0].stockMovementId, stockMovementService.movements[0].id);
+  assert.equal(calls.register[0].defaultLocationId, ids.location);
+  assert.deepEqual(
+    calls.register[0].serials.map((serial: { serial: string }) => serial.serial),
+    ["sn-1", "SN-2"]
+  );
+  assert.ok(db.client.queries.includes("COMMIT"));
+});
+
+test("serial OUT writes off the selected serials with the reason", async () => {
+  const { service } = createService({ productRequiresSerial: true });
+  const calls = attachSerialService(service);
+  const serialIds = ["60000000-0000-4000-8000-000000000001"];
+
+  await service.create({ ...baseInput(), type: "OUT", quantity: 1, serialIds });
+
+  assert.equal(calls.writeOff.length, 1);
+  assert.deepEqual(calls.writeOff[0].serialIds, serialIds);
+  assert.equal(calls.writeOff[0].reason, "Ajuste por conteo fisico");
+});
+
+test("serial adjustment rejects lot data and non-serial products reject serials", async () => {
+  const serial = createService({ productRequiresSerial: true });
+  attachSerialService(serial.service);
+  await assert.rejects(
+    () => serial.service.create({ ...baseInput(), lotCode: "L-1", serialNumbers: ["A"] }),
+    /lot data is not allowed/
+  );
+  assert.equal(serial.stockMovementService.movements.length, 0);
+
+  const plain = createService();
+  attachSerialService(plain.service);
+  await assert.rejects(
+    () => plain.service.create({ ...baseInput(), serialNumbers: ["A"] }),
+    (error: unknown) => error instanceof BadRequestException
+  );
+  assert.equal(plain.stockMovementService.movements.length, 0);
 });

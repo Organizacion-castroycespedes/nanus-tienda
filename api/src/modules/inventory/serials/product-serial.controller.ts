@@ -6,6 +6,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -180,6 +181,38 @@ export class ProductSerialController {
         limit: this.optionalInt(limit, "limit"),
         offset: this.optionalInt(offset, "offset"),
       },
+      this.buildActor(request)
+    );
+  }
+
+  /** Inspección de devueltas y bloqueo: AVAILABLE, BLOCKED o WRITTEN_OFF (con ajuste OUT). */
+  @Post(":serialId/inspect")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: "INVENTORY_SERIALS", level: "WRITE" })
+  inspect(
+    @Param("serialId") serialId: string,
+    @Body() body: { result?: unknown; reason?: unknown },
+    @Req() request: AuthRequest
+  ) {
+    return this.service.inspect(
+      this.getTenantId(request),
+      this.requireUuid(serialId, "serialId"),
+      { result: body?.result, reason: body?.reason },
+      this.buildActor(request)
+    );
+  }
+
+  /** Mover series de ubicación dentro de la sucursal (sin movimiento de kardex). */
+  @Patch("location")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: "INVENTORY_SERIALS", level: "WRITE" })
+  moveLocation(
+    @Body() body: { serialIds?: unknown; locationId?: unknown; reason?: unknown },
+    @Req() request: AuthRequest
+  ) {
+    return this.service.moveLocation(
+      this.getTenantId(request),
+      { serialIds: body?.serialIds, locationId: body?.locationId, reason: body?.reason },
       this.buildActor(request)
     );
   }
