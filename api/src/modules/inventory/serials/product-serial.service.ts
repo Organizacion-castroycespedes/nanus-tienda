@@ -690,6 +690,35 @@ export class ProductSerialService {
     };
   }
 
+  /** Conciliación series vs. kardex por producto con serie y sucursal (solo lectura). */
+  async reconcile(
+    tenantId: string,
+    input: { branchId?: string; productId?: string },
+    actor: BranchScopedActor
+  ) {
+    let branchIds = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (input.branchId) {
+      await this.assertBranchAccess(tenantId, input.branchId, actor);
+      branchIds = [input.branchId];
+    }
+    const rows = await this.repository.reconcile({ tenantId, branchIds, productId: input.productId ?? null });
+    const items = rows.map((row) => {
+      const serialCount = Number(row.serial_count);
+      const kardexStock = Number(row.kardex_stock);
+      return {
+        productId: row.product_id,
+        productName: row.product_name,
+        productSku: row.product_sku,
+        branchId: row.branch_id,
+        branchName: row.branch_name,
+        serialCount,
+        kardexStock,
+        difference: kardexStock - serialCount,
+      };
+    });
+    return { items, differences: items.filter((item) => item.difference !== 0).length };
+  }
+
   async getHistory(tenantId: string, serialId: string, actor: BranchScopedActor) {
     const serial = await this.repository.findById(tenantId, serialId);
     if (!serial) {

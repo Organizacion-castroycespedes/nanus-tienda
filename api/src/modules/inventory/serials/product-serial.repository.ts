@@ -334,6 +334,77 @@ export class ProductSerialRepository {
     return result.rows;
   }
 
+  /**
+   * Conciliación de solo lectura: por producto con serie y sucursal, series en
+   * existencia (AVAILABLE, RETURNED, BLOCKED) frente a la existencia del kardex.
+   */
+  async reconcile(input: { tenantId: string; branchIds: string[] | null; productId?: string | null }) {
+    const params: unknown[] = [input.tenantId];
+    let branchFilter = "";
+    if (input.branchIds) {
+      params.push(input.branchIds);
+      branchFilter = `AND x.branch_id = ANY($${params.length}::uuid[])`;
+    }
+    let productFilter = "";
+    if (input.productId) {
+      params.push(input.productId);
+      productFilter = `AND p.id = $${params.length}::uuid`;
+    }
+    const result = await this.query<{
+      product_id: string;
+      product_name: string;
+      product_sku: string | null;
+      branch_id: string;
+      branch_name: string | null;
+      serial_count: string | number;
+      kardex_stock: string | number;
+    }>(
+      `WITH serial_products AS (
+         SELECT p.id, p.name, p.sku
+           FROM public.products p
+          WHERE p.tenant_id = $1
+            AND COALESCE((to_jsonb(p) ->> 'requires_serial')::boolean, FALSE)
+            ${productFilter}
+       ),
+       serials AS (
+         SELECT s.product_id, s.branch_id, count(*) AS serial_count
+           FROM public.product_serials s
+          WHERE s.tenant_id = $1
+            AND s.status IN ('AVAILABLE', 'RETURNED', 'BLOCKED')
+            AND s.product_id IN (SELECT id FROM serial_products)
+          GROUP BY s.product_id, s.branch_id
+       ),
+       kardex AS (
+         SELECT m.product_id, m.branch_id,
+                COALESCE(SUM(m.quantity) FILTER (WHERE m.type = 'IN'), 0)
+                  - COALESCE(SUM(m.quantity) FILTER (WHERE m.type = 'OUT'), 0) AS kardex_stock
+           FROM public.stock_movements m
+          WHERE m.tenant_id = $1
+            AND m.branch_id IS NOT NULL
+            AND m.product_id IN (SELECT id FROM serial_products)
+          GROUP BY m.product_id, m.branch_id
+       ),
+       x AS (
+         SELECT COALESCE(s.product_id, k.product_id) AS product_id,
+                COALESCE(s.branch_id, k.branch_id) AS branch_id,
+                COALESCE(s.serial_count, 0) AS serial_count,
+                COALESCE(k.kardex_stock, 0) AS kardex_stock
+           FROM serials s
+           FULL OUTER JOIN kardex k ON k.product_id = s.product_id AND k.branch_id = s.branch_id
+       )
+       SELECT x.product_id, p.name AS product_name, p.sku AS product_sku,
+              x.branch_id, b.nombre AS branch_name, x.serial_count, x.kardex_stock
+         FROM x
+         JOIN serial_products p ON p.id = x.product_id
+         LEFT JOIN tenant_branches b ON b.id = x.branch_id
+        WHERE (x.serial_count <> 0 OR x.kardex_stock <> 0)
+          ${branchFilter}
+        ORDER BY (x.serial_count <> x.kardex_stock) DESC, p.name, b.nombre`,
+      params
+    );
+    return result.rows;
+  }
+
   /** Ramas de un conjunto de series (para validar el alcance antes de escribir). */
   async findBranchesForSerials(tenantId: string, serialIds: string[]) {
     const result = await this.query<{ id: string; branch_id: string }>(

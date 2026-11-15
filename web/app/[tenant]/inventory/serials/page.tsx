@@ -1,6 +1,6 @@
 "use client";
 
-import { History, MapPin, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { History, ListChecks, MapPin, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "../../../../components/design-system/Button";
@@ -18,7 +18,12 @@ import {
   type ProductSerialDetail,
   type ProductSerialStatus,
 } from "../../../../modules/inventory/services/product-serial.service";
-import { SerialHistoryModal, SerialInspectDialog, SerialMoveDialog } from "../../../../modules/inventory/serials/SerialDialogs";
+import {
+  SerialHistoryModal,
+  SerialInspectDialog,
+  SerialMoveDialog,
+  SerialReconciliationModal,
+} from "../../../../modules/inventory/serials/SerialDialogs";
 import {
   allowedInspectionResults,
   canMoveSerial,
@@ -47,6 +52,7 @@ const InventorySerialsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const [showReconciliation, setShowReconciliation] = useState(false);
   const [inspectTarget, setInspectTarget] = useState<ProductSerialDetail | null>(null);
   const [moveTargets, setMoveTargets] = useState<ProductSerialDetail[] | null>(null);
   const [toast, setToast] = useState<{ message: string; variant: ToastVariant } | null>(null);
@@ -141,10 +147,16 @@ const InventorySerialsPage = () => {
               Busca una serie, revisa su historial, inspecciona las devueltas y cambia su ubicación.
             </p>
           </div>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            Actualizar
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setShowReconciliation(true)}>
+              <ListChecks className="h-4 w-4" aria-hidden="true" />
+              Conciliación
+            </Button>
+            <Button variant="outline" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Actualizar
+            </Button>
+          </div>
         </div>
         {pendingInspection ? (
           <button
@@ -346,6 +358,9 @@ const InventorySerialsPage = () => {
         </div>
       </section>
 
+      {showReconciliation ? (
+        <SerialReconciliationModal branchId={filters.branchId || undefined} onClose={() => setShowReconciliation(false)} />
+      ) : null}
       {historyId ? <SerialHistoryModal serialId={historyId} onClose={() => setHistoryId(null)} /> : null}
       {inspectTarget ? (
         <SerialInspectDialog serial={inspectTarget} onClose={() => setInspectTarget(null)} onDone={done} />

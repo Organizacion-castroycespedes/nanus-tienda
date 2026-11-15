@@ -512,6 +512,28 @@ test("ProductSerialService.countByLocation limita a las sucursales del usuario",
   assert.deepEqual(calls, [{ tenantId, branchIds: [branchA] }]);
 });
 
+test("ProductSerialService.reconcile calcula diferencias y limita a las sucursales del usuario", async () => {
+  const calls: unknown[] = [];
+  const service = new ProductSerialService(
+    {
+      reconcile: async (input: unknown) => {
+        calls.push(input);
+        return [
+          { product_id: "p-1", product_name: "Inverter", product_sku: "INV", branch_id: branchA, branch_name: "Principal", serial_count: "2", kardex_stock: "3" },
+          { product_id: "p-2", product_name: "Nevera", product_sku: "NEV", branch_id: branchA, branch_name: "Principal", serial_count: 4, kardex_stock: "4.000" },
+        ];
+      },
+    } as never,
+    { findAccessibleBranchIds: async () => [branchA] } as never
+  );
+
+  const result = await service.reconcile(tenantId, {}, admin);
+
+  assert.equal(result.differences, 1);
+  assert.deepEqual(result.items.map((item) => item.difference), [1, 0]);
+  assert.deepEqual(calls, [{ tenantId, branchIds: [branchA], productId: null }]);
+});
+
 test("normalizeSerialInputs acepta series con ubicación propia mezcladas con texto", () => {
   assert.deepEqual(
     normalizeSerialInputs(["A-1", { serialNumber: "A-2", locationId: "loc-9" }, { serial: "A-3" }]),

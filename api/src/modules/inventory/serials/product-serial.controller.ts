@@ -229,6 +229,25 @@ export class ProductSerialController {
     );
   }
 
+  /** Conciliación de solo lectura: series en existencia vs. kardex por producto y sucursal. */
+  @Get("reconciliation")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: ["INVENTORY_SERIALS", "INVENTORY"], level: "READ" })
+  reconciliation(
+    @Query("branchId") branchId: string | undefined,
+    @Query("productId") productId: string | undefined,
+    @Req() request: AuthRequest
+  ) {
+    return this.service.reconcile(
+      this.getTenantId(request),
+      {
+        branchId: this.optionalUuid(branchId, "branchId"),
+        productId: this.optionalUuid(productId, "productId"),
+      },
+      this.buildActor(request)
+    );
+  }
+
   @Get(":serialId/history")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: ["INVENTORY_SERIALS", "INVENTORY"], level: "READ" })

@@ -9,10 +9,12 @@ import { Select } from "../../../components/design-system/Select";
 import { listInventoryLocations, type InventoryLocationResponse } from "../services/inventory-location.service";
 import {
   getSerialHistory,
+  getSerialReconciliation,
   inspectSerial,
   moveSerialsLocation,
   type ProductSerialDetail,
   type ProductSerialEvent,
+  type SerialReconciliationItem,
 } from "../services/product-serial.service";
 import {
   allowedInspectionResults,
@@ -48,6 +50,90 @@ const ReasonField = ({ value, onChange }: { value: string; onChange: (value: str
     <span className="text-xs text-slate-500">Mínimo 5 caracteres. Queda en el historial de la serie.</span>
   </div>
 );
+
+/** Conciliación: series AVAILABLE, RETURNED y BLOCKED frente a la existencia del kardex. */
+export const SerialReconciliationModal = ({ branchId, onClose }: { branchId?: string; onClose: () => void }) => {
+  const [data, setData] = useState<{ items: SerialReconciliationItem[]; differences: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getSerialReconciliation({ branchId })
+      .then((result) => mounted && setData(result))
+      .catch((loadError) => mounted && setError(getErrorMessage(loadError, "No se pudo cargar la conciliación.")));
+    return () => {
+      mounted = false;
+    };
+  }, [branchId]);
+
+  return (
+    <Modal
+      title="Conciliación de series con el kardex"
+      description="Por producto con serie y sucursal: series disponibles, devueltas y bloqueadas frente a la existencia del kardex."
+      onClose={onClose}
+      size="lg"
+    >
+      {error ? (
+        <p role="alert" className="text-sm text-rose-600">
+          {error}
+        </p>
+      ) : !data ? (
+        <p className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Calculando conciliación…
+        </p>
+      ) : data.items.length === 0 ? (
+        <p className="text-sm text-slate-500">No hay productos con serie en existencia.</p>
+      ) : (
+        <div className="grid gap-3">
+          <p
+            className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+              data.differences === 0
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-rose-200 bg-rose-50 text-rose-800"
+            }`}
+          >
+            {data.differences === 0
+              ? "Sin diferencias: las series en existencia coinciden con el kardex."
+              : `${data.differences} ${data.differences === 1 ? "producto con diferencia" : "productos con diferencia"} entre series y kardex.`}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full divide-y divide-slate-200 text-sm">
+              <thead className="text-left text-slate-600 dark:text-slate-300">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Producto</th>
+                  <th className="px-3 py-2 font-medium">Sucursal</th>
+                  <th className="px-3 py-2 text-right font-medium">Series</th>
+                  <th className="px-3 py-2 text-right font-medium">Kardex</th>
+                  <th className="px-3 py-2 text-right font-medium">Diferencia</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.items.map((item) => (
+                  <tr key={`${item.productId}-${item.branchId}`}>
+                    <td className="px-3 py-2">
+                      <p className="text-slate-900 dark:text-white">{item.productName}</p>
+                      <p className="text-xs text-slate-500">{item.productSku}</p>
+                    </td>
+                    <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{item.branchName ?? "-"}</td>
+                    <td className="px-3 py-2 text-right">{item.serialCount}</td>
+                    <td className="px-3 py-2 text-right">{item.kardexStock}</td>
+                    <td
+                      className={`px-3 py-2 text-right font-semibold ${
+                        item.difference === 0 ? "text-emerald-700" : "text-rose-700"
+                      }`}
+                    >
+                      {item.difference > 0 ? `+${item.difference}` : item.difference}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+};
 
 /** Historial de eventos de una serie (inmutable). */
 export const SerialHistoryModal = ({ serialId, onClose }: { serialId: string; onClose: () => void }) => {

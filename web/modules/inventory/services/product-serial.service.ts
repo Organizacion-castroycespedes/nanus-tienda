@@ -125,6 +125,24 @@ export const getSerialCountsByLocation = (params: { branchId?: string } = {}, he
     { headers }
   );
 
+export type SerialReconciliationItem = {
+  productId: string;
+  productName: string;
+  productSku: string | null;
+  branchId: string;
+  branchName: string | null;
+  serialCount: number;
+  kardexStock: number;
+  difference: number;
+};
+
+/** Conciliación de solo lectura: series en existencia vs. kardex por producto y sucursal. */
+export const getSerialReconciliation = (params: { branchId?: string } = {}, headers?: HeadersInit) =>
+  apiClient<{ items: SerialReconciliationItem[]; differences: number }>(
+    `/inventory/serials/reconciliation${params.branchId ? `?branchId=${encodeURIComponent(params.branchId)}` : ""}`,
+    { headers }
+  );
+
 export const getSerialHistory = (serialId: string, headers?: HeadersInit) =>
   apiClient<{ serial: ProductSerialDetail; events: ProductSerialEvent[] }>(
     `/inventory/serials/${serialId}/history`,
