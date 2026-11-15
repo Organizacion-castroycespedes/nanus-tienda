@@ -126,9 +126,14 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
 - Web `npm run lint` sin advertencias; `npm run build` OK.
 - V117 aplicada en la base local real `manus_prd_local_test` con `node "Claude outputs\aplicar-V117-local.cjs" --aplicar`: SHA-256 `89e6d21052a051a5c3c057c158f3353672dec286d23184f66777fd60935b9410`; 9 funciones, columna `requires_serial` y menú "Series" en 3 tenants. Esto confirma las FK y columnas contra el esquema real. Sin registro en `migrations_history` (método local, igual que V116).
 
+## Validación final (8.1, propietario, Windows, 2026-11-14, commit 73930182)
+- `openspec.cmd validate incorporar-trazabilidad-series-productos --strict`: válido.
+- API `npx tsx --test src/**/*.spec.ts`: 1197 pruebas, 1189 pass, 0 fail, 8 omitidas (línea base 0.5: 1136 pass; +53 pruebas nuevas del change). `npm run build` OK.
+- Web: `serial-labels`, `serial-capture`, `pos-serials` y `posCart` 24/24; `npm run lint` sin advertencias; `next build` OK.
+
 ## Pendiente
 - [x] QA de los pendientes de la fase 7 (propietario, 2026-11-14, local, commit aab7fb67): el selector del POS muestra "Hay 1 unidad devuelta de este producto pendiente de inspección" (3H61260000022); la columna "Series" muestra 2 en 002 - Licores; inactivar 002 queda bloqueado con el mensaje de mover las 2 series; la compra FV-004 recibió 3H61260000026 en 002 - Licores y 3H61260000025 en 01 - Modulo aseo (así aparecen en Inventario > Series). Validación en Windows: lint y `next build` OK.
-- [ ] QA de la conciliación: botón "Conciliación" en Inventario > Series; con los datos de prueba debe salir "Sin diferencias" (inverter: series = kardex).
+- [x] QA de la conciliación (propietario, 2026-11-14, local): "Sin diferencias"; inverter en Sucursal Principal con 4 series en existencia (025, 026, 024 disponibles y 022 devuelta) y kardex 4.
 - [x] QA de la fase 7 (propietario, 2026-11-14, local): inspección de la 3H61260000017 a disponible (aparece en el selector del POS), bloqueo/desbloqueo, baja, mover ubicación; ajuste de entrada de 2 unidades con las series 3H61260000023 y 3H61260000024 en 002 - Licores (stock 0 → 2) y ajuste de salida de la 023 (stock 2 → 1, serie de baja); carga masiva con el inverter en cantidad 5: fila rechazada con el mensaje de series y "Confirmar carga" bloqueado.
 - Ajuste tras la QA: la fila rechazada de la carga masiva mostraba "Antes 0"; ahora muestra el stock real y la diferencia pedida (`stock-import` 27/27).
 - [x] QA de la fase 6 (propietario, 2026-11-14, local): pedido cbe7d30e entregado por un ADMIN en otro navegador con la serie 3H61260000021 (evento DELIVERED, SOLD con order_id). En el POS (otra sesión) la cuenta 2 tenía la 021 en el carrito: al cobrar fue rechazada, el selector se reabrió con la 022 y la venta aee0b605 (SETP990900015) se cobró. Regresión de lotes: lote LT122112 de CEC01002003 con salida por entrega de pedido (-2) y venta POS 238537db (-1, SETP990900016) desde la misma ubicación 002, sin discrepancias.
