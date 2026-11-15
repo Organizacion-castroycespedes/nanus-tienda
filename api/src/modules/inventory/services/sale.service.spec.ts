@@ -2374,3 +2374,165 @@ test("SaleService starts PENDING capture from trusted POS context and returns th
   assert.match(statements[1], /FROM pos_terminals p/);
   assert.equal(statements[statements.length - 1], "COMMIT");
 });
+
+// --- Series (fase 5): asignación después de inventory_create_sale_v2 y anulación ---
+
+const serialIds = {
+  first: "20000000-0000-4000-8000-000000000001",
+  second: "20000000-0000-4000-8000-000000000002",
+};
+
+class FakeSaleSerialService {
+  assignCalls: Array<Record<string, unknown>> = [];
+  returnedCalls: Array<Record<string, unknown>> = [];
+  constructor(private readonly assignError?: Error) {}
+  async assignForSale(_client: unknown, input: Record<string, unknown>) {
+    this.assignCalls.push(input);
+    if (this.assignError) {
+      throw this.assignError;
+    }
+    return 2;
+  }
+  async markReturnedForSale(_client: unknown, input: Record<string, unknown>) {
+    this.returnedCalls.push(input);
+    return 0;
+  }
+}
+
+const attachSerialHarness = (
+  service: SaleService,
+  serialService: FakeSaleSerialService,
+  requiresSerial: boolean
+) => {
+  const target = service as unknown as Record<string, unknown>;
+  target.productSerialService = serialService;
+  target.productRepository = {
+    findById: async (id: string) => ({
+      id,
+      isActive: true,
+      saleType: "UNIT",
+      measurementUnit: "UND",
+      requiresSerial,
+    }),
+  };
+};
+
+const serialSalePayload = (serials: string[] = [serialIds.first, serialIds.second]) =>
+  createSalePayload({
+    items: [{ productId: ids.product, quantity: 2, price: 0.01, serialIds: serials }],
+  } as Partial<CreateSaleInput>);
+
+test("SaleService.createSale asigna las series a la línea creada por inventory_create_sale_v2", async () => {
+  const { service, repository, client } = buildCreateSaleService([makePreview()]);
+  const serialService = new FakeSaleSerialService();
+  attachSerialHarness(service, serialService, true);
+
+  await service.createSale(serialSalePayload(), posContext);
+
+  assert.equal(serialService.assignCalls.length, 1);
+  const call = serialService.assignCalls[0] as {
+    tenantId: string;
+    branchId: string;
+    saleId: string;
+    userId: string;
+    lines: Array<{ saleItemId: string; productId: string; serialIds: string[] }>;
+  };
+  const pricedItem = repository.createSaleCalls[0].data.items[0] as { saleItemId: string };
+  assert.equal(call.tenantId, ids.tenant);
+  assert.equal(call.branchId, ids.branch);
+  assert.equal(call.saleId, ids.sale);
+  assert.equal(call.userId, ids.user);
+  assert.deepEqual(call.lines, [
+    { saleItemId: pricedItem.saleItemId, productId: ids.product, serialIds: [serialIds.first, serialIds.second] },
+  ]);
+  // El payload de la función de venta no cambia: no lleva series.
+  assert.equal("serialIds" in (repository.createSaleCalls[0].data.items[0] as object), false);
+  assert(client.queries.some((query) => query.text.trim() === "COMMIT"));
+});
+
+test("SaleService.createSale revierte toda la venta si una serie ya no está disponible", async () => {
+  const { service, client } = buildCreateSaleService([makePreview()]);
+  const serialService = new FakeSaleSerialService(
+    new ConflictException({ code: "SERIAL_NOT_AVAILABLE", message: "Serie no disponible", productId: ids.product })
+  );
+  attachSerialHarness(service, serialService, true);
+
+  await assert.rejects(service.createSale(serialSalePayload(), posContext), ConflictException);
+
+  const statements = client.queries.map((query) => query.text.replace(/\s+/g, " ").trim());
+  assert(statements.includes("ROLLBACK"));
+  assert.equal(statements.includes("COMMIT"), false);
+});
+
+test("SaleService.createSale de producto con serie sin series delega el rechazo a la función de series", async () => {
+  const { service } = buildCreateSaleService([makePreview()]);
+  const serialService = new FakeSaleSerialService(
+    new BadRequestException({ code: "SERIAL_COUNT_MISMATCH", message: "Cantidad distinta" })
+  );
+  attachSerialHarness(service, serialService, true);
+
+  await assert.rejects(service.createSale(createSalePayload(), posContext), BadRequestException);
+  assert.deepEqual((serialService.assignCalls[0] as { lines: Array<{ serialIds: string[] }> }).lines[0].serialIds, []);
+});
+
+test("SaleService.createSale de producto sin serie no llama al servicio de series", async () => {
+  const { service } = buildCreateSaleService([makePreview()]);
+  const serialService = new FakeSaleSerialService();
+  attachSerialHarness(service, serialService, false);
+
+  await service.createSale(createSalePayload(), posContext);
+
+  assert.equal(serialService.assignCalls.length, 0);
+});
+
+test("SaleService.createSale valida serialIds antes de abrir la transacción", async () => {
+  const { service, client } = buildCreateSaleService([makePreview()]);
+  attachSerialHarness(service, new FakeSaleSerialService(), true);
+
+  await assert.rejects(service.createSale(serialSalePayload(["no-es-uuid"]), posContext), BadRequestException);
+  await assert.rejects(
+    service.createSale(
+      createSalePayload({
+        items: [
+          {
+            productId: ids.product,
+            saleMode: "WEIGHT",
+            weightCapture: { captureId: "30000000-0000-4000-8000-000000000001", nonce: "a".repeat(43) },
+            serialIds: [serialIds.first],
+          },
+        ],
+      } as unknown as Partial<CreateSaleInput>),
+      posContext
+    ),
+    BadRequestException
+  );
+  assert.equal(client.queries.length, 0);
+});
+
+test("SaleService.cancelSale marca las series vendidas como RETURNED dentro de la transacción", async () => {
+  const { service, client } = buildService({ requiresLot: false, links: [] });
+  const serialService = new FakeSaleSerialService();
+  (service as unknown as Record<string, unknown>).productSerialService = serialService;
+
+  await service.cancelSale(ids.sale, actor);
+
+  assert.equal(serialService.returnedCalls.length, 1);
+  assert.deepEqual(serialService.returnedCalls[0], {
+    tenantId: ids.tenant,
+    saleId: ids.sale,
+    returnInventory: true,
+    userId: ids.user,
+    reason: "Cancelación de venta",
+  });
+  assert(client.queries.some((query) => query.text.replace(/\s+/g, " ").trim() === "COMMIT"));
+});
+
+test("SaleService.cancelSale de una venta ya cancelada no vuelve a marcar series", async () => {
+  const { service } = buildService({ saleStatus: "CANCELLED" });
+  const serialService = new FakeSaleSerialService();
+  (service as unknown as Record<string, unknown>).productSerialService = serialService;
+
+  await service.cancelSale(ids.sale, actor);
+
+  assert.equal(serialService.returnedCalls.length, 0);
+});

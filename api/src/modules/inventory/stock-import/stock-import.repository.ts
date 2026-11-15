@@ -138,11 +138,13 @@ export class StockImportRepository {
       is_active: boolean | null;
       requires_lot: boolean | null;
       requires_expiration: boolean | null;
+      requires_serial?: boolean | null;
       cost: string | number | null;
     }>(
       client,
       `
-        SELECT id, sku, name, is_active, requires_lot, requires_expiration, cost
+        SELECT id, sku, name, is_active, requires_lot, requires_expiration, cost,
+          COALESCE((to_jsonb(products) ->> 'requires_serial')::boolean, FALSE) AS requires_serial
         FROM products
         WHERE tenant_id = $1
           AND (
@@ -161,6 +163,7 @@ export class StockImportRepository {
         isActive: row.is_active !== false,
         requiresLot: Boolean(row.requires_lot),
         requiresExpiration: Boolean(row.requires_expiration),
+        requiresSerial: Boolean(row.requires_serial),
         cost: row.cost == null ? 0 : Number(row.cost),
       })),
       barcodes: (barcodes.rows ?? []).map((row) => ({
@@ -287,6 +290,7 @@ export class StockImportRepository {
         ) s ON s.product_id = p.id
         WHERE p.tenant_id = $1
           AND p.is_active = TRUE
+          AND COALESCE((to_jsonb(p) ->> 'requires_serial')::boolean, FALSE) = FALSE
         ORDER BY p.name ASC
       `,
       [tenantId, branchId]

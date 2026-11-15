@@ -88,6 +88,7 @@ export type ProductResponse = {
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
+  requiresSerial?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass | null;
   saleType?: ProductSaleType;

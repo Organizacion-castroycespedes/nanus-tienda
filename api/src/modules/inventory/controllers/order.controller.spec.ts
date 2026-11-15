@@ -108,3 +108,31 @@ test("OrderController: deliver exige Idempotency-Key y la propaga al servicio", 
   assert.deepEqual(calls[0][2], [{ productId: "00000000-0000-0000-0000-000000000004", quantity: 2 }]);
   assert.equal(calls[0][5], "delivery-key-1");
 });
+
+test("OrderController: deliver pasa las series solo en las líneas que las traen", async () => {
+  const calls: unknown[][] = [];
+  const orderService = {
+    deliverOrder: async (...args: unknown[]) => {
+      calls.push(args);
+      return { id: "order-1" };
+    },
+  };
+  const controller = new OrderController(orderService as never, {} as never);
+  const user = {
+    id: "00000000-0000-0000-0000-000000000002",
+    tenantId: "00000000-0000-0000-0000-000000000003",
+    roles: ["ADMIN"],
+  };
+  const body = {
+    items: [
+      { product_id: "00000000-0000-0000-0000-000000000004", quantity: 1, serial_ids: ["serial-a"] },
+      { product_id: "00000000-0000-0000-0000-000000000005", quantity: 2 },
+    ],
+  };
+
+  await controller.deliver("order-1", body, { user, headers: { "idempotency-key": "delivery-key-2" } } as never);
+  assert.deepEqual(calls[0][2], [
+    { productId: "00000000-0000-0000-0000-000000000004", quantity: 1, serialIds: ["serial-a"] },
+    { productId: "00000000-0000-0000-0000-000000000005", quantity: 2 },
+  ]);
+});

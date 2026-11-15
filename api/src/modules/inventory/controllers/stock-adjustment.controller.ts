@@ -40,6 +40,10 @@ type CreateStockAdjustmentBody = {
   expirationDate?: string | null;
   locationId?: string | null;
   unitCost?: number;
+  /** Entrada de producto con serie: series nuevas (texto o {serialNumber, locationId}). */
+  serialNumbers?: unknown;
+  /** Salida de producto con serie: ids de las series que se dan de baja. */
+  serialIds?: unknown;
 };
 
 @Controller("stock-adjustments")
@@ -74,6 +78,8 @@ export class StockAdjustmentController {
       locationId: body.locationId,
       unitCost:
         body.unitCost === undefined ? undefined : Number(body.unitCost),
+      serialNumbers: body.serialNumbers,
+      serialIds: body.serialIds,
       context: {
         tenantId: this.getTenantId(request),
         branchId: body.branchId,

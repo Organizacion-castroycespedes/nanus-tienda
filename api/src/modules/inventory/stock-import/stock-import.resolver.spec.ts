@@ -313,4 +313,30 @@ describe("resolveStockImport", () => {
     assert.equal(report.summary.quantityIn, 9);
     assert.equal(report.summary.quantityOut, 0);
   });
+  it("rejects serialized products unless the row keeps the current stock", () => {
+    const serialProduct = {
+      id: "p-serial",
+      sku: "INVERTER-1",
+      name: "Inverter",
+      isActive: true,
+      requiresLot: false,
+      requiresExpiration: false,
+      requiresSerial: true,
+      cost: 900000,
+    };
+    const overrides = {
+      products: [serialProduct],
+      currentStock: [{ productId: "p-serial", branchId: BRANCH.id, quantity: 3 }],
+    };
+
+    const changed = resolve([row(2, { sku: "INVERTER-1", cantidad: "5" })], overrides);
+    assert.ok(changed.rows[0].errors[0].includes("número de serie"));
+    assert.equal(changed.rows[0].before, 3);
+    assert.equal(changed.rows[0].delta, 2);
+    assert.equal(changed.canCommit, false);
+
+    const unchanged = resolve([row(2, { sku: "INVERTER-1", cantidad: "3" })], overrides);
+    assert.equal(unchanged.rows[0].errors.length, 0);
+    assert.equal(unchanged.rows[0].skipped, true);
+  });
 });

@@ -81,6 +81,8 @@ export type DeliverOrderPayload = {
   items: Array<{
     product_id: string;
     quantity: number;
+    /** Series entregadas (productos con requires_serial). */
+    serial_ids?: string[];
   }>;
 };
 

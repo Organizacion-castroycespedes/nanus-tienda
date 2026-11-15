@@ -266,6 +266,22 @@ export class InventoryLocationRepository {
     return result.rows[0] ? this.mapRowToEntity(result.rows[0]) : null;
   }
 
+  /** Series en existencia (AVAILABLE, RETURNED, BLOCKED) guardadas en la ubicación. */
+  async countSerialsInStock(tenantId: string, locationId: string, client?: PoolClient): Promise<number> {
+    const result = await this.query<{ serial_count: string | number }>(
+      `
+      SELECT count(*) AS serial_count
+      FROM product_serials
+      WHERE tenant_id = $1
+        AND location_id = $2
+        AND status IN ('AVAILABLE', 'RETURNED', 'BLOCKED')
+      `,
+      [tenantId, locationId],
+      client
+    );
+    return Number(result.rows[0]?.serial_count ?? 0);
+  }
+
   async deactivate(
     tenantId: string,
     locationId: string,

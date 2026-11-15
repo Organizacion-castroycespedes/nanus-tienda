@@ -11,6 +11,7 @@ import {
   markSaleSubmissionUnknown,
   markUnknownForAccount,
   applyDefinitiveStockRejection,
+  applyDefinitiveSerialRejection,
   confirmSaleForAccount,
   persistPosCartState,
   removeAccount,
@@ -93,6 +94,13 @@ export const usePosCartStore = () => {
     },
     [dispatch]
   );
+  const applyDefinitiveSerialRejectionAction = useCallback(
+    (payload: PosSaleOperationTarget & { productId: string | null }) => {
+      dispatch(applyDefinitiveSerialRejection(payload));
+      persistPosCartState(store.getState().posCart);
+    },
+    [dispatch]
+  );
   const confirmSaleForAccountAction = useCallback(
     (
       target: PosSaleOperationTarget & {
@@ -161,6 +169,7 @@ export const usePosCartStore = () => {
       markSaleSubmissionUnknown: markSaleSubmissionUnknownAction,
       markUnknownForAccount: markUnknownForAccountAction,
       applyDefinitiveStockRejection: applyDefinitiveStockRejectionAction,
+      applyDefinitiveSerialRejection: applyDefinitiveSerialRejectionAction,
       confirmSaleForAccount: confirmSaleForAccountAction,
       allowSaleSubmissionRetry: allowSaleSubmissionRetryAction,
       allowUnknownSaleRetry: allowUnknownSaleRetryAction,
@@ -180,6 +189,7 @@ export const usePosCartStore = () => {
       markSaleSubmissionUnknownAction,
       markUnknownForAccountAction,
       applyDefinitiveStockRejectionAction,
+      applyDefinitiveSerialRejectionAction,
       confirmSaleForAccountAction,
       allowSaleSubmissionRetryAction,
       allowUnknownSaleRetryAction,
