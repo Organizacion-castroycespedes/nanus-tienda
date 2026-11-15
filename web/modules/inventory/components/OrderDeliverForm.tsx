@@ -40,10 +40,16 @@ import { InventoryProductSearchResults } from "../barcode/InventoryProductSearch
 import { InventoryQuantityDialog } from "../barcode/InventoryQuantityDialog";
 import { InventoryScanBar } from "../barcode/InventoryScanBar";
 import { useInventoryBarcodeCapture } from "../barcode/use-inventory-barcode-capture";
+import { ApiError } from "../../../lib/request";
+import type { PosCartSerial } from "../../../store/posCart";
+import { PosSerialPickerDialog } from "../../pos/components/PosSerialPickerDialog";
+import { formatPosSerialLabel } from "../../pos/utils/pos-serials";
 
 type DeliverItemValue = {
   productId: string;
   quantity: string;
+  /** Series elegidas (productos con requires_serial); la cantidad es su número. */
+  serials?: PosCartSerial[];
 };
 
 type DeliverFormErrors = {
@@ -75,6 +81,13 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
+const createDeliveryIdempotencyKey = () => {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `order-delivery-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
 export const OrderDeliverForm = ({
   orderId,
   onCancel,
@@ -83,6 +96,8 @@ export const OrderDeliverForm = ({
   const confirm = useConfirm();
   const authUser = useAppSelector((state) => state.auth.user);
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
+  // Una clave por apertura del formulario: un reintento (doble clic o red) no entrega dos veces.
+  const [idempotencyKey] = useState(createDeliveryIdempotencyKey);
   const [values, setValues] = useState<DeliverItemValue[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,6 +114,9 @@ export const OrderDeliverForm = ({
     max: number;
   } | null>(null);
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+  // Fila del pedido cuyo selector de series está abierto (productos con requires_serial).
+  const [serialPickerIndex, setSerialPickerIndex] = useState<number | null>(null);
+  const [serialNotice, setSerialNotice] = useState<string | null>(null);
   const sounds = useMemo(() => createInventoryScanSoundPlayer(), []);
 
   const commitValues = useCallback((next: DeliverItemValue[]) => {
@@ -295,6 +313,19 @@ export const OrderDeliverForm = ({
   const prepareProduct = useCallback(
     (product: DeliveryScanProduct) => {
       setCandidates(null);
+      if (product.source?.requiresSerial) {
+        // Con serie: el lector abre el selector de la primera línea con pendiente.
+        const rowIndex = (order?.items ?? []).findIndex(
+          (item) => item.productId === product.id && item.orderedQuantity - item.deliveredQuantity > 0
+        );
+        if (rowIndex < 0) {
+          notify("error", inventoryScanMessages.exceedsPending(product.name, 0));
+          return;
+        }
+        setSerialNotice(null);
+        setSerialPickerIndex(rowIndex);
+        return;
+      }
       const saleType = product.source ? resolveInventoryProductSaleType(product.source) : "UNIT";
       if (saleType === "UNIT") {
         applyDeliveryQuantity(product, 1);
@@ -307,7 +338,7 @@ export const OrderDeliverForm = ({
       }
       setQuantityDialog({ product, max: remaining });
     },
-    [applyDeliveryQuantity, getRemainingForProduct, notify]
+    [applyDeliveryQuantity, getRemainingForProduct, notify, order]
   );
 
   const handleScan = useCallback(
@@ -341,7 +372,7 @@ export const OrderDeliverForm = ({
 
   const capture = useInventoryBarcodeCapture({
     enabled: Boolean(order) && hasPending && !isSubmitting,
-    focusReleased: quantityDialog !== null,
+    focusReleased: quantityDialog !== null || serialPickerIndex !== null,
     onScan: handleScan,
     onDuplicateIgnored: (code) => notify("info", inventoryScanMessages.duplicateIgnored(code)),
     // Un código leído con el foco en "Entregar ahora" se procesa como escaneo.
@@ -397,11 +428,21 @@ export const OrderDeliverForm = ({
       return quantity < 0 || quantity > pending;
     });
 
+    const serialIssue = rows.find(({ item }, index) => {
+      if (!catalogById.get(item.productId)?.requiresSerial) {
+        return false;
+      }
+      const quantity = Number(values[index]?.quantity ?? "");
+      return Number.isFinite(quantity) && quantity > 0 && (values[index]?.serials?.length ?? 0) !== quantity;
+    });
+
     if (!hasAnyQuantity) {
       nextErrors.items = "Debes ingresar al menos una cantidad a entregar.";
     } else if (hasInvalidQuantity) {
       nextErrors.items =
         "Las cantidades a entregar deben ser mayores a 0 y no pueden exceder el pendiente.";
+    } else if (serialIssue) {
+      nextErrors.items = `${serialIssue.item.productName || serialIssue.item.productId}: selecciona las series a entregar.`;
     }
 
     setErrors(nextErrors);
@@ -427,12 +468,16 @@ export const OrderDeliverForm = ({
               return null;
             }
 
+            const serials = valuesRef.current[index]?.serials;
             return {
               product_id: item.productId,
               quantity,
+              ...(serials && serials.length > 0 ? { serial_ids: serials.map((serial) => serial.id) } : {}),
             };
           })
-          .filter((item): item is { product_id: string; quantity: number } => item !== null),
+          .filter(
+            (item): item is { product_id: string; quantity: number; serial_ids?: string[] } => item !== null
+          ),
       };
 
       await confirm({
@@ -444,7 +489,9 @@ export const OrderDeliverForm = ({
         variant: "warning",
       });
 
-      const response = await deliverOrder(orderId, payload);
+      const response = await deliverOrder(orderId, payload, {
+        "Idempotency-Key": idempotencyKey,
+      });
       const peripheralContext: OrderPeripheralContext | undefined = order
         ? {
             orderId: response.id,
@@ -488,6 +535,32 @@ export const OrderDeliverForm = ({
           ? "No hay stock suficiente en inventario para entregar esa cantidad. Ajusta la cantidad a entregar o registra la entrada de mercancía."
           : null;
       const dialog = stockMessage ? { ...apiDialog, description: stockMessage } : apiDialog;
+      // Rechazo de series (la entrega se revirtió completa): se limpian las series del producto.
+      const serialRejection =
+        error instanceof ApiError &&
+        error.details &&
+        typeof error.details === "object" &&
+        typeof (error.details as { code?: unknown }).code === "string" &&
+        String((error.details as { code: string }).code).startsWith("SERIAL_")
+          ? (error.details as { productId?: string })
+          : null;
+      const serialRejectionRow = serialRejection
+        ? valuesRef.current.findIndex(
+            (value) =>
+              catalogById.get(value.productId)?.requiresSerial &&
+              (!serialRejection.productId || value.productId === serialRejection.productId)
+          )
+        : -1;
+      if (serialRejection) {
+        commitValues(
+          valuesRef.current.map((value) =>
+            catalogById.get(value.productId)?.requiresSerial &&
+            (!serialRejection.productId || value.productId === serialRejection.productId)
+              ? { ...value, quantity: "", serials: [] }
+              : value
+          )
+        );
+      }
       setErrors({
         submit: dialog.description ?? "No se pudo registrar la entrega.",
       });
@@ -496,6 +569,10 @@ export const OrderDeliverForm = ({
         confirmText: "Entendido",
         hideCancel: true,
       });
+      if (serialRejectionRow >= 0) {
+        setSerialNotice(dialog.description ?? "Selecciona otras series.");
+        setSerialPickerIndex(serialRejectionRow);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -638,6 +715,35 @@ export const OrderDeliverForm = ({
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{item.deliveredQuantity}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{pending}</td>
                       <td className="px-4 py-3">
+                        {catalogById.get(item.productId)?.requiresSerial ? (
+                          <div className="flex flex-col items-end gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={pending <= 0}
+                              onClick={() => {
+                                setSerialNotice(null);
+                                setSerialPickerIndex(index);
+                              }}
+                            >
+                              {(values[index]?.serials?.length ?? 0) > 0
+                                ? `${values[index]?.serials?.length} de ${formatQuantity(pending)} series`
+                                : "Seleccionar series"}
+                            </Button>
+                            {values[index]?.serials && values[index].serials!.length > 0 ? (
+                              <ul className="flex flex-wrap justify-end gap-1">
+                                {values[index].serials!.map((serial) => (
+                                  <li
+                                    key={serial.id}
+                                    className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                                  >
+                                    {formatPosSerialLabel(serial)}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </div>
+                        ) : (
                         <Input
                           label=""
                           type="number"
@@ -665,6 +771,7 @@ export const OrderDeliverForm = ({
                           disabled={pending <= 0}
                           aria-label={`Entregar ahora: ${item.productName || item.productId}`}
                         />
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -694,6 +801,45 @@ export const OrderDeliverForm = ({
             </Button>
           </div>
         </form>
+      ) : null}
+
+      {serialPickerIndex !== null && order?.items[serialPickerIndex] && order.branchId ? (
+        <PosSerialPickerDialog
+          productId={order.items[serialPickerIndex].productId}
+          productName={order.items[serialPickerIndex].productName || order.items[serialPickerIndex].productId}
+          branchId={order.branchId}
+          max={Math.max(
+            order.items[serialPickerIndex].orderedQuantity - order.items[serialPickerIndex].deliveredQuantity,
+            0
+          )}
+          initialSerials={values[serialPickerIndex]?.serials ?? []}
+          reservedElsewhere={values.flatMap((value, valueIndex) =>
+            valueIndex !== serialPickerIndex && value.productId === order.items[serialPickerIndex].productId
+              ? (value.serials ?? []).map((serial) => ({ id: serial.id, accountName: "otra línea" }))
+              : []
+          )}
+          notice={serialNotice}
+          confirmLabel={(count) => `Entregar ${count > 0 ? count : ""} ${count === 1 ? "serie" : "series"}`}
+          onCancel={() => {
+            setSerialPickerIndex(null);
+            capture.focusScanInput();
+          }}
+          onConfirm={(serials) => {
+            const rowIndex = serialPickerIndex;
+            const rowItem = order.items[rowIndex];
+            commitValues(
+              valuesRef.current.map((value, valueIndex) =>
+                valueIndex === rowIndex
+                  ? { ...value, quantity: serials.length > 0 ? String(serials.length) : "", serials }
+                  : value
+              )
+            );
+            setHighlightedItemId(rowItem.id);
+            setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
+            setSerialPickerIndex(null);
+            capture.focusScanInput();
+          }}
+        />
       ) : null}
 
       {quantityDialog ? (

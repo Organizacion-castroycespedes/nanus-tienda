@@ -65,6 +65,17 @@ describe("InventoryService product mapping", () => {
     assert.equal(product.isPerishable, true);
     assert.equal(product.requiresLot, true);
     assert.equal(product.requiresExpiration, true);
+    // Productos con serie: el formulario de ajuste necesita el indicador (fase 7).
+    assert.equal(product.requiresSerial, false);
+    const [serialized] = await new InventoryService(
+      { listInventoryProducts: async () => [{ ...row, requires_serial: true }] } as any,
+      financeAccessRepository as any
+    ).listInventoryProducts(
+      { tenantId: row.tenant_id, branchId: row.branch_id },
+      { roles: ["SUPER_ADMIN"], tenantId: row.tenant_id, userId: randomUUID() }
+    );
+    assert.equal(serialized.requiresSerial, true);
+
     assert.equal(product.operationalStatus, "ACTIVE");
     assert.equal(product.rotationClass, "HIGH");
     assert.equal(product.minStock, 5);

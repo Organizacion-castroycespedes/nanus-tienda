@@ -158,6 +158,7 @@ const buildService = (
 
   return {
     locations,
+    repository,
     service: new InventoryLocationService(
       repository as any,
       financeAccessRepository as any
@@ -363,6 +364,18 @@ describe("InventoryLocationService", () => {
 
     assert.equal(deactivated.isActive, false);
     assert.equal(context.locations.length, 1);
+  });
+
+  it("does not deactivate a location that still holds serials in stock", async () => {
+    const current = buildLocation({ isActive: true });
+    const context = buildService([current]);
+    (context.repository as Record<string, unknown>).countSerialsInStock = async () => 2;
+
+    await assert.rejects(
+      () => context.service.deactivate(tenantId, current.id, adminActor),
+      /2 series en existencia/
+    );
+    assert.equal(context.locations[0].isActive, true);
   });
 
   it("does not operate a location from another tenant", async () => {

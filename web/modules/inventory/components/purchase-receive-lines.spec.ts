@@ -135,6 +135,7 @@ const entry = (key: string, purchaseItemId: string, quantity = "", lotCode = "")
   expirationDate: "",
   locationId: "",
   unitCost: "",
+  serialNumbers: [],
 });
 
 test("createReceiveEntry inicia vacia con el costo de la linea", () => {
@@ -146,6 +147,7 @@ test("createReceiveEntry inicia vacia con el costo de la linea", () => {
     lotCode: "",
     expirationDate: "",
     locationId: "",
+    serialNumbers: [],
     unitCost: "1200",
   });
 });
@@ -165,7 +167,7 @@ test("splitReceiveItem agrega un lote vacio conservando ubicacion y costo", () =
   const source = { ...entry("1", "item-a", "6", "L1"), locationId: "loc-1", unitCost: "900" };
   const next = splitReceiveItem([source, entry("2", "item-b")], "item-a", "k-new");
   assert.equal(next.length, 3);
-  assert.deepEqual(next[1], { ...source, key: "k-new", quantity: "", lotCode: "", expirationDate: "" });
+  assert.deepEqual(next[1], { ...source, key: "k-new", quantity: "", lotCode: "", expirationDate: "", serialNumbers: [] });
   assert.equal(next[2].key, "2");
 });
 

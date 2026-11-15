@@ -24,6 +24,8 @@ export type StockImportCatalogs = {
     isActive: boolean;
     requiresLot: boolean;
     requiresExpiration: boolean;
+    /** Productos con serie: su stock no se carga por archivo (necesita las series). */
+    requiresSerial?: boolean;
     cost: number;
   }>;
   barcodes: Array<{ barcode: string; productId: string }>;
@@ -333,6 +335,21 @@ export function resolveStockImport(
 
       const branchKey = stockKey(product.id, branch.id);
       const branchStock = runningStock.get(branchKey) ?? stockByKey.get(branchKey) ?? 0;
+
+      if (product.requiresSerial) {
+        // Se muestra el stock real y la diferencia pedida, aunque la fila no se aplique.
+        plan.before = branchStock;
+        plan.delta = target - branchStock;
+        if (target !== branchStock || lotCodeText || expirationText) {
+          errors.push(
+            "El producto maneja número de serie: ajusta su stock desde Ajustes de inventario indicando las series."
+          );
+        } else {
+          plan.skipped = true;
+          warnings.push("Producto con serie sin cambios: la fila se omite.");
+        }
+        return plan;
+      }
 
       if (!product.requiresLot) {
         if (lotCodeText || expirationText) {

@@ -1,0 +1,734 @@
+import type { PoolClient } from "pg";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from "@nestjs/common";
+import crypto from "node:crypto";
+import ExcelJS from "exceljs";
+import { FinanceAccessRepository } from "../../finance/common/repositories/finance-access.repository";
+import { cellValueToText } from "../imports/xlsx-import.parser";
+import { canViewAllBranches, type BranchScopedActor } from "../utils/access";
+import { StockMovementService } from "../services/stock-movement.service";
+import { mapSerialDatabaseError } from "./product-serial.errors";
+import {
+  isSerialHeader,
+  isValidSerialNumber,
+  MAX_SERIALS_PER_REQUEST,
+  normalizeSerialNumber,
+  parseSerialText,
+} from "./product-serial.normalize";
+import {
+  PRODUCT_SERIAL_STATUSES,
+  ProductSerialRepository,
+  type ProductSerialEventRow,
+  type ProductSerialRow,
+  type ProductSerialStatus,
+} from "./product-serial.repository";
+
+export type SerialPrevalidationResult = {
+  total: number;
+  valid: string[];
+  invalidFormat: string[];
+  duplicatesInPayload: string[];
+  alreadyRegistered: Array<{ serialNumber: string; status: ProductSerialStatus }>;
+  existsInOtherProduct: Array<{ serialNumber: string; productName: string; productSku: string }>;
+  ok: boolean;
+};
+
+export type SerialFile = { originalname?: string; buffer?: Buffer; size?: number };
+
+/** Serie tal como llega en el payload: texto o {serialNumber, locationId}. */
+export type SerialInput = string | { serialNumber?: unknown; serial?: unknown; locationId?: unknown };
+
+export const normalizeSerialInputs = (value: unknown): Array<{ serial: string; locationId: string | null }> | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new BadRequestException("serialNumbers debe ser una lista");
+  }
+  if (value.length > MAX_SERIALS_PER_REQUEST) {
+    throw new BadRequestException(`Máximo ${MAX_SERIALS_PER_REQUEST} series por línea`);
+  }
+  return value.map((item: SerialInput) => {
+    if (typeof item === "string") {
+      return { serial: item, locationId: null };
+    }
+    if (item && typeof item === "object") {
+      const serial = typeof item.serialNumber === "string" ? item.serialNumber : typeof item.serial === "string" ? item.serial : "";
+      const locationId = typeof item.locationId === "string" && item.locationId.trim() ? item.locationId.trim() : null;
+      return { serial, locationId };
+    }
+    return { serial: "", locationId: null };
+  });
+};
+
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 200;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_FILE_ROWS = MAX_SERIALS_PER_REQUEST;
+
+const toIso = (value: Date | string | null) =>
+  value === null ? null : value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+
+export const mapSerial = (row: ProductSerialRow) => ({
+  id: row.id,
+  productId: row.product_id,
+  productName: row.product_name,
+  productSku: row.product_sku,
+  branchId: row.branch_id,
+  branchName: row.branch_name,
+  locationId: row.location_id,
+  locationCode: row.location_code,
+  locationName: row.location_name,
+  serialNumber: row.serial_number_normalized,
+  capturedSerialNumber: row.serial_number,
+  status: row.status,
+  sourceType: row.source_type,
+  purchaseId: row.purchase_id,
+  saleId: row.sale_id,
+  orderId: row.order_id,
+  customerId: row.customer_id,
+  receivedAt: toIso(row.received_at),
+  soldAt: toIso(row.sold_at),
+});
+
+const mapEvent = (row: ProductSerialEventRow) => ({
+  id: row.id,
+  eventType: row.event_type,
+  fromStatus: row.from_status,
+  toStatus: row.to_status,
+  branchId: row.branch_id,
+  fromLocationCode: row.from_location_code,
+  toLocationCode: row.to_location_code,
+  referenceType: row.reference_type,
+  referenceId: row.reference_id,
+  stockMovementId: row.stock_movement_id,
+  userId: row.user_id,
+  reason: row.reason,
+  createdAt: toIso(row.created_at),
+});
+
+@Injectable()
+export class ProductSerialService {
+  constructor(
+    @Inject(ProductSerialRepository)
+    private readonly repository: ProductSerialRepository,
+    @Inject(FinanceAccessRepository)
+    private readonly financeAccessRepository: FinanceAccessRepository,
+    @Optional()
+    @Inject(StockMovementService)
+    private readonly stockMovementService?: StockMovementService
+  ) {}
+
+  private normalizeLimit(limit?: number) {
+    if (limit === undefined || limit === null || Number.isNaN(limit)) {
+      return DEFAULT_LIMIT;
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
+      throw new BadRequestException(`limit debe ser un entero entre 1 y ${MAX_LIMIT}`);
+    }
+    return limit;
+  }
+
+  private normalizeOffset(offset?: number) {
+    if (offset === undefined || offset === null || Number.isNaN(offset)) {
+      return 0;
+    }
+    if (!Number.isInteger(offset) || offset < 0) {
+      throw new BadRequestException("offset debe ser un entero mayor o igual a 0");
+    }
+    return offset;
+  }
+
+  private normalizeStatus(status?: string) {
+    if (status === undefined || status === "") {
+      return undefined;
+    }
+    const normalized = status.trim().toUpperCase() as ProductSerialStatus;
+    if (!PRODUCT_SERIAL_STATUSES.includes(normalized)) {
+      throw new BadRequestException("status no válido");
+    }
+    return normalized;
+  }
+
+  private normalizeSearch(search?: string) {
+    const normalized = search?.trim();
+    return normalized ? normalized.toUpperCase().slice(0, 100) : undefined;
+  }
+
+  /** null = todas las sucursales del tenant (SUPER_ADMIN / SUPER_USER). */
+  private async resolveAccessibleBranchIds(tenantId: string, actor: BranchScopedActor): Promise<string[] | null> {
+    if (canViewAllBranches(actor)) {
+      return null;
+    }
+    if (!actor.userId) {
+      if (actor.branchId) {
+        return [actor.branchId];
+      }
+      throw new ForbiddenException("user is required");
+    }
+    const branchIds = await this.financeAccessRepository.findAccessibleBranchIds(actor.userId, tenantId);
+    if (branchIds.length === 0 && actor.branchId) {
+      return [actor.branchId];
+    }
+    return branchIds;
+  }
+
+  private async assertBranchAccess(tenantId: string, branchId: string, actor: BranchScopedActor) {
+    if (!(await this.repository.branchBelongsToTenant(tenantId, branchId))) {
+      throw new BadRequestException("branchId is invalid");
+    }
+    const allowed = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (allowed !== null && !allowed.includes(branchId)) {
+      throw new ForbiddenException("not authorized for this branch");
+    }
+  }
+
+  private async getSerialProduct(tenantId: string, productId: string) {
+    const product = await this.repository.findProduct(tenantId, productId);
+    if (!product) {
+      throw new NotFoundException("product not found");
+    }
+    if (!product.requires_serial) {
+      throw new BadRequestException({ code: "SERIAL_NOT_REQUIRED", message: "El producto no maneja número de serie." });
+    }
+    return product;
+  }
+
+  /**
+   * Registra las series de una línea recibida (compra o ajuste de entrada) en la transacción del llamador.
+   * La función de BD valida formato, duplicados, ubicación y que la cantidad coincida con el movimiento IN.
+   */
+  async registerForReceipt(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      productId: string;
+      sourceType: "PURCHASE" | "ADJUSTMENT";
+      sourceId: string | null;
+      sourceItemId: string | null;
+      stockMovementId: string;
+      serials: Array<{ serial: string; locationId: string | null }>;
+      defaultLocationId: string | null;
+      userId: string | null;
+    }
+  ) {
+    if (input.serials.length === 0) {
+      throw new BadRequestException({ code: "SERIAL_REQUIRED", message: "Debes indicar las series del producto." });
+    }
+    try {
+      return await this.repository.registerSerials(client, input);
+    } catch (error) {
+      throw mapSerialDatabaseError(error) ?? error;
+    }
+  }
+
+  /**
+   * Venta POS (opción A): asigna las series después de inventory_create_sale_v2, en la
+   * misma transacción. Un error deja la venta completa en ROLLBACK. Si el error trae la
+   * línea de venta (generada en el servidor), se informa el productId para que el POS
+   * pueda reemplazar la serie.
+   */
+  async assignForSale(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      saleId: string;
+      lines: Array<{ saleItemId: string; productId: string; serialIds: string[] }>;
+      userId: string | null;
+    }
+  ) {
+    try {
+      return await this.repository.assignSale(client, {
+        tenantId: input.tenantId,
+        branchId: input.branchId,
+        saleId: input.saleId,
+        lines: input.lines.map((line) => ({ saleItemId: line.saleItemId, serialIds: line.serialIds })),
+        userId: input.userId,
+      });
+    } catch (error) {
+      throw this.withProductId(error, (detail) =>
+        input.lines.find((line) => detail.includes(line.saleItemId))?.productId ?? null
+      );
+    }
+  }
+
+  /**
+   * Entrega de pedido: asigna las series a cada OUT creado por deliverOrder, en la misma
+   * transacción. El error informa el productId para que el formulario reemplace la serie.
+   */
+  async assignForOrderDelivery(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      orderId: string;
+      lines: Array<{ productId: string; quantity: number; stockMovementId: string; serialIds: string[] }>;
+      userId: string | null;
+    }
+  ) {
+    try {
+      return await this.repository.assignOrderDelivery(client, input);
+    } catch (error) {
+      throw this.withProductId(error, (detail) =>
+        input.lines.find((line) => detail.includes(line.productId))?.productId ?? null
+      );
+    }
+  }
+
+  /** Traduce un error SERIAL_* y, si el detalle identifica la línea, agrega el productId. */
+  private withProductId(error: unknown, resolveProductId: (detail: string) => string | null) {
+    const mapped = mapSerialDatabaseError(error);
+    if (!mapped) {
+      return error;
+    }
+    const productId = resolveProductId(String((error as { detail?: unknown })?.detail ?? ""));
+    if (!productId) {
+      return mapped;
+    }
+    const body = mapped.getResponse() as { code?: string; message?: string };
+    const enriched = { code: body.code, message: body.message, productId };
+    return mapped instanceof ConflictException
+      ? new ConflictException(enriched)
+      : mapped instanceof NotFoundException
+        ? new NotFoundException(enriched)
+        : new BadRequestException(enriched);
+  }
+
+  /**
+   * Ajuste de salida de un producto con serie: las series pasan a WRITTEN_OFF con el OUT
+   * del ajuste, en la transacción del llamador.
+   */
+  async writeOffForAdjustment(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      productId: string;
+      serialIds: string[];
+      stockMovementId: string;
+      userId: string | null;
+      reason: string | null;
+    }
+  ) {
+    if (input.serialIds.length === 0) {
+      throw new BadRequestException({ code: "SERIAL_REQUIRED", message: "Debes indicar las series del producto." });
+    }
+    try {
+      return await this.repository.writeOff(client, input);
+    } catch (error) {
+      throw mapSerialDatabaseError(error) ?? error;
+    }
+  }
+
+  private async assertSerialBranchesAccess(tenantId: string, branchIds: string[], actor: BranchScopedActor) {
+    const allowed = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (allowed !== null && branchIds.some((branchId) => !allowed.includes(branchId))) {
+      throw new ForbiddenException("not authorized for this branch");
+    }
+  }
+
+  /**
+   * Inspección de una serie devuelta o bloqueada: AVAILABLE, BLOCKED o WRITTEN_OFF.
+   * WRITTEN_OFF crea el OUT de 1 unidad (ajuste) en la misma transacción.
+   */
+  async inspect(
+    tenantId: string,
+    serialId: string,
+    input: { result?: unknown; reason?: unknown },
+    actor: BranchScopedActor
+  ) {
+    const result = typeof input.result === "string" ? input.result.trim().toUpperCase() : "";
+    if (!["AVAILABLE", "BLOCKED", "WRITTEN_OFF"].includes(result)) {
+      throw new BadRequestException({
+        code: "SERIAL_INSPECTION_RESULT_INVALID",
+        message: "Resultado de inspección no válido.",
+      });
+    }
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (reason.length < 5) {
+      throw new BadRequestException({ code: "SERIAL_REASON_REQUIRED", message: "Indica un motivo de al menos 5 caracteres." });
+    }
+    const serial = await this.repository.findById(tenantId, serialId);
+    if (!serial) {
+      throw new NotFoundException("Serie no encontrada");
+    }
+    await this.assertSerialBranchesAccess(tenantId, [serial.branch_id], actor);
+    if (result === "WRITTEN_OFF" && !this.stockMovementService) {
+      throw new BadRequestException("stock movements are unavailable");
+    }
+
+    const client = await this.repository.getClient();
+    let movement: Awaited<ReturnType<StockMovementService["createMovement"]>> | null = null;
+    try {
+      await client.query("BEGIN");
+      if (result === "WRITTEN_OFF" && this.stockMovementService) {
+        await this.repository.lockStockScope(client, tenantId, serial.branch_id, serial.product_id);
+        movement = await this.stockMovementService.createMovement(
+          {
+            id: crypto.randomUUID(),
+            tenantId,
+            productId: serial.product_id,
+            type: "OUT",
+            quantity: 1,
+            referenceType: "ADJUSTMENT",
+            referenceId: crypto.randomUUID(),
+            branchId: serial.branch_id,
+            terminalId: null,
+            posSessionCode: null,
+            userId: actor.userId ?? null,
+            referenceTable: "stock_adjustments",
+            createdAt: new Date(),
+          },
+          client
+        );
+      }
+      await this.repository.inspect(client, {
+        tenantId,
+        serialId,
+        result,
+        reason,
+        userId: actor.userId ?? null,
+        stockMovementId: movement?.id ?? null,
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw mapSerialDatabaseError(error) ?? error;
+    } finally {
+      client.release();
+    }
+    if (movement) {
+      this.stockMovementService?.logMovementAuditEvent(movement);
+    }
+    const updated = await this.repository.findById(tenantId, serialId);
+    return updated ? mapSerial(updated) : null;
+  }
+
+  /** Cambia la ubicación de varias series de la misma sucursal (sin movimiento de kardex). */
+  async moveLocation(
+    tenantId: string,
+    input: { serialIds?: unknown; locationId?: unknown; reason?: unknown },
+    actor: BranchScopedActor
+  ) {
+    const serialIds = Array.isArray(input.serialIds) ? input.serialIds : [];
+    if (
+      serialIds.length === 0 ||
+      serialIds.length > MAX_SERIALS_PER_REQUEST ||
+      serialIds.some((id) => typeof id !== "string" || !UUID_PATTERN.test(id))
+    ) {
+      throw new BadRequestException("serialIds must be a list of serial UUIDs");
+    }
+    const locationId =
+      input.locationId === null || input.locationId === undefined || input.locationId === ""
+        ? null
+        : String(input.locationId);
+    if (locationId !== null && !UUID_PATTERN.test(locationId)) {
+      throw new BadRequestException("locationId must be a valid UUID");
+    }
+    const reason = typeof input.reason === "string" && input.reason.trim() ? input.reason.trim() : null;
+    const uniqueIds = [...new Set(serialIds as string[])];
+    const rows = await this.repository.findBranchesForSerials(tenantId, uniqueIds);
+    if (rows.length !== uniqueIds.length) {
+      throw new NotFoundException({ code: "SERIAL_NOT_FOUND", message: "Serie no encontrada." });
+    }
+    await this.assertSerialBranchesAccess(tenantId, [...new Set(rows.map((row) => row.branch_id))], actor);
+
+    const client = await this.repository.getClient();
+    try {
+      await client.query("BEGIN");
+      const moved = await this.repository.moveLocation(client, {
+        tenantId,
+        serialIds: uniqueIds,
+        locationId,
+        userId: actor.userId ?? null,
+        reason,
+      });
+      await client.query("COMMIT");
+      return { moved };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw mapSerialDatabaseError(error) ?? error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Anulación de venta: marca RETURNED (con devolución) o registra VOIDED_NOT_RETURNED. */
+  async markReturnedForSale(
+    client: PoolClient,
+    input: { tenantId: string; saleId: string; returnInventory: boolean; userId: string | null; reason: string | null }
+  ) {
+    try {
+      return await this.repository.markSaleReturned(client, input);
+    } catch (error) {
+      throw mapSerialDatabaseError(error) ?? error;
+    }
+  }
+
+  /** Prevalidación de solo lectura para escáner, pegado masivo o archivo, antes de recibir. */
+  async prevalidate(
+    tenantId: string,
+    input: { productId: string; branchId: string; serialNumbers: unknown },
+    actor: BranchScopedActor
+  ): Promise<SerialPrevalidationResult> {
+    if (!Array.isArray(input.serialNumbers)) {
+      throw new BadRequestException("serialNumbers debe ser una lista");
+    }
+    if (input.serialNumbers.length > MAX_SERIALS_PER_REQUEST) {
+      throw new BadRequestException(`Máximo ${MAX_SERIALS_PER_REQUEST} series por validación`);
+    }
+    await this.assertBranchAccess(tenantId, input.branchId, actor);
+    await this.getSerialProduct(tenantId, input.productId);
+
+    const invalidFormat: string[] = [];
+    const duplicatesInPayload = new Set<string>();
+    const seen = new Set<string>();
+    const candidates: string[] = [];
+
+    for (const raw of input.serialNumbers) {
+      const normalized = normalizeSerialNumber(raw);
+      if (!isValidSerialNumber(normalized)) {
+        invalidFormat.push(typeof raw === "string" ? raw : String(raw));
+        continue;
+      }
+      if (seen.has(normalized)) {
+        duplicatesInPayload.add(normalized);
+        continue;
+      }
+      seen.add(normalized);
+      candidates.push(normalized);
+    }
+
+    const [registered, inOtherProducts] = await Promise.all([
+      this.repository.findRegistered(tenantId, input.productId, candidates),
+      this.repository.findInOtherProducts(tenantId, input.productId, candidates),
+    ]);
+    const registeredSet = new Set(registered.map((row) => row.serial_number_normalized));
+    const valid = candidates.filter((serial) => !registeredSet.has(serial) && !duplicatesInPayload.has(serial));
+
+    return {
+      total: input.serialNumbers.length,
+      valid,
+      invalidFormat,
+      duplicatesInPayload: [...duplicatesInPayload],
+      alreadyRegistered: registered.map((row) => ({ serialNumber: row.serial_number_normalized, status: row.status })),
+      existsInOtherProduct: inOtherProducts.map((row) => ({
+        serialNumber: row.serial_number_normalized,
+        productName: row.product_name,
+        productSku: row.product_sku,
+      })),
+      ok:
+        input.serialNumbers.length > 0 &&
+        invalidFormat.length === 0 &&
+        duplicatesInPayload.size === 0 &&
+        registered.length === 0,
+    };
+  }
+
+  /** Lee series de un archivo .csv/.txt (una por línea) o .xlsx (columna "serie" o la primera columna). */
+  async parseFile(file: SerialFile | undefined): Promise<{ serialNumbers: string[] }> {
+    if (!file?.buffer || file.buffer.length === 0) {
+      throw new BadRequestException("Adjunta un archivo .csv, .txt o .xlsx en el campo file.");
+    }
+    const name = file.originalname?.toLowerCase() ?? "";
+    let serialNumbers: string[];
+    if (name.endsWith(".csv") || name.endsWith(".txt")) {
+      serialNumbers = parseSerialText(file.buffer.toString("utf8"));
+    } else if (name.endsWith(".xlsx")) {
+      serialNumbers = await this.parseWorkbook(file.buffer);
+    } else {
+      throw new BadRequestException("Solo se permiten archivos .csv, .txt o .xlsx.");
+    }
+    if (serialNumbers.length === 0) {
+      throw new BadRequestException("El archivo no contiene series.");
+    }
+    if (serialNumbers.length > MAX_FILE_ROWS) {
+      throw new BadRequestException(`El archivo supera el máximo de ${MAX_FILE_ROWS} series.`);
+    }
+    return { serialNumbers };
+  }
+
+  private async parseWorkbook(buffer: Buffer) {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    } catch {
+      throw new BadRequestException("No se pudo leer el archivo .xlsx.");
+    }
+    const sheet = workbook.worksheets[0];
+    if (!sheet) {
+      throw new BadRequestException("El archivo .xlsx no tiene hojas.");
+    }
+    let column = 1;
+    let startRow = 1;
+    const header = sheet.getRow(1);
+    header.eachCell((cell, colNumber) => {
+      if (startRow === 1 && isSerialHeader(cellValueToText(cell.value))) {
+        column = colNumber;
+        startRow = 2;
+      }
+    });
+    const serials: string[] = [];
+    for (let rowNumber = startRow; rowNumber <= sheet.rowCount; rowNumber += 1) {
+      const text = cellValueToText(sheet.getRow(rowNumber).getCell(column).value).trim();
+      if (text) {
+        serials.push(text);
+      }
+      if (serials.length > MAX_FILE_ROWS) {
+        break;
+      }
+    }
+    return serials;
+  }
+
+  /** Series de un producto en una sucursal (por defecto AVAILABLE), con búsqueda por texto parcial. */
+  async listByProduct(
+    tenantId: string,
+    input: { productId: string; branchId: string; status?: string; search?: string; limit?: number; offset?: number },
+    actor: BranchScopedActor
+  ) {
+    await this.assertBranchAccess(tenantId, input.branchId, actor);
+    const product = await this.repository.findProduct(tenantId, input.productId);
+    if (!product) {
+      throw new NotFoundException("product not found");
+    }
+    const limit = this.normalizeLimit(input.limit);
+    const offset = this.normalizeOffset(input.offset);
+    const rows = await this.repository.listByProduct({
+      tenantId,
+      productId: input.productId,
+      branchId: input.branchId,
+      status: this.normalizeStatus(input.status) ?? "AVAILABLE",
+      search: this.normalizeSearch(input.search),
+      limit,
+      offset,
+    });
+    return {
+      items: rows.map(mapSerial),
+      total: rows.length > 0 ? Number(rows[0].total_count ?? rows.length) : 0,
+      limit,
+      offset,
+    };
+  }
+
+  /** Búsqueda exacta por número de serie (escaneo en POS, entregas o consulta). */
+  async lookup(
+    tenantId: string,
+    input: { serialNumber?: string; branchId?: string; productId?: string },
+    actor: BranchScopedActor
+  ) {
+    const normalized = normalizeSerialNumber(input.serialNumber);
+    if (!isValidSerialNumber(normalized)) {
+      throw new BadRequestException("serial no válido");
+    }
+    let branchIds = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (input.branchId) {
+      await this.assertBranchAccess(tenantId, input.branchId, actor);
+      branchIds = [input.branchId];
+    }
+    const rows = await this.repository.findBySerialNumber({
+      tenantId,
+      normalized,
+      branchIds,
+      productId: input.productId,
+    });
+    return { items: rows.map(mapSerial) };
+  }
+
+  async search(
+    tenantId: string,
+    input: { search?: string; productId?: string; branchId?: string; status?: string; limit?: number; offset?: number },
+    actor: BranchScopedActor
+  ) {
+    let branchIds = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (input.branchId) {
+      await this.assertBranchAccess(tenantId, input.branchId, actor);
+      branchIds = [input.branchId];
+    }
+    const limit = this.normalizeLimit(input.limit);
+    const offset = this.normalizeOffset(input.offset);
+    const rows = await this.repository.search({
+      tenantId,
+      branchIds,
+      productId: input.productId,
+      status: this.normalizeStatus(input.status),
+      search: this.normalizeSearch(input.search),
+      limit,
+      offset,
+    });
+    return {
+      items: rows.map(mapSerial),
+      total: rows.length > 0 ? Number(rows[0].total_count ?? rows.length) : 0,
+      limit,
+      offset,
+    };
+  }
+
+  /** Conteo de series en existencia por ubicación (columna en /inventory/locations). */
+  async countByLocation(tenantId: string, input: { branchId?: string }, actor: BranchScopedActor) {
+    let branchIds = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (input.branchId) {
+      await this.assertBranchAccess(tenantId, input.branchId, actor);
+      branchIds = [input.branchId];
+    }
+    const rows = await this.repository.countInStockByLocation({ tenantId, branchIds });
+    return {
+      items: rows.map((row) => ({
+        locationId: row.location_id,
+        branchId: row.branch_id,
+        count: Number(row.serial_count),
+      })),
+    };
+  }
+
+  /** Conciliación series vs. kardex por producto con serie y sucursal (solo lectura). */
+  async reconcile(
+    tenantId: string,
+    input: { branchId?: string; productId?: string },
+    actor: BranchScopedActor
+  ) {
+    let branchIds = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (input.branchId) {
+      await this.assertBranchAccess(tenantId, input.branchId, actor);
+      branchIds = [input.branchId];
+    }
+    const rows = await this.repository.reconcile({ tenantId, branchIds, productId: input.productId ?? null });
+    const items = rows.map((row) => {
+      const serialCount = Number(row.serial_count);
+      const kardexStock = Number(row.kardex_stock);
+      return {
+        productId: row.product_id,
+        productName: row.product_name,
+        productSku: row.product_sku,
+        branchId: row.branch_id,
+        branchName: row.branch_name,
+        serialCount,
+        kardexStock,
+        difference: kardexStock - serialCount,
+      };
+    });
+    return { items, differences: items.filter((item) => item.difference !== 0).length };
+  }
+
+  async getHistory(tenantId: string, serialId: string, actor: BranchScopedActor) {
+    const serial = await this.repository.findById(tenantId, serialId);
+    if (!serial) {
+      throw new NotFoundException("Serie no encontrada");
+    }
+    const allowed = await this.resolveAccessibleBranchIds(tenantId, actor);
+    if (allowed !== null && !allowed.includes(serial.branch_id)) {
+      throw new ForbiddenException("not authorized for this branch");
+    }
+    const events = await this.repository.findEvents(tenantId, serialId);
+    return { serial: mapSerial(serial), events: events.map(mapEvent) };
+  }
+}

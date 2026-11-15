@@ -29,6 +29,7 @@ import {
   type InventoryLocationType,
 } from "../../../../modules/inventory/services/inventory-location.service";
 import { listInventoryLotBalances } from "../../../../modules/inventory/services/inventory-lot.service";
+import { getSerialCountsByLocation } from "../../../../modules/inventory/services/product-serial.service";
 
 type LocationFilters = {
   search: string;
@@ -41,7 +42,7 @@ type LocationFilterKey = Exclude<keyof LocationFilters, "search">;
 
 type DeactivationCheck =
   | { state: "loading" }
-  | { state: "ready"; balances: number; units: number }
+  | { state: "ready"; balances: number; units: number; serials: number }
   | { state: "error" };
 
 const createDefaultFilters = (branchId?: string | null): LocationFilters => ({
@@ -136,6 +137,7 @@ const InventoryLocationsPage = () => {
   const [isDeactivating, setIsDeactivating] = useState(false);
   const [reactivatingId, setReactivatingId] = useState<string | null>(null);
   const urlApplied = useRef(false);
+  const [serialCountByLocation, setSerialCountByLocation] = useState<Map<string, number>>(new Map());
 
   const canCreate = hasPermission("inventory.create");
   const canEdit = hasPermission("inventory.update");
@@ -219,8 +221,20 @@ const InventoryLocationsPage = () => {
       setLoading(true);
       setErrorMessage(null);
       try {
-        const result = await listInventoryLocations(resolveLocationFilters(filters));
+        const scope = resolveLocationFilters(filters);
+        const [result, serialCounts] = await Promise.all([
+          listInventoryLocations(scope),
+          // Series en existencia por ubicación; si falla, la columna queda vacía.
+          getSerialCountsByLocation({ branchId: scope.branchId }).catch(() => ({ items: [] })),
+        ]);
         setLocations(result);
+        setSerialCountByLocation(
+          new Map(
+            serialCounts.items
+              .filter((item) => item.locationId)
+              .map((item) => [item.locationId as string, item.count])
+          )
+        );
         setHasSearched(true);
       } catch (error) {
         setErrorMessage(
@@ -329,15 +343,19 @@ const InventoryLocationsPage = () => {
     setPendingDeactivateLocation(location);
     setDeactivationCheck({ state: "loading" });
     try {
-      const balances = await listInventoryLotBalances({
-        branchId: location.branchId,
-        locationId: location.id,
-        onlyAvailable: true,
-      });
+      const [balances, serialCounts] = await Promise.all([
+        listInventoryLotBalances({
+          branchId: location.branchId,
+          locationId: location.id,
+          onlyAvailable: true,
+        }),
+        getSerialCountsByLocation({ branchId: location.branchId }).catch(() => ({ items: [] })),
+      ]);
       setDeactivationCheck({
         state: "ready",
         balances: balances.length,
         units: balances.reduce((sum, balance) => sum + Number(balance.quantityAvailable ?? 0), 0),
+        serials: serialCounts.items.find((item) => item.locationId === location.id)?.count ?? 0,
       });
     } catch {
       setDeactivationCheck({ state: "error" });
@@ -442,6 +460,11 @@ const InventoryLocationsPage = () => {
     }
     if (deactivationCheck.state === "error") {
       return "No se pudo verificar el saldo de esta ubicación. Puedes continuar o cancelar. La ubicación no se borra y seguirá apareciendo como histórica.";
+    }
+    if (deactivationCheck.serials > 0) {
+      return `La ubicación tiene ${formatNumber(deactivationCheck.serials)} ${
+        deactivationCheck.serials === 1 ? "serie" : "series"
+      } en existencia. Muévelas a otra ubicación desde Inventario > Series antes de inactivarla.`;
     }
     if (deactivationCheck.balances > 0) {
       return `${formatNumber(deactivationCheck.balances)} saldo${deactivationCheck.balances === 1 ? "" : "s"} con ${formatNumber(
@@ -566,7 +589,10 @@ const InventoryLocationsPage = () => {
                 variant="warning"
                 onClick={() => void handleDeactivate()}
                 isLoading={isDeactivating}
-                disabled={deactivationCheck?.state === "loading"}
+                disabled={
+                  deactivationCheck?.state === "loading" ||
+                  (deactivationCheck?.state === "ready" && deactivationCheck.serials > 0)
+                }
               >
                 Inactivar
               </Button>
@@ -717,6 +743,7 @@ const InventoryLocationsPage = () => {
                     <th scope="col" className={thClass}>Sucursal</th>
                     <th scope="col" className={thClass}>Tipo</th>
                     <th scope="col" className={thClass}>Estado</th>
+                    <th scope="col" className={`${thClass} text-right`}>Series</th>
                     <th scope="col" className={thClass}>Descripcion</th>
                     <th scope="col" className={`${thClass} text-right`}>Acciones</th>
                   </tr>
@@ -724,13 +751,13 @@ const InventoryLocationsPage = () => {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                      <td colSpan={8} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                         Cargando ubicaciones...
                       </td>
                     </tr>
                   ) : !hasSearched ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                      <td colSpan={8} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                         {preloadedFromUrl
                           ? "Filtros precargados. Presiona Buscar."
                           : "Presiona Buscar para consultar ubicaciones."}
@@ -738,7 +765,7 @@ const InventoryLocationsPage = () => {
                     </tr>
                   ) : paginatedLocations.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                      <td colSpan={8} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                         No hay ubicaciones para mostrar.
                       </td>
                     </tr>
@@ -772,6 +799,9 @@ const InventoryLocationsPage = () => {
                           >
                             {location.isActive ? "Activa" : "Inactiva"}
                           </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
+                          {serialCountByLocation.get(location.id) ?? 0}
                         </td>
                         <td className="max-w-xs px-4 py-3 text-slate-700 dark:text-slate-200">
                           <span className="line-clamp-2">

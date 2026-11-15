@@ -75,6 +75,8 @@ export type SaleLineRequest =
       quantity: number;
       price: number;
       orderItemId?: string | null;
+      /** Series seleccionadas (productos con requires_serial); se asignan después de crear la venta. */
+      serialIds?: string[];
       weightCapture?: never;
     }
   | {
@@ -84,6 +86,7 @@ export type SaleLineRequest =
       orderItemId?: string | null;
       quantity?: never;
       price?: never;
+      serialIds?: never;
       weight?: never;
       unit?: never;
       source?: never;

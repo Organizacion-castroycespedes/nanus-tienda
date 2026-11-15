@@ -665,6 +665,100 @@
         "web/modules/inventory/components/OrderDeliverForm.tsx"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "idempotencia-entrega-pedidos",
+      "paths": [
+        "openspec/changes/idempotencia-entrega-pedidos/**",
+        "scripts/governance/openspec-scope.json",
+        "scripts/database/migrations/V116__order_delivery_idempotency.sql",
+        "scripts/database/rollbacks/V116__order_delivery_idempotency_rollback.sql",
+        "scripts/database/tests/test_v116_order_delivery_idempotency_migration.py",
+        "api/src/modules/inventory/services/order.service.ts",
+        "api/src/modules/inventory/services/order.service.spec.ts",
+        "api/src/modules/inventory/controllers/order.controller.ts",
+        "api/src/modules/inventory/controllers/order.controller.spec.ts",
+        "web/modules/inventory/services/order.service.ts",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "docs/evidencia-idempotencia-entrega-pedidos.md"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "incorporar-trazabilidad-series-productos",
+      "paths": [
+        "openspec/changes/incorporar-trazabilidad-series-productos/**",
+        "scripts/governance/openspec-scope.json",
+        "scripts/database/migrations/V117__product_serials.sql",
+        "scripts/database/rollbacks/V117__product_serials_rollback.sql",
+        "scripts/database/tests/test_v117_product_serials_migration.py",
+        "scripts/database/tests/v117_product_serials_scenarios.sql",
+        "scripts/database/tests/fixtures/v117_minimal_schema.sql",
+        "api/src/modules/inventory/controllers/product.controller.ts",
+        "api/src/modules/inventory/entities/product.entity.ts",
+        "api/src/modules/inventory/repositories/product.repository.ts",
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/product.service.spec.ts",
+        "web/domains/products/dtos.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/ProductForm.spec.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/types.ts",
+        "web/modules/inventory/services/product.service.ts",
+        "docs/evidencia-incorporar-trazabilidad-series-productos.md",
+        "api/src/modules/inventory/serials/**",
+        "api/src/modules/inventory/inventory.module.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts",
+        "api/src/modules/inventory/controllers/purchase.controller.ts",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
+        "web/modules/inventory/services/purchase.service.ts",
+        "web/modules/inventory/serials/**",
+        "web/modules/inventory/services/product-serial.service.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/services/sale.service.spec.ts",
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "api/src/modules/operational-sales/operational-sales.service.spec.ts",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/modules/pos/services/pos.service.ts",
+        "web/modules/pos/components/PosSerialPickerDialog.tsx",
+        "web/modules/pos/utils/pos-serials.ts",
+        "web/modules/pos/utils/pos-serials.spec.ts",
+        "api/src/modules/inventory/services/order.service.ts",
+        "api/src/modules/inventory/services/order.service.spec.ts",
+        "api/src/modules/inventory/controllers/order.controller.ts",
+        "api/src/modules/inventory/controllers/order.controller.spec.ts",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/services/order.service.ts",
+        "api/src/modules/inventory/services/stock-adjustment.service.ts",
+        "api/src/modules/inventory/services/stock-adjustment.service.spec.ts",
+        "api/src/modules/inventory/controllers/stock-adjustment.controller.ts",
+        "api/src/modules/inventory/stock-import/stock-import.resolver.ts",
+        "api/src/modules/inventory/stock-import/stock-import.resolver.spec.ts",
+        "api/src/modules/inventory/stock-import/stock-import.repository.ts",
+        "web/modules/inventory/components/StockAdjustmentForm.tsx",
+        "web/modules/inventory/services/stock-adjustment.service.ts",
+        "web/app/[tenant]/inventory/serials/page.tsx",
+        "api/src/modules/inventory/repositories/inventory.repository.ts",
+        "api/src/modules/inventory/services/inventory.service.ts",
+        "api/src/modules/inventory/services/inventory.service.spec.ts",
+        "web/app/[tenant]/inventory/locations/page.tsx",
+        "api/src/modules/inventory/services/inventory-location.service.ts",
+        "api/src/modules/inventory/services/inventory-location.service.spec.ts",
+        "api/src/modules/inventory/repositories/inventory-location.repository.ts"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
@@ -684,19 +778,11 @@
     {
       "change_id": "corregir-stock-insuficiente-y-recuperacion-carrito-pos",
       "paths": [
-        "api/src/modules/inventory/repositories/sale.repository.ts",
-        "api/src/modules/inventory/services/sale.service.ts",
         "api/src/modules/inventory/services/sale-stock-rejection.spec.ts",
         "web/lib/http.ts",
         "web/modules/pos/components/catalog/PosProductCard.tsx",
-        "web/modules/pos/components/cart/CartSaleModal.tsx",
         "web/modules/pos/components/PosScreen.integration.test.tsx",
         "web/modules/pos/hooks/useSalePrintWorkflow.spec.ts",
-        "web/modules/pos/hooks/usePosCartStore.ts",
-        "web/modules/pos/utils/sale-recovery.ts",
-        "web/modules/pos/utils/sale-recovery.spec.ts",
-        "web/store/posCart.ts",
-        "web/store/posCart.spec.ts",
         "openspec/changes/corregir-stock-insuficiente-y-recuperacion-carrito-pos/**"
       ],
       "reason": "Current branch diff implements the P1 definitive stock rejection and safe POS cart recovery. Historical HU paths remain unchanged."
@@ -704,7 +790,6 @@
     {
       "change_id": "soportar-productos-no-inventariables",
       "paths": [
-        "api/src/modules/inventory/controllers/purchase.controller.ts",
         "api/src/modules/inventory/entities/purchase.entity.ts",
         "api/src/modules/inventory/entities/purchase-item.entity.ts",
         "scripts/database/migrations/V109__products_non_inventoryable_and_purchase_receipt_idempotency.sql",
@@ -713,26 +798,8 @@
       "reason": "Owner-authorized current ownership for purchase creation, reception, commercial states, purchase-line contracts, tests, V109 structural migration and the V110 sale-function migration; no other functional ownership is reassigned."
     },
     {
-      "change_id": "soportar-productos-no-inventariables",
-      "paths": [
-        "api/src/modules/inventory/controllers/product.controller.ts",
-        "api/src/modules/inventory/entities/product.entity.ts",
-        "api/src/modules/inventory/repositories/product.repository.ts",
-        "api/src/modules/inventory/services/product.service.ts",
-        "api/src/modules/inventory/services/product.service.spec.ts",
-        "web/domains/products/dtos.ts",
-        "web/modules/inventory/components/product-form/types.ts",
-        "web/modules/inventory/services/product.service.ts",
-        "web/modules/inventory/services/purchase.service.ts"
-      ],
-      "reason": "Owner-authorized additive ownership for the product classification contract and the purchase receipt client contract; historical associations remain intact and no active owner path is reassigned."
-    },
-    {
       "change_id": "bloquear-tipo-producto-edicion",
       "paths": [
-        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
-        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
-        "web/modules/inventory/components/product-form/payload.ts",
         "web/modules/inventory/components/product-form/payload.spec.ts",
         "openspec/changes/bloquear-tipo-producto-edicion/**"
       ],
@@ -741,8 +808,6 @@
     {
       "change_id": "habilitar-fiscal-avanzado-productos-admin",
       "paths": [
-        "web/modules/inventory/components/ProductForm.tsx",
-        "web/modules/inventory/components/ProductForm.spec.tsx",
         "openspec/changes/habilitar-fiscal-avanzado-productos-admin/**"
       ],
       "reason": "Current branch fixes the ADMIN-only frontend regression for advanced product fiscal configuration while preserving backend authorization, tenant scope and fiscal calculation contracts."
@@ -771,7 +836,6 @@
         "web/modules/finance/utils/active-financial-institutions.spec.ts",
         "web/modules/finance/utils/active-financial-institutions.ts",
         "web/modules/finance/types.ts",
-        "web/modules/pos/components/PosScreen.tsx",
         "web/modules/pos/components/PosScreen.financial-institutions.spec.ts",
         "web/modules/pos/components/payment/FinancialInstitutionSelector.spec.tsx",
         "web/modules/pos/components/payment/FinancialInstitutionSelector.tsx",
@@ -867,12 +931,7 @@
         "web/modules/inventory/purchase-capture/**",
         "web/modules/inventory/components/OrderForm.tsx",
         "web/modules/inventory/components/PurchaseForm.tsx",
-        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
-        "web/modules/inventory/components/purchase-receive-lines.ts",
-        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
-        "docs/evidencia-hu-scan-001.md",
-        "api/src/modules/inventory/services/purchase.service.ts",
-        "api/src/modules/inventory/services/purchase.service.spec.ts"
+        "docs/evidencia-hu-scan-001.md"
       ],
       "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) purchase.service.ts and its spec (from soportar-productos-no-inventariables, only to expose the supplier invoice in getPurchaseById) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS or database path is claimed."
     },
@@ -892,7 +951,6 @@
       "change_id": "modernizar-inventario-lotes-ubicaciones",
       "paths": [
         "web/app/[tenant]/inventory/lots/page.tsx",
-        "web/app/[tenant]/inventory/locations/page.tsx",
         "web/modules/inventory/lots/**",
         "web/components/design-system/SearchableSelect.tsx",
         "web/components/design-system/SearchableSelect.spec.ts",
@@ -915,14 +973,89 @@
       "reason": "Owner-authorized (2026-11-13) current ownership for the inventory lots and locations modernization: Phase 1A frontend (lots/locations pages, lot detail modal, lot/location web services and pure helpers; new reusable design-system SearchableSelect used by the lots Producto filter; additive, backward-compatible ReportSummary options (6 columns, per-segment detail/title) for the lots indicators, previously unowned) and Phase 1B additive read-only contract (productName/productSku in lot and lot-balance list queries). Current ownership of the scope manifest later moved to corregir-lotes-entrega-pedidos; web/modules/inventory/list-filters/** stays with its owner and is consumed read-only. No database, migration, permission, POS, sales or purchase path is claimed."
     },
     {
-      "change_id": "corregir-lotes-entrega-pedidos",
+      "change_id": "idempotencia-entrega-pedidos",
+      "paths": [
+        "scripts/database/migrations/V116__order_delivery_idempotency.sql",
+        "scripts/database/rollbacks/V116__order_delivery_idempotency_rollback.sql",
+        "scripts/database/tests/test_v116_order_delivery_idempotency_migration.py",
+        "docs/evidencia-idempotencia-entrega-pedidos.md"
+      ],
+      "reason": "Owner-requested (2026-11-14) current ownership for idempotent and per-order serialized order delivery (Idempotency-Key required on POST /orders/:id/deliver, order_delivery_idempotency table V116, SELECT ... FOR UPDATE on the order). Reassigns current ownership of order.service.ts, its spec, OrderDeliverForm.tsx and the scope manifest from corregir-lotes-entrega-pedidos (already merged into develop, commit 596bcc63); historical associations remain intact. FEFO lot consumption (consumeDeliveryLots), POS and sales (inventory_create_sale_v2, sale.service, sale.repository) are not claimed. Prerequisite of incorporar-trazabilidad-series-productos."
+    },
+    {
+      "change_id": "incorporar-trazabilidad-series-productos",
       "paths": [
         "scripts/governance/openspec-scope.json",
+        "scripts/database/migrations/V117__product_serials.sql",
+        "scripts/database/rollbacks/V117__product_serials_rollback.sql",
+        "scripts/database/tests/test_v117_product_serials_migration.py",
+        "scripts/database/tests/v117_product_serials_scenarios.sql",
+        "scripts/database/tests/fixtures/v117_minimal_schema.sql",
+        "api/src/modules/inventory/controllers/product.controller.ts",
+        "api/src/modules/inventory/entities/product.entity.ts",
+        "api/src/modules/inventory/repositories/product.repository.ts",
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/product.service.spec.ts",
+        "web/domains/products/dtos.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/ProductForm.spec.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/types.ts",
+        "web/modules/inventory/services/product.service.ts",
+        "docs/evidencia-incorporar-trazabilidad-series-productos.md",
+        "api/src/modules/inventory/serials/**",
+        "api/src/modules/inventory/inventory.module.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts",
+        "api/src/modules/inventory/controllers/purchase.controller.ts",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/components/purchase-receive-lines.spec.ts",
+        "web/modules/inventory/services/purchase.service.ts",
+        "web/modules/inventory/serials/**",
+        "web/modules/inventory/services/product-serial.service.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/services/sale.service.spec.ts",
+        "api/src/modules/inventory/repositories/sale.repository.ts",
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "api/src/modules/operational-sales/operational-sales.service.spec.ts",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
+        "web/store/posCart.ts",
+        "web/store/posCart.spec.ts",
+        "web/modules/pos/utils/sale-recovery.ts",
+        "web/modules/pos/utils/sale-recovery.spec.ts",
+        "web/modules/pos/hooks/usePosCartStore.ts",
+        "web/modules/pos/services/pos.service.ts",
+        "web/modules/pos/components/PosSerialPickerDialog.tsx",
+        "web/modules/pos/utils/pos-serials.ts",
+        "web/modules/pos/utils/pos-serials.spec.ts",
         "api/src/modules/inventory/services/order.service.ts",
         "api/src/modules/inventory/services/order.service.spec.ts",
-        "web/modules/inventory/components/OrderDeliverForm.tsx"
+        "api/src/modules/inventory/controllers/order.controller.ts",
+        "api/src/modules/inventory/controllers/order.controller.spec.ts",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/services/order.service.ts",
+        "api/src/modules/inventory/services/stock-adjustment.service.ts",
+        "api/src/modules/inventory/services/stock-adjustment.service.spec.ts",
+        "api/src/modules/inventory/controllers/stock-adjustment.controller.ts",
+        "api/src/modules/inventory/stock-import/stock-import.resolver.ts",
+        "api/src/modules/inventory/stock-import/stock-import.resolver.spec.ts",
+        "api/src/modules/inventory/stock-import/stock-import.repository.ts",
+        "web/modules/inventory/components/StockAdjustmentForm.tsx",
+        "web/modules/inventory/services/stock-adjustment.service.ts",
+        "web/app/[tenant]/inventory/serials/page.tsx",
+        "api/src/modules/inventory/repositories/inventory.repository.ts",
+        "api/src/modules/inventory/services/inventory.service.ts",
+        "api/src/modules/inventory/services/inventory.service.spec.ts",
+        "web/app/[tenant]/inventory/locations/page.tsx",
+        "api/src/modules/inventory/services/inventory-location.service.ts",
+        "api/src/modules/inventory/services/inventory-location.service.spec.ts",
+        "api/src/modules/inventory/repositories/inventory-location.repository.ts"
       ],
-      "reason": "Owner-requested (2026-11-13) current ownership for consuming inventory lots (FEFO, ACTIVE, not expired) when delivering orders. Claims order.service.ts and its spec (previously unowned) and reassigns current ownership of OrderDeliverForm.tsx (from modernizar-captura-barcode-orders-purchases, only lot-shortage error messages) and the scope manifest (from modernizar-inventario-lotes-ubicaciones); historical associations remain intact. No POS, sales (inventory_create_sale_v2, sale.service, sale.repository), schema, migration or permission path is claimed; the historical data correction SQL in the change folder is documentation only and runs separately with explicit owner approval."
+      "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase. Phase 3 adds the read-only serials module (api/src/modules/inventory/serials/**) and registers it in inventory.module.ts. Fase 4: recepción de compras con series (purchase.service/controller y formulario de recepción web). Fase 5: venta POS con series (llamado a fnc_product_serials_assign_sale después de inventory_create_sale_v2, sin modificar esa función), anulaciones (cancelSale y applySaleVoid) y selector de series en el POS. Fase 6: entrega de pedidos con series (llamado a fnc_product_serials_assign_order_delivery después de los OUT de deliverOrder; consumeDeliveryLots y FEFO sin cambios) y selector de series en OrderDeliverForm. Fase 7: ajustes de inventario con series, rechazo de productos con serie en la carga de stock, inspección/bloqueo/baja y mover ubicación (endpoints de series) y página /inventory/serials."
     }
   ]
 }
