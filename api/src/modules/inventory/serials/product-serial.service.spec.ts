@@ -363,3 +363,30 @@ test("ProductSerialService.assignForSale y markReturnedForSale envían solo las 
   });
   assert.equal((calls.returned as { returnInventory: boolean }).returnInventory, false);
 });
+
+test("ProductSerialService.assignForOrderDelivery informa el producto rechazado", async () => {
+  const dbError = Object.assign(new Error("SERIAL_COUNT_MISMATCH"), {
+    code: "P0001",
+    detail: `productId=${serialProduct} expected=2 received=1`,
+  });
+  const service = new ProductSerialService(
+    { assignOrderDelivery: async () => { throw dbError; } } as never,
+    {} as never
+  );
+
+  await assert.rejects(
+    service.assignForOrderDelivery({} as never, {
+      tenantId,
+      branchId: branchA,
+      orderId: "order-1",
+      lines: [{ productId: serialProduct, quantity: 2, stockMovementId: "mov-1", serialIds: ["s1"] }],
+      userId: null,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpException);
+      assert.equal(error.getStatus(), 400);
+      assert.equal((error.getResponse() as { productId?: string }).productId, serialProduct);
+      return true;
+    }
+  );
+});

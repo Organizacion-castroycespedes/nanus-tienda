@@ -38,9 +38,9 @@
 
 ## 6. Pedidos
 
-- [ ] 6.1 Specs en `order.service.spec.ts`: entrega con series, parcial, rechazo, FEFO intacto para productos con lote.
-- [ ] 6.2 `OrderController.deliver` mapea `serialIds`; `deliverOrder` llama a `assignForOrderDelivery` con el `OUT` de cada producto.
-- [ ] 6.3 Web: selector de series en `OrderDeliverForm`.
+- [x] 6.1 Specs en `order.service.spec.ts`: entrega con series, parcial, rechazo, FEFO intacto para productos con lote.
+- [x] 6.2 `OrderController.deliver` mapea `serialIds`; `deliverOrder` llama a `assignForOrderDelivery` con el `OUT` de cada producto.
+- [x] 6.3 Web: selector de series en `OrderDeliverForm`.
 
 ## 7. Ajustes, importación e inspección
 

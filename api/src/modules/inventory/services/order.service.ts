@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import crypto from "node:crypto";
 import type { PoolClient } from "pg";
@@ -16,6 +17,7 @@ import type { LinePricePreview } from "../../pricing/pricing.types";
 import { OrderItemEntity } from "../entities/order-item.entity";
 import { OrderEntity, type OrderStatus, type OrderType } from "../entities/order.entity";
 import { SaleService } from "./sale.service";
+import { ProductSerialService } from "../serials/product-serial.service";
 import {
   StockMovementService,
   type InventoryContext,
@@ -213,7 +215,10 @@ export class OrderService {
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService,
     @Inject(PricingService)
-    private readonly pricingService: PricingService
+    private readonly pricingService: PricingService,
+    @Optional()
+    @Inject(ProductSerialService)
+    private readonly productSerialService?: ProductSerialService
   ) {}
 
   private toNullableNumber(value: string | number | null | undefined) {
@@ -1532,9 +1537,11 @@ export class OrderService {
       id: string;
       requires_lot: boolean | null;
       requires_expiration: boolean | null;
+      requires_serial?: boolean | null;
     }>(
       `
-        SELECT id, requires_lot, requires_expiration
+        SELECT id, requires_lot, requires_expiration,
+          COALESCE((to_jsonb(products) ->> 'requires_serial')::boolean, FALSE) AS requires_serial
         FROM products
         WHERE tenant_id = $1
           AND id = ANY($2::uuid[])
@@ -1547,6 +1554,7 @@ export class OrderService {
         {
           requiresLot: Boolean(row.requires_lot),
           requiresExpiration: Boolean(row.requires_expiration),
+          requiresSerial: Boolean(row.requires_serial),
         },
       ])
     );
@@ -1683,7 +1691,7 @@ export class OrderService {
   private buildOrderDeliveryRequestHash(input: {
     orderId: string;
     tenantId: string;
-    items: Array<{ productId: string; quantity: number }>;
+    items: Array<{ productId: string; quantity: number; serialIds?: string[] }>;
     context?: InventoryContext;
     actor?: BranchScopedActor;
   }) {
@@ -1794,13 +1802,28 @@ export class OrderService {
   async deliverOrder(
     id: string,
     tenantId: string,
-    itemsToDeliver: Array<{ productId: string; quantity: number }>,
+    itemsToDeliver: Array<{ productId: string; quantity: number; serialIds?: string[] }>,
     context?: InventoryContext,
     actor?: BranchScopedActor,
     idempotencyKey?: string | string[]
   ) {
     if (!Array.isArray(itemsToDeliver) || itemsToDeliver.length === 0) {
       throw new BadRequestException("deliver items are required");
+    }
+    for (const deliverItem of itemsToDeliver) {
+      const serialIds = deliverItem?.serialIds;
+      if (
+        serialIds !== undefined &&
+        (!Array.isArray(serialIds) ||
+          serialIds.length > 2000 ||
+          serialIds.some(
+            (serialId) =>
+              typeof serialId !== "string" ||
+              !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serialId)
+          ))
+      ) {
+        throw new BadRequestException("serialIds must be a list of serial UUIDs");
+      }
     }
     const normalizedIdempotencyKey =
       idempotencyKey !== undefined
@@ -1945,6 +1968,13 @@ export class OrderService {
         deliveryProductIds,
         client
       );
+      // Solo productos con serie (o líneas que enviaron series); el resto no agrega llamadas.
+      const serialLines: Array<{
+        productId: string;
+        quantity: number;
+        stockMovementId: string;
+        serialIds: string[];
+      }> = [];
 
       for (const deliverItem of itemsToDeliver) {
         const productId = deliverItem.productId;
@@ -2029,6 +2059,15 @@ export class OrderService {
           );
         }
 
+        if (lotPolicy?.requiresSerial || (deliverItem.serialIds?.length ?? 0) > 0) {
+          serialLines.push({
+            productId,
+            quantity,
+            stockMovementId: movement.id,
+            serialIds: deliverItem.serialIds ?? [],
+          });
+        }
+
         let remainingQuantity = quantity;
         for (const item of productItems) {
           if (remainingQuantity <= 0) {
@@ -2086,6 +2125,22 @@ export class OrderService {
         `,
         [id]
       );
+
+      if (serialLines.length > 0) {
+        if (!this.productSerialService) {
+          throw new BadRequestException("serial assignment is unavailable");
+        }
+        if (!deliveryBranchId) {
+          throw new BadRequestException("branch is required to deliver serial-controlled products");
+        }
+        await this.productSerialService.assignForOrderDelivery(client, {
+          tenantId,
+          branchId: deliveryBranchId,
+          orderId: id,
+          lines: serialLines,
+          userId: context?.userId ?? null,
+        });
+      }
 
       const updatedItems = updatedItemsResult.rows.map((row) => this.mapOrderItem(row));
       const nextStatus = this.resolveStatusFromItems(updatedItems);

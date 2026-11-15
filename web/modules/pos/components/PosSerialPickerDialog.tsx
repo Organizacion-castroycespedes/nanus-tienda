@@ -26,6 +26,8 @@ type PosSerialPickerDialogProps = {
   reservedElsewhere?: PosSerialReservation[];
   /** Mensaje al reabrir tras un rechazo del API (serie vendida por otra caja). */
   notice?: string | null;
+  /** Texto del botón de confirmar (por defecto "Agregar N al carrito"). */
+  confirmLabel?: (count: number) => string;
   onConfirm: (serials: PosCartSerial[]) => void;
   onCancel: () => void;
 };
@@ -46,6 +48,7 @@ export const PosSerialPickerDialog = ({
   initialSerials,
   reservedElsewhere = [],
   notice,
+  confirmLabel,
   onConfirm,
   onCancel,
 }: PosSerialPickerDialogProps) => {
@@ -231,7 +234,9 @@ export const PosSerialPickerDialog = ({
             Cancelar
           </Button>
           <Button onClick={() => onConfirm(selected)} disabled={loading || selected.length === 0}>
-            Agregar {selected.length > 0 ? selected.length : ""} al carrito
+            {confirmLabel
+              ? confirmLabel(selected.length)
+              : `Agregar ${selected.length > 0 ? selected.length : ""} al carrito`}
           </Button>
         </div>
       </div>

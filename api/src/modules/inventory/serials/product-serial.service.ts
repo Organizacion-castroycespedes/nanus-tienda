@@ -248,23 +248,52 @@ export class ProductSerialService {
         userId: input.userId,
       });
     } catch (error) {
-      const mapped = mapSerialDatabaseError(error);
-      if (!mapped) {
-        throw error;
-      }
-      const detail = String((error as { detail?: unknown })?.detail ?? "");
-      const line = input.lines.find((candidate) => detail.includes(candidate.saleItemId));
-      if (!line) {
-        throw mapped;
-      }
-      const body = mapped.getResponse() as { code?: string; message?: string };
-      const enriched = { code: body.code, message: body.message, productId: line.productId };
-      throw mapped instanceof ConflictException
-        ? new ConflictException(enriched)
-        : mapped instanceof NotFoundException
-          ? new NotFoundException(enriched)
-          : new BadRequestException(enriched);
+      throw this.withProductId(error, (detail) =>
+        input.lines.find((line) => detail.includes(line.saleItemId))?.productId ?? null
+      );
     }
+  }
+
+  /**
+   * Entrega de pedido: asigna las series a cada OUT creado por deliverOrder, en la misma
+   * transacción. El error informa el productId para que el formulario reemplace la serie.
+   */
+  async assignForOrderDelivery(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      orderId: string;
+      lines: Array<{ productId: string; quantity: number; stockMovementId: string; serialIds: string[] }>;
+      userId: string | null;
+    }
+  ) {
+    try {
+      return await this.repository.assignOrderDelivery(client, input);
+    } catch (error) {
+      throw this.withProductId(error, (detail) =>
+        input.lines.find((line) => detail.includes(line.productId))?.productId ?? null
+      );
+    }
+  }
+
+  /** Traduce un error SERIAL_* y, si el detalle identifica la línea, agrega el productId. */
+  private withProductId(error: unknown, resolveProductId: (detail: string) => string | null) {
+    const mapped = mapSerialDatabaseError(error);
+    if (!mapped) {
+      return error;
+    }
+    const productId = resolveProductId(String((error as { detail?: unknown })?.detail ?? ""));
+    if (!productId) {
+      return mapped;
+    }
+    const body = mapped.getResponse() as { code?: string; message?: string };
+    const enriched = { code: body.code, message: body.message, productId };
+    return mapped instanceof ConflictException
+      ? new ConflictException(enriched)
+      : mapped instanceof NotFoundException
+        ? new NotFoundException(enriched)
+        : new BadRequestException(enriched);
   }
 
   /** Anulación de venta: marca RETURNED (con devolución) o registra VOIDED_NOT_RETURNED. */

@@ -291,6 +291,24 @@ export class ProductSerialRepository {
     return Number(result.rows[0]?.assigned ?? 0);
   }
 
+  /** Asigna series a una entrega de pedido (misma transacción que los OUT). */
+  async assignOrderDelivery(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      branchId: string;
+      orderId: string;
+      lines: Array<{ productId: string; quantity: number; stockMovementId: string; serialIds: string[] }>;
+      userId: string | null;
+    }
+  ) {
+    const result = await client.query<{ assigned: number }>(
+      `SELECT public.fnc_product_serials_assign_order_delivery($1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5::uuid) AS assigned`,
+      [input.tenantId, input.branchId, input.orderId, JSON.stringify(input.lines), input.userId]
+    );
+    return Number(result.rows[0]?.assigned ?? 0);
+  }
+
   /** Anulación: RETURNED si el inventario vuelve, o evento VOIDED_NOT_RETURNED si no. */
   async markSaleReturned(
     client: PoolClient,

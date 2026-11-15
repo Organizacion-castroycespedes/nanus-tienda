@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { OrderService } from "./order.service";
 import type {
@@ -981,7 +981,7 @@ class FakeDeliveryClient {
   constructor(
     private readonly options: {
       items: Array<{ id: string; productId: string; ordered: number; delivered?: number }>;
-      lotPolicies: Record<string, { requiresLot: boolean; requiresExpiration?: boolean }>;
+      lotPolicies: Record<string, { requiresLot: boolean; requiresExpiration?: boolean; requiresSerial?: boolean }>;
       balances: Record<string, DeliveryBalance[]>;
     }
   ) {}
@@ -1065,6 +1065,7 @@ class FakeDeliveryClient {
             id: productId,
             requires_lot: this.options.lotPolicies[productId].requiresLot,
             requires_expiration: this.options.lotPolicies[productId].requiresExpiration ?? false,
+            requires_serial: this.options.lotPolicies[productId].requiresSerial ?? false,
           })) as T[],
       };
     }
@@ -1391,6 +1392,113 @@ test("OrderService.deliverOrder: rechaza una Idempotency-Key inválida antes de 
   await assert.rejects(
     () => service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 1 }], deliveryContext, actor, "clave con espacios"),
     /Idempotency-Key is invalid/
+  );
+  assert.equal(client.queries.length, 0);
+});
+
+// --- Series (fase 6): asignación al entregar pedidos ---
+
+const deliverySerials = ["20000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000002"];
+
+const attachDeliverySerialService = (service: OrderService, error?: Error) => {
+  const calls: Array<Record<string, unknown>> = [];
+  (service as unknown as Record<string, unknown>).productSerialService = {
+    assignForOrderDelivery: async (_client: unknown, input: Record<string, unknown>) => {
+      calls.push(input);
+      if (error) {
+        throw error;
+      }
+      return 2;
+    },
+  };
+  return calls;
+};
+
+test("OrderService.deliverOrder: producto con serie asigna las series al OUT de la entrega", async () => {
+  const { service, client, movements } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+  const calls = attachDeliverySerialService(service);
+
+  await service.deliverOrder(
+    ids.order,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2, serialIds: deliverySerials }],
+    deliveryContext,
+    actor
+  );
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.deepEqual(calls, [
+    {
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      orderId: ids.order,
+      lines: [{ productId: ids.product, quantity: 2, stockMovementId: "movement-1", serialIds: deliverySerials }],
+      userId: ids.user,
+    },
+  ]);
+  assert.equal(client.lotLinks.length, 0);
+});
+
+test("OrderService.deliverOrder: error de series revierte toda la entrega", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+  attachDeliverySerialService(
+    service,
+    new ConflictException({ code: "SERIAL_NOT_AVAILABLE", message: "Serie no disponible", productId: ids.product })
+  );
+
+  await assert.rejects(
+    service.deliverOrder(
+      ids.order,
+      ids.tenant,
+      [{ productId: ids.product, quantity: 2, serialIds: deliverySerials }],
+      deliveryContext,
+      actor
+    ),
+    ConflictException
+  );
+  assert.equal(client.committed, false);
+  assert.equal(client.rolledBack, true);
+});
+
+test("OrderService.deliverOrder: producto sin serie no llama al servicio de series", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+  const calls = attachDeliverySerialService(service);
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 2 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(calls.length, 0);
+});
+
+test("OrderService.deliverOrder: valida serialIds antes de abrir la transacción", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+
+  await assert.rejects(
+    service.deliverOrder(
+      ids.order,
+      ids.tenant,
+      [{ productId: ids.product, quantity: 1, serialIds: ["no-es-uuid"] }],
+      deliveryContext,
+      actor
+    ),
+    BadRequestException
   );
   assert.equal(client.queries.length, 0);
 });
