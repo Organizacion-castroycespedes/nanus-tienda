@@ -131,6 +131,13 @@ Discovery y decisiones: proyecto "manus tienda" → `claude/series-productos-dis
 - API `npx tsx --test src/**/*.spec.ts`: 1197 pruebas, 1189 pass, 0 fail, 8 omitidas (línea base 0.5: 1136 pass; +53 pruebas nuevas del change). `npm run build` OK.
 - Web: `serial-labels`, `serial-capture`, `pos-serials` y `posCart` 24/24; `npm run lint` sin advertencias; `next build` OK.
 
+## QA final (8.2, propietario, local, 2026-11-14)
+- Anulación sin devolución: venta 3d9ca0b2 (SETP990900018, FE aceptada) con la serie 3H61260000024, anulada desmarcando la devolución. La venta queda "Devuelta / Anulada" y la serie sigue Vendida con los eventos Recibida (ajuste 66ed8330) → Vendida (venta 3d9ca0b2) → "Venta anulada sin devolución" (Vendida → Vendida, motivo "Anulacion"). Conciliación después: inverter 3 series = 3 kardex, sin diferencias.
+- Formulario de producto: al editar el inverter, "Requiere número de serie" queda marcada y deshabilitada, igual que lote y vencimiento (no cambian después del primer guardado).
+- Regresión POS con productos sin serie y FE aceptada: SETP990900019 (Bolsa Hielo Iglu 2K IVA 19 %, CEC01002003 con lote, coronita con INC 48 %) y SETP990900020 (hielo x2 y Aguardiente Amarillo con ADV/ICL/IVA 5 %).
+- Venta por peso: no se ejercitó a mano en esta ronda. El flujo de peso no cambió (las líneas WEIGHT rechazan `serialIds` y el payload de productos sin serie queda igual, `buildSaleLineSerialIds`); lo cubren las pruebas automáticas de captura de peso y de venta.
+- Cancelación directa (`POST /sales/:id/cancel`): sin pantalla en la web; cubierta por `sale.service.spec.ts` (series a RETURNED en la transacción y sin repetir en una venta ya cancelada).
+
 ## Pendiente
 - [x] QA de los pendientes de la fase 7 (propietario, 2026-11-14, local, commit aab7fb67): el selector del POS muestra "Hay 1 unidad devuelta de este producto pendiente de inspección" (3H61260000022); la columna "Series" muestra 2 en 002 - Licores; inactivar 002 queda bloqueado con el mensaje de mover las 2 series; la compra FV-004 recibió 3H61260000026 en 002 - Licores y 3H61260000025 en 01 - Modulo aseo (así aparecen en Inventario > Series). Validación en Windows: lint y `next build` OK.
 - [x] QA de la conciliación (propietario, 2026-11-14, local): "Sin diferencias"; inverter en Sucursal Principal con 4 series en existencia (025, 026, 024 disponibles y 022 devuelta) y kardex 4.

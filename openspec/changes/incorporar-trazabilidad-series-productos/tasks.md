@@ -59,5 +59,5 @@
 ## 8. Validación
 
 - [x] 8.1 `cd api && npx tsx --test src/**/*.spec.ts && npm run build`; `cd web && npm test && npm run lint && npm run build`; comparar con la línea base 0.5.
-- [ ] 8.2 QA manual con los escenarios de `specs/trazabilidad-series/spec.md`, más regresión completa de POS (venta, peso, FE, anulación), compras con lote y entregas FEFO.
-- [ ] 8.3 Evidencia en `docs/evidencia-incorporar-trazabilidad-series-productos.md`.
+- [x] 8.2 QA manual con los escenarios de `specs/trazabilidad-series/spec.md`, más regresión completa de POS (venta, peso, FE, anulación), compras con lote y entregas FEFO.
+- [x] 8.3 Evidencia en `docs/evidencia-incorporar-trazabilidad-series-productos.md`.
