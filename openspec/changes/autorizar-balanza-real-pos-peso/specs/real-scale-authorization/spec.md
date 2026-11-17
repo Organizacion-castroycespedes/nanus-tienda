@@ -81,6 +81,21 @@ The Peripheral Agent SHALL enroll against its fixed HTTPS API using a locally ge
 - **WHEN** browser approval supplies a public key whose fingerprint differs from the signed Agent challenge
 - **THEN** approval fails closed and no credential is issued.
 
+### Requirement: API signs pairing challenges with a bounded issue-time backdate
+The API SHALL sign `issuedAt` exactly 2,000 ms before its current clock and SHALL set `expiresAt` to `issuedAt` plus a lifetime greater than 2,000 ms and at most 300,000 ms, so the signed window measured from `issuedAt` never exceeds 300,000 ms. This backdate SHALL NOT relax signature, identity, nonce, single-use or expiry checks.
+
+#### Scenario: Installed Agent without its own skew allowance accepts a lagging clock
+- **WHEN** an Agent that rejects any `issuedAt` later than its clock receives a correctly signed challenge and its clock lags the API by at most 2,000 ms
+- **THEN** the Agent accepts the challenge only when every signature and identity binding also matches.
+
+#### Scenario: Signer refuses an unbounded lifetime
+- **WHEN** a challenge is requested with a lifetime that is not an integer, is at most 2,000 ms or exceeds 300,000 ms, or with an invalid clock
+- **THEN** signing fails with `AGENT_PAIRING_INPUT_INVALID` and no challenge is issued.
+
+#### Scenario: Backdated challenge is replayed or tampered
+- **WHEN** an approval reuses an already-consumed challenge `jti`, or presents a challenge whose signed fields were altered
+- **THEN** approval fails closed with `PAIRING_CHALLENGE_ALREADY_USED` or `PAIRING_CHALLENGE_INVALID` and no additional credential is issued.
+
 ### Requirement: Keep credential secret outside the renderer
 The API SHALL persist only credential verifier/hash and lifecycle metadata, and SHALL encrypt the one-time credential envelope to the Agent key bound by the signed challenge. The renderer MAY relay only the signed challenge and opaque ciphertext; only the Agent decrypts and persists the secret with DPAPI. Neither private key nor plaintext Agent credential may enter renderer state, localStorage, logs, URLs or installer command lines.
 
