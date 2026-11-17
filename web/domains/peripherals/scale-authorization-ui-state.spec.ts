@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildAgentMetadataAfterBackendKgConfirmation, buildAgentUnitVerificationFromConfirmedBinding, deriveScaleAuthorizationUiState,
-  isCurrentKgConfirmationEvidence, loadScaleAuthorizationRefresh, type KgConfirmationEvidence } from "./scale-authorization-ui-state";
+  describeScaleSaveOutcome, isAgentPairingChallengeUsable, isCurrentKgConfirmationEvidence, isRevocableAgentCredential,
+  isRevocableScaleBinding, isStalePairingChallengeError, loadScaleAuthorizationRefresh, PAIRING_APPROVAL_EXPIRY_MARGIN_MS,
+  shouldRevokeBindingForScaleChange, type KgConfirmationEvidence } from "./scale-authorization-ui-state";
 import type { AgentPairingStatus, ScaleAuthorizationSnapshot } from "./scale-authorization.api";
 
 const snapshot = (status = "AUTHORIZED"): ScaleAuthorizationSnapshot => ({
@@ -123,4 +125,65 @@ test("status refresh loads Agent, backend authorization and configured device st
   assert.equal(partial.agent.status, "rejected");
   assert.equal(partial.snapshot.status, "fulfilled");
   assert.equal(partial.devices.status, "fulfilled");
+});
+
+const bindingWith = (status: string, logicalScaleId = "serial-rochi-a01e-1234abcd1234abcd") => ({
+  id: `binding-${status}`, logicalScaleId, status, unitState: "NOT_VERIFIED", verificationMethod: null,
+  unit: null, verifiedBy: null, verifiedAt: null,
+});
+
+test("only PENDING and AUTHORIZED bindings are revocable", () => {
+  assert.equal(isRevocableScaleBinding(bindingWith("PENDING")), true);
+  assert.equal(isRevocableScaleBinding(bindingWith("AUTHORIZED")), true);
+  for (const status of ["REVOKED", "SUPERSEDED", "EXPIRED", ""]) assert.equal(isRevocableScaleBinding(bindingWith(status)), false, status);
+  assert.equal(isRevocableScaleBinding(null), false);
+  assert.equal(isRevocableScaleBinding({ ...bindingWith("PENDING"), id: "" }), false);
+});
+
+test("changing the scale never revokes an already revoked binding", () => {
+  assert.equal(shouldRevokeBindingForScaleChange(bindingWith("REVOKED", "old-scale"), "new-scale"), false);
+  assert.equal(shouldRevokeBindingForScaleChange(bindingWith("PENDING", "old-scale"), "new-scale"), true);
+  assert.equal(shouldRevokeBindingForScaleChange(bindingWith("AUTHORIZED", "old-scale"), null), true);
+  assert.equal(shouldRevokeBindingForScaleChange(bindingWith("AUTHORIZED", "same-scale"), "same-scale"), false);
+  assert.equal(shouldRevokeBindingForScaleChange(null, "new-scale"), false);
+});
+
+test("credential revocation requires an exposed and authenticated credential", () => {
+  const base = snapshot("AUTHORIZED");
+  assert.equal(isRevocableAgentCredential(base), true);
+  assert.equal(isRevocableAgentCredential({ ...base, agent: { ...base.agent, credentialId: null } }), false);
+  assert.equal(isRevocableAgentCredential({ ...base, agent: { ...base.agent, authenticated: false } }), false);
+  assert.equal(isRevocableAgentCredential(null), false);
+});
+
+test("scale save outcome distinguishes saved association from failed follow-up steps", () => {
+  assert.deepEqual(describeScaleSaveOutcome({ scaleAssociated: true, revocation: "NOT_REQUIRED" }), { kind: "success", message: "Balanza asociada." });
+  assert.deepEqual(describeScaleSaveOutcome({ scaleAssociated: false, revocation: "REVOKED" }), { kind: "success", message: "Balanza desasociada." });
+  const revokeFailed = describeScaleSaveOutcome({ scaleAssociated: true, revocation: "FAILED", revocationError: "SCALE_BINDING_NOT_ACTIVE" });
+  assert.equal(revokeFailed.kind, "warning");
+  assert.match(revokeFailed.message, /^Balanza asociada\. No se pudo revocar .*SCALE_BINDING_NOT_ACTIVE/);
+  const refreshFailed = describeScaleSaveOutcome({ scaleAssociated: true, revocation: "REVOKED", refreshError: "timeout" });
+  assert.equal(refreshFailed.kind, "warning");
+  assert.match(refreshFailed.message, /^Balanza asociada\. No se pudo actualizar el estado mostrado: timeout/);
+});
+
+test("a held pairing challenge is usable only with more than the approval margin left", () => {
+  const now = new Date("2026-11-17T16:00:00.000Z");
+  const pairingAt = (expiresAt: string) => ({ pairingCode: "0000000000", signedChallenge: {}, enrollmentPublicKeyPem: "pem", expiresAt });
+  assert.equal(PAIRING_APPROVAL_EXPIRY_MARGIN_MS, 5_000);
+  assert.equal(isAgentPairingChallengeUsable(pairingAt("2026-11-17T16:00:05.001Z"), now), true);
+  assert.equal(isAgentPairingChallengeUsable(pairingAt("2026-11-17T16:00:05.000Z"), now), false);
+  assert.equal(isAgentPairingChallengeUsable(pairingAt("2026-11-17T15:59:59.000Z"), now), false);
+  assert.equal(isAgentPairingChallengeUsable(pairingAt("not-a-date"), now), false);
+  assert.equal(isAgentPairingChallengeUsable(null, now), false);
+});
+
+test("only stale-challenge API rejections clear the held challenge", () => {
+  assert.equal(isStalePairingChallengeError(Object.assign(new Error("PAIRING_CHALLENGE_INVALID"), { status: 403 })), true);
+  assert.equal(isStalePairingChallengeError(new Error("PAIRING_CHALLENGE_ALREADY_USED")), true);
+  assert.equal(isStalePairingChallengeError({ message: "Request failed", code: "PAIRING_CHALLENGE_INVALID" }), true);
+  for (const message of ["PAIRING_OPERATIONAL_DEVICE_NOT_BOUND", "PAIRING_TERMINAL_SCOPE_MISMATCH", "ACTIVE_AGENT_CREDENTIAL_EXISTS", "Request failed"]) {
+    assert.equal(isStalePairingChallengeError(new Error(message)), false, message);
+  }
+  assert.equal(isStalePairingChallengeError(null), false);
 });
