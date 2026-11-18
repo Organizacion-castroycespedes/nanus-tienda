@@ -1,0 +1,40 @@
+{
+  "qaId": "QA_TERMINAL_21",
+  "status": "PARTIAL",
+  "scope": "bounded POS supervisor lifetime increment; no installer or live lifecycle operation",
+  "designGate": {
+    "status": "PASS",
+    "model": "independent pos-supervisor mode in the existing launcher binary",
+    "proof": [
+      "supervisor creates and retains the installation-scoped Job Object handle",
+      "POS starts CREATE_SUSPENDED, is assigned before ResumeThread, and no breakaway limit is enabled",
+      "atomic pos-ownership.json records live identity evidence but is never termination or adoption authority",
+      "supervisor crash does not intentionally kill POS; restart refuses adoption",
+      "graceful shutdown waits for POS exit, writes exited, and closes owned handles"
+    ]
+  },
+  "validation": {
+    "windowsGoTests": "PASS",
+    "windowsGoBuild": "PASS",
+    "openspecStrict": "PASS",
+    "gitDiffCheck": "PASS",
+    "protectedHashes": "PASS",
+    "installerBuild": "SKIP",
+    "liveQa": "SKIP"
+  },
+  "remainingGates": [
+    "12.4 deterministic ownership boundary expansion remains open",
+    "12.5 disposable runtime evidence and isolated VM logoff/reboot/cross-account evidence remain open",
+    "12.6 shortcut and CLI bypass proof remains open",
+    "12.8 QA evidence completion remains open",
+    "actual logoff, reboot, multi-account ACL, and installed-process behavior are unproven"
+  ],
+  "historicalEvidence": {
+    "qaTerminal20": "PARTIAL",
+    "operationId": "1792109097642200200-1108",
+    "preserved": true,
+    "legacyReasonCode": "legacy_unowned_scope",
+    "build08Justified": false,
+    "readyForLiveQa": false
+  }
+}

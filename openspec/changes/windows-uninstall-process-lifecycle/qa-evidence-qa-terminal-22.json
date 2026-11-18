@@ -1,0 +1,41 @@
+{
+  "qaId": "QA_TERMINAL_22",
+  "status": "PARTIAL",
+  "task": "12.6",
+  "supportedLaunchPaths": [
+    "installer CLI: launch-pos and /launch-pos",
+    "productive installer UI: launchPOS bridge",
+    "installed .lnk: ManusTerminalSetup.exe launch-pos"
+  ],
+  "dispatchProof": {
+    "allSupportedPathsReachSupervisor": true,
+    "rawShortcutTarget": "rejected by source contract; shortcut targets launcher",
+    "rawCLICommand": "not an installer dispatch path",
+    "forgeableEnvironmentOrMarker": "not trusted",
+    "rawDirectManusPOSExecution": "unsupported and unowned; not OS-wide blocked"
+  },
+  "threatModel": {
+    "standardUserCanStartRawPOS": true,
+    "electronHasOSBackedSupervisorHandshake": false,
+    "safeACLOrPackagingEnforcementProven": false,
+    "mitigation": "fail-closed Job membership, PID/start identity, path scope, and legacy_unowned_scope durable partial"
+  },
+  "validation": {
+    "windowsGoTests": "PASS",
+    "windowsDisposableIntegration": "SKIP; opt-in TEMP integration not forced",
+    "electronTests": "PASS; existing focused suite only",
+    "goBuild": "PASS",
+    "openspecStrict": "PASS",
+    "gitDiffCheck": "PASS",
+    "installerBuild": "SKIP",
+    "liveQA": "SKIP"
+  },
+  "remaining": [
+    "12.4 remains open",
+    "12.5 remains open",
+    "12.8 remains open",
+    "OS-wide raw executable prevention requires a future approved compatibility/security design"
+  ],
+  "build08Justified": false,
+  "readyForLiveQa": false
+}

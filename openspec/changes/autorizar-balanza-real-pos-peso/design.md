@@ -11,7 +11,9 @@
 
 The API signs short-lived challenge payloads with `AGENT_ENROLLMENT_SIGNING_PRIVATE_KEY_PEM`, `AGENT_ENROLLMENT_SIGNING_KEY_ID` and `AGENT_ENROLLMENT_AUDIENCE`. The private key is supplied by protected API runtime secret storage only. Pairing operations use a separate trust configuration containing the fixed API base URL, Ed25519 verification public key, key ID and audience from trusted packaged/installer configuration; browser input cannot change them.
 
-HU-PAIRING-API-SKEW changes API signing. The installed Agent qa.16 has no future-skew allowance for `issuedAt` (a 2,000 ms Agent allowance exists only in the separately versioned Build 08 qa.17 Agent) and rejects any `issuedAt` later than its own clock, while Build 08 qa.17 cannot reach that host because the Windows A-to-B update is NO-GO. The API signer therefore sets `issuedAt = API now - 2,000 ms` (`AGENT_PAIRING_ISSUED_AT_BACKDATE_MS`) and `expiresAt = issuedAt + lifetime`, where the lifetime is an integer greater than 2,000 ms and at most 300,000 ms (`AGENT_PAIRING_CHALLENGE_MAX_LIFETIME_MS`; default 300,000 ms). The signed window is measured from `issuedAt` and never exceeds 300,000 ms; the remaining validity from issuance is the lifetime minus 2,000 ms (298,000 ms by default). Invalid lifetimes or clocks fail with `AGENT_PAIRING_INPUT_INVALID`.
+The Agent permits at most 2,000 ms of future skew for the signed challenge's `issuedAt`, addressing the observed 200 ms Windows/issuer clock difference. The allowance is limited to that timestamp: `expiresAt` must still be strictly in the future and the signed challenge lifetime must remain at most 300,000 ms. Signature verification and every key/context binding remain unchanged.
+
+HU-PAIRING-API-SKEW supersedes the earlier statement that API signing behavior was unchanged. The installed Agent qa.16 predates the 2,000 ms Agent allowance and rejects any `issuedAt` later than its own clock, while Build 08 qa.17 cannot reach that host because the Windows A-to-B update is NO-GO. The API signer therefore sets `issuedAt = API now - 2,000 ms` (`AGENT_PAIRING_ISSUED_AT_BACKDATE_MS`) and `expiresAt = issuedAt + lifetime`, where the lifetime is an integer greater than 2,000 ms and at most 300,000 ms (`AGENT_PAIRING_CHALLENGE_MAX_LIFETIME_MS`; default 300,000 ms). The signed window is measured from `issuedAt` and never exceeds 300,000 ms; the remaining validity from issuance is the lifetime minus 2,000 ms (298,000 ms by default). Invalid lifetimes or clocks fail with `AGENT_PAIRING_INPUT_INVALID`.
 
 Security invariants are unchanged: Ed25519 signature over the canonical challenge, key ID, audience, installation ID, terminal device ID, enrollment-key fingerprint, nonce format, pairing code, single-use `jti` (the `terminal_device_credentials_credential_id_unique` index maps a replay to `PAIRING_CHALLENGE_ALREADY_USED`), strict expiry and existing authentication. API-side verification still rejects an `issuedAt` later than the API clock, an expired challenge or a window over 300,000 ms. Compatibility: qa.16 accepts when its clock lags the API by at most 2,000 ms; qa.17 accepts up to 4,000 ms (2,000 ms backdate plus its own 2,000 ms allowance). Both still reject expiry, tampering, wrong key, key ID, audience or installation. No Agent, installer, POS, Electron or Windows configuration changes. The code change has no deployment authority: the QA API must be deployed separately, and task 19 (QA signing key) and task 20 (physical pairing) remain open.
 
@@ -136,3 +138,51 @@ is verified. It does not authorize executing the migration in QA or production.
 - Tenant/branch/terminal/session/product/scale/binding mismatches fail closed.
 - `MOCK`, client-supplied quantity/weight and stale Agent observations cannot satisfy the gate.
 - Persistence primitives in this phase are not exposed as production endpoints.
+
+## Windows lifecycle P0: conservation and admission before effects
+
+### Scope and ownership
+
+P0-A/P0-B remain normative lifecycle security contracts in this active change, including the fail-closed evidence classification. File-level implementation ownership of `backend-perifericos/windows-installer/main_windows.go` is transferred to `windows-uninstall-process-lifecycle` for lifecycle admission and update work; the scope matcher does not delegate by function. This transfer does not move Agent authentication, enrollment, pairing, scale authorization or their code from this change. Lifecycle implementation must preserve this P0 contract, including rejection of unknown evidence, and cross-reference `windows-uninstall-process-lifecycle/specs/windows-uninstall-process-lifecycle/spec.md`, especially "Explicit silent-uninstall data policy" and "Ordered payload and registration cleanup". Existing data-retention, explicit authority and verified-completion requirements continue to apply.
+
+### Coordinated Electron close adapter
+
+`desktop/electron/main.ts` keeps its existing SINGLE_MATCH owner, `autorizar-balanza-real-pos-peso`. The lifecycle change defines the close acceptance boundary; this owner implements only the Electron window close adapter and pure close-policy tests. `quit` calls Electron's ordinary `app.quit()` path so `before-quit` authorizes the ensuing window close; `hide` prevents destruction and hides the window. This adapter does not claim process-tree ownership, terminate children, or certify Windows lifecycle cleanup. The helper in `main_windows.go` remains outside this adapter and is blocked until lifecycle identity/handoff and destructive ROOT-05 gates pass.
+
+The lifecycle owner may change `backend-perifericos/windows-installer/main_windows.go` only after its own renewed scope/STRICT/apply-ready checks and all lifecycle gates. `main_windows_test.go` remains owned by `controlar-descubrimiento-perifericos-reales`; lifecycle work must use a separately owned focused test file or resolve that exact test-file ownership before editing it. No change to ROCHI A01E/protocol/weight acquisition, Agent authentication/pairing/enrollment, COM5, XP-80, drawer, service runtime behavior or LocalService storage is granted here. If lifecycle work needs another shared file or significant productive reordering, stop that block and report it; do not treat the ownership transfer as runtime or installation authorization.
+
+### P0-A: conservative registered commands
+
+Normal `UninstallString` and `QuietUninstallString` must target the intended installer executable with the supported uninstall command and preserve configuration, enrollment, device registry and operational data by default. Silent invocation is not data-removal consent. Quote the executable using the existing Windows argument contract; paths with spaces must remain one executable argument. Do not invent a silent flag or change supported arguments beyond removing implicit `--remove-data` from generated quiet metadata.
+
+The same pure metadata policy must apply whenever install, valid repair or supported update generates uninstall registration. Keep explicit data-removal intent separate: it needs verifiable operator approval for the intended operation/managed targets under the lifecycle contract. A legacy registered command containing `--remove-data` is not evidence of fresh consent. This P0 contract neither certifies nor implements destructive removal or helper authorization.
+
+Compatibility tests must cover the prior registered command shapes and preserve supported explicit argument parsing without activating deletion. Old registrations require separate read-only review and a later authorized correction path; changing source or passing pure tests does not update any host registry value. Do not execute a legacy quiet command to test compatibility or silently rewrite the host in this checkpoint.
+
+### P0-B: evidence classification
+
+Use existing read-only validators and a pure decision model. Observe the intended Agent/POS payload and installed metadata/version, the exact existing uninstall-registration contract and the managed-service registration/configuration; distinguish authoritative absence from failed/incomplete queries. Cross-check installed evidence against the applicable installed-version and supported target-version contracts, not merely the incoming manifest. Neither an empty version nor an isolated path/registry value establishes fresh or coherent state.
+
+| Classification | Required evidence and decision |
+| --- | --- |
+| Proven fresh | Required payload/installation metadata, uninstall registration and managed service are authoritatively absent and no contradictory installation evidence exists; normal absence is admissible, not an error. |
+| Valid repair | Explicit repair intent or an existing supported same-version repair contract, coherent installed payload/metadata/version, registration and managed-service configuration; admit only the validated existing repair behavior. |
+| Valid update | Coherent installed evidence plus an explicitly supported installed-to-target version transition; admit only that existing update behavior. |
+| Partial/inconsistent | Any present installation footprint conflicts with or lacks required companion payload, metadata/version, registry or service evidence; reject with a specific diagnostic. |
+| Unknown | Query denied/failed, unsupported version relation, incomplete ownership/evidence or ambiguous observations; reject without interpreting uncertainty as absence. |
+
+Expected retained data after a conservative uninstall is not by itself an active-installation footprint. A proven-fresh reinstall may retain compatible data/configuration without clearing or resetting it; ambiguous data ownership/compatibility remains unknown and cannot authorize repair, replacement or deletion. A stopped but coherently registered service is not alone inconsistent. An incompatible version or discordant service/registry is not an automatic update or recovery plan.
+
+The admission gate must finish before directory/file creation or replacement, persistent preflight/install logs, ACL changes, service stop/start/reconfiguration, registry writes or data changes. Rejected diagnostics may use returned errors, console output or in-memory observations without persistence or secrets. Current source creates a preflight logger and base directories before the version-based fresh/repair decision; a future patch must prove the gate precedes those effects. No automatic cleanup, ACL repair, service fix, fallback fresh install or evidence rewriting is permitted. Recovery requires a separate explicit checkpoint. Classification is an observation, not an atomic namespace or TOCTOU guarantee; observed changes invalidate admission and require a safe stop.
+
+### P0 validation and deferred gates
+
+Pure tests must inject evidence/errors and effect counters: all partial/unknown cases leave every target-effect counter at zero. Cover clean fresh, retained-data reinstall, coherent repair/update, missing version/metadata with footprints, payload mismatch, registry/service discordance, unsupported version, access denied and changed evidence. Metadata tests must exercise normal/quiet commands, quoting, explicit opt-in separation and install/repair/update regeneration. Preserve all existing ROCHI and installer tests.
+
+Documentation and pure tests cannot certify the host registration, qa.13, real install/uninstall or recovery. P1 helper identity/bounded handoff/final result and destructive ROOT-05 remain separate blockers. P2-NATIVE, P3, IPC, durable claims and productive uninstall remain NO-GO.
+
+## QA package profile: no automatic peripheral discovery
+
+The `controlar-descubrimiento-perifericos-reales` change owns the independent `discoverOnStartup` policy. Future QA packages SHALL set `mode=REAL`, `enableRealAdapters=true`, and `discoverOnStartup=false`; production packages SHALL explicitly preserve the current `true/true` profile. Missing or invalid startup-discovery config fails closed. Package health validation SHALL verify health without discovery or hardware calls. The already installed Build 04 and its `enableRealAdapters=false` configuration are not changed by this code work.
+
+The QA profile does not change endpoint/audience selection, provide enrollment trust keys, or make pairing available. Missing QA public key/key ID continues to fail closed for pairing; installation health remains a separate local gate.

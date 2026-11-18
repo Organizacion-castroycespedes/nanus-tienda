@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -22,9 +22,12 @@ import {
 const discoveredUsbPrinter = buildUsbPrinterDescriptor("Xprinter XP-80T USB");
 
 class FakeUsbDiscovery implements UsbPrinterDiscovery {
+  calls = 0;
+
   constructor(private devices = [discoveredUsbPrinter]) {}
 
   list() {
+    this.calls += 1;
     return [...this.devices];
   }
 }
@@ -148,6 +151,29 @@ test("missing registry file boots with default mock devices", () => {
     devices.some((device) => device.id === "network-xp80-qa-001"),
     false
   );
+});
+
+test("REAL Agent startup skips physical discovery when adapters are disabled", async () => {
+  const context = createTestPaths();
+  const discovery = new FakeUsbDiscovery();
+  const previousMode = process.env.PERIPHERALS_MODE;
+  const previousAdapters = process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS;
+  process.env.PERIPHERALS_MODE = "REAL";
+  process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS = "false";
+
+  try {
+    const bundle = buildPersistentBundle(discovery, context.paths);
+    await bundle.devicesService.discoverOnStartup();
+
+    assert.equal(discovery.calls, 0);
+    assert.equal(bundle.devicesService.getHealthSnapshot().discoveredDevices, 0);
+  } finally {
+    if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
+    else process.env.PERIPHERALS_MODE = previousMode;
+    if (previousAdapters === undefined) delete process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS;
+    else process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS = previousAdapters;
+    rmSync(context.root, { recursive: true, force: true });
+  }
 });
 
 test("corrupt registry file is handled without crash", () => {

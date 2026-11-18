@@ -1,0 +1,105 @@
+﻿{
+    "schemaVersion":  1,
+    "evidenceId":  "QA-05-R1",
+    "scope":  "durable uninstall legacy-result recovery correction and isolated BUILD-04 packaging",
+    "rootCause":  {
+                      "status":  "CONFIRMED",
+                      "failure":  "recover previous uninstall result: uninstall phase complete does not match completed phase temp_cleanup",
+                      "cause":  "The live QA record was a legitimate historical completed-through-temp_cleanup terminal shape from the prior installer, but the strict current loader required the newer final complete phase and observation fields before recovery could start.",
+                      "liveRecordAction":  "Preserved unchanged; not rewritten or deleted. The compatibility path normalizes only an in-memory copy for retry bookkeeping, then current cleanup runs its own live gates."
+                  },
+    "implementation":  {
+                           "files":  [
+                                         "backend-perifericos/windows-installer/uninstall_result_windows.go",
+                                         "backend-perifericos/windows-installer/uninstall_result_windows_test.go",
+                                         "openspec/changes/windows-uninstall-process-lifecycle/proposal.md",
+                                         "openspec/changes/windows-uninstall-process-lifecycle/design.md",
+                                         "openspec/changes/windows-uninstall-process-lifecycle/specs/windows-uninstall-process-lifecycle/spec.md",
+                                         "openspec/changes/windows-uninstall-process-lifecycle/tasks.md"
+                                     ],
+                           "policy":  "Accept only the exact legacy completed-through-temp_cleanup shape for recovery bookkeeping; preserve serialized evidence; reject incomplete or ambiguous variants; never treat legacy evidence as current cleanup success."
+                       },
+    "tests":  {
+                  "targetedRecovery":  {
+                                           "result":  "PASS",
+                                           "legacyExactRecord":  "PASS",
+                                           "serializedBytesPreserved":  "PASS",
+                                           "incompleteLegacyRecordRejected":  "PASS",
+                                           "invalidAndCorruptRecords":  "PASS"
+                                       },
+                  "goSuite":  {
+                                  "result":  "PASS",
+                                  "topLevelPassEvents":  134,
+                                  "subtestPassEvents":  23,
+                                  "failEvents":  0,
+                                  "skippedEvents":  6
+                              },
+                  "goBuild":  "PASS",
+                  "disposableWindowsIntegration":  {
+                                                       "result":  "PASS",
+                                                       "fixture":  "unique testing.TempDir only; live MANUS resources not used"
+                                                   },
+                  "backend":  {
+                                  "result":  "PASS",
+                                  "tests":  177
+                              },
+                  "posManifest":  {
+                                      "result":  "PASS",
+                                      "tests":  6
+                                  },
+                  "packagingProvenance":  {
+                                              "result":  "PASS",
+                                              "tests":  3
+                                          },
+                  "electron":  {
+                                   "result":  "PASS",
+                                   "tests":  51,
+                                   "suites":  11
+                               }
+              },
+    "build04":  {
+                    "result":  "PASS",
+                    "workspace":  "isolated disposable full-repository copy under local Temp",
+                    "artifactLogicalPath":  "backend-perifericos/dist-installer/windows-x64/ManusTerminalSetup-0.1.1-qa.13-r9-build04-legacy-recovery-win-x64.exe",
+                    "artifactSha256":  "15BFF3563C29518E3EED415A9DE36BC5694260DB29B19AD45494054459EA77A5",
+                    "artifactBytes":  487605248,
+                    "internalVersion":  "0.1.1-qa.13",
+                    "bundleIdentity":  "ManusPeripheralAgent-win-x64-0.1.1-qa.13",
+                    "architecture":  "windows-amd64",
+                    "signature":  "NotSigned",
+                    "posFileCount":  75,
+                    "manifestParity":  "PASS",
+                    "packageValidation":  "PASS",
+                    "provenanceMetadata":  "PASS; logical relative paths only; no absolute personal paths; no embedded secrets found",
+                    "sourceInputManifest":  "build-inputs-build04.json; 25 selected inputs; zero copy mismatches",
+                    "installerValidationExitCode":  0,
+                    "validationEnvironment":  "MANUS_ENVIRONMENT=qa; MANUS_AGENT_VERSION=0.1.1-qa.13; MANUS_INSTALLER_OUTPUT_NAME=BUILD-04 filename",
+                    "defaultValidatorAttempt":  "Expected failure when QA environment variables are absent: validator expects package.json prd.2; corrected QA-env invocation passed."
+                },
+    "protectedPOS":  {
+                         "backend-perifericos/windows-installer/assets/pos-manifest.json":  "F1BB5CBB620DE5B65B48A6148BFB9B345F196E6881EAE89525BDEB5331FCD4FA",
+                         "backend-perifericos/windows-installer/assets/pos/resources/app.asar":  "17B6EC6A77DDBA93236AC9F3497FF4E338C75F199AE85899A77CA0E0536724A4",
+                         "backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json":  "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D",
+                         "desktop/electron/resources/manus-shell.config.json":  "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D"
+                     },
+    "liveSafety":  {
+                       "thisCorrectionRunInstall":  false,
+                       "thisCorrectionRunUninstall":  false,
+                       "serviceMutation":  false,
+                       "registryMutation":  false,
+                       "processTermination":  false,
+                       "postgresqlMutation":  false,
+                       "historicalFailureEvidencePreserved":  true
+                   },
+    "validation":  {
+                       "openspecChangeStrict":  "PASS",
+                       "gitDiffCheck":  "PASS with existing LF/CRLF warnings only",
+                       "globalOpenSpecUnrelatedFailures":  11,
+                       "originalWorktreeProtectedHashes":  "PASS"
+                   },
+    "readiness":  {
+                      "qa05Live":  "PENDING_MANUAL",
+                      "distribution":  false,
+                      "nextGate":  "controlled QA-05 uninstall with BUILD-04, then install and physical XP-58 acceptance"
+                  }
+}

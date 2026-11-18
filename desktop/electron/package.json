@@ -36,6 +36,7 @@
       "dist/agent-client.js",
       "dist/electron-api.js",
       "dist/window-policy.js",
+      "dist/window-close-policy.js",
       "package.json",
       "dist/connectivity.js",
       "resources/manus-icon.png",
