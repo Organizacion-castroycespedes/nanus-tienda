@@ -19,6 +19,7 @@ export type AgentSignedChallenge = {
 };
 
 const canonical = (value: unknown) => Buffer.from(JSON.stringify(value), "utf8");
+const MAX_CHALLENGE_FUTURE_SKEW_MS = 2_000;
 
 export const enrollmentKeyFingerprint = (publicKeyPem: string) => createHash("sha256")
   .update(createPublicKey(publicKeyPem).export({ type: "spki", format: "der" })).digest("hex");
@@ -40,7 +41,7 @@ export const verifyAgentSignedChallenge = (input: {
       && challenge.installationId === input.expectedInstallationId
       && challenge.enrollmentKeyFingerprint === enrollmentKeyFingerprint(input.enrollmentPublicKeyPem)
       && /^[A-Za-z0-9_-]{32,128}$/.test(challenge.nonce)
-      && Number.isFinite(issued) && issued <= now.getTime()
+      && Number.isFinite(issued) && issued <= now.getTime() + MAX_CHALLENGE_FUTURE_SKEW_MS
       && Number.isFinite(expires) && expires > now.getTime() && expires - issued <= 5 * 60_000
       && verify(null, canonical(challenge), key, Buffer.from(input.signed.signature, "base64url"));
   } catch { return false; }

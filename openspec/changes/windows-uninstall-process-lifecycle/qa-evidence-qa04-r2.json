@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "QA-04-R2",
+  "generatedAt": "2026-10-14",
+  "scope": "repository implementation and disposable Windows validation only",
+  "git": {
+    "branch": "fix/develop/windows-uninstall-process-lifecycle",
+    "baseHead": "1c024c90a6583a0cde91d7ef126c15f8906da4f7",
+    "liveLifecycleOperationsExecuted": false,
+    "installerRebuilt": false
+  },
+  "protectedPOS": {
+    "backend-perifericos/windows-installer/assets/pos-manifest.json": "F1BB5CBB620DE5B65B48A6148BFB9B345F196E6881EAE89525BDEB5331FCD4FA",
+    "backend-perifericos/windows-installer/assets/pos/resources/app.asar": "17B6EC6A77DDBA93236AC9F3497FF4E338C75F199AE85899A77CA0E0536724A4",
+    "backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D",
+    "desktop/electron/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D"
+  },
+  "tests": {
+    "goWindowsNative": {
+      "result": "PASS",
+      "topLevelPassEvents": 113,
+      "passEventsIncludingSubtests": 131,
+      "baselinePassEvents": 121
+    },
+    "goDisposableWindowsProcessIntegration": {
+      "result": "PASS",
+      "tests": 1,
+      "rootPolicy": "unique testing.TempDir only",
+      "unrelatedProcessPreserved": true
+    },
+    "goBuild": "PASS",
+    "backendUnitTests": { "result": "PASS", "tests": 177 },
+    "posManifestTests": { "result": "PASS", "tests": 6 },
+    "packagingProvenanceTests": { "result": "PASS", "tests": 3 }
+  },
+  "openspec": {
+    "change": "windows-uninstall-process-lifecycle",
+    "strict": "PASS",
+    "globalStrict": { "passed": 109, "failed": 11, "classification": "preexisting unrelated repository failures" }
+  },
+  "packagingProvenance": {
+    "currentReleaseToEmbeddedParity": "PASS",
+    "embeddedToManifestParity": "PASS",
+    "allowScriptsMutationRejected": true,
+    "priorQACorrectedArtifact": {
+      "path": "C:\\Users\\icast\\AppData\\Local\\Temp\\manus-qa-build-qa13-uninstall-lifecycle-20261014\\backend-perifericos\\dist-installer\\windows-x64\\ManusTerminalSetup-0.1.1-qa.13-uninstall-lifecycle-qa1-win-x64.exe",
+      "sha256": "E62417E30DDAA416FF5CD20CD532250011432644A80ECD6C92C7AB1BBA2247A2",
+      "version": "0.1.1-qa.13"
+    }
+  },
+  "validation": {
+    "gitDiffCheck": "PASS",
+    "protectedHashesUnchanged": true,
+    "installerInstallUninstallRepairExecuted": false,
+    "serviceRegistryACLAndLiveProcessMutationExecuted": false,
+    "distributionReady": false
+  },
+  "remainingRisk": [
+    "No installer rebuild or live lifecycle operation was authorized in this implementation turn.",
+    "Real SCM and registry behavior remains covered by prior controlled QA; repository integration fixture uses seams and disposable TEMP roots only."
+  ]
+}

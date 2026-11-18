@@ -13,6 +13,7 @@ import { EventsService } from "./modules/events/events.service";
 import { LogsService } from "./modules/logs/logs.service";
 import { DevicesService } from "./modules/devices/devices.service";
 import { loadAgentLocalConfig } from "./platform/agent-local-config";
+import { scheduleStartupDiscovery } from "./platform/peripheral-discovery-policy";
 
 loadEnv();
 loadAgentLocalConfig();
@@ -50,12 +51,11 @@ async function bootstrap() {
     `${config.agentName} running in ${config.mode} mode on http://${config.bind}:${config.port}`,
   );
 
-  if (config.realAdaptersEnabled) {
-    const devicesService = app.get(DevicesService);
-    setImmediate(() => {
-      void devicesService.discoverOnStartup();
-    });
-  }
+  scheduleStartupDiscovery(
+    config,
+    (operation) => setImmediate(operation),
+    () => app.get(DevicesService).discoverOnStartup()
+  );
 
   let stopping = false;
   const shutdown = async (signal: string) => {

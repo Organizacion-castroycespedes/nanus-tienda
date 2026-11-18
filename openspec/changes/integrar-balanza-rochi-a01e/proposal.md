@@ -24,6 +24,10 @@ La selección y persistencia requieren el perfil explícito `ROCHI_A01E` y pará
 
 La evidencia aportada por el operador cubre QA fisico Windows para cero, KG, LB, desconexion USB, reenumeracion del CH340, recovery explicito, lectura nueva y cierre seguro. Esta evidencia no constituye homologacion metrologica ni habilitacion comercial.
 
+## QA installer safety follow-up
+
+The installer UI starts automatic discovery only when the packaged Agent profile explicitly sets both `enableRealAdapters=true` and `discoverOnStartup=true`. QA uses `enableRealAdapters=true` with `discoverOnStartup=false`; local health remains available and manual discovery still requires an operator action. The independent policy is specified by `controlar-descubrimiento-perifericos-reales`.
+
 ## Out of Scope
 
 - Integraci?n comercial de la lectura con ventas, impuestos, facturaci?n, inventario, base de datos o captura POS.

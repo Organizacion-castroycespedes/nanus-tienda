@@ -1,5 +1,12 @@
 ## ADDED Requirements
 
+### Requirement: QA installer suppresses automatic physical discovery
+The Windows QA installer SHALL require both packaged Agent `enableRealAdapters=true` and `discoverOnStartup=true` to start automatic UI discovery. Missing, invalid, or unreadable policy SHALL suppress automatic discovery while keeping local health checks available. QA SHALL set `discoverOnStartup=false`; production SHALL explicitly preserve its approved policy. The independent policy contract is defined by `controlar-descubrimiento-perifericos-reales`.
+
+#### Scenario: QA profile completes install without starting discovery
+- **WHEN** installation completes with packaged `enableRealAdapters=false`
+- **THEN** the device screen may appear, but the installer SHALL NOT call `/devices/discover` automatically and local health remains available
+
 ### Requirement: Distinguish Agent identity from authentication
 The system SHALL NOT treat `installationId`, cloud device ID, terminal ID or peripheral ID as an Agent credential. Credential cleartext SHALL be returned at most once by a future trusted enrollment flow; only a verifier may be persisted server-side.
 
@@ -80,6 +87,17 @@ The Peripheral Agent SHALL enroll against its fixed HTTPS API using a locally ge
 #### Scenario: Browser substitutes an enrollment key
 - **WHEN** browser approval supplies a public key whose fingerprint differs from the signed Agent challenge
 - **THEN** approval fails closed and no credential is issued.
+
+### Requirement: Bound pairing challenge issue-time clock skew
+The Agent SHALL tolerate `issuedAt` no more than 2,000 ms ahead only when `expiresAt` is strictly in the future and the signed lifetime is at most 300,000 ms. This tolerance SHALL NOT relax signature or identity binding checks.
+
+#### Scenario: Agent accepts a challenge within the clock-skew allowance
+- **WHEN** a correctly signed challenge has `issuedAt` no more than 2,000 ms ahead of the Agent clock, remains unexpired, and has a lifetime no greater than 300,000 ms
+- **THEN** the Agent accepts it only when all existing signature and identity bindings also match.
+
+#### Scenario: Agent rejects excessive clock skew or an expired challenge
+- **WHEN** `issuedAt` is more than 2,000 ms ahead, `expiresAt` is not later than the Agent clock, or the challenge lifetime exceeds 300,000 ms
+- **THEN** challenge verification fails closed.
 
 ### Requirement: API signs pairing challenges with a bounded issue-time backdate
 The API SHALL sign `issuedAt` exactly 2,000 ms before its current clock and SHALL set `expiresAt` to `issuedAt` plus a lifetime greater than 2,000 ms and at most 300,000 ms, so the signed window measured from `issuedAt` never exceeds 300,000 ms. This backdate SHALL NOT relax signature, identity, nonce, single-use or expiry checks.
@@ -260,3 +278,98 @@ The API SHALL log a sanitized `rejectionReason` for each refused observation, su
 #### Scenario: Legacy observation before capture
 - **WHEN** a legacy observation is refused because `observedAt` precedes `created_at`
 - **THEN** the `observation.failed` event carries `rejectionReason=OBSERVATION_BEFORE_CAPTURE` and the client receives `CAPTURE_NOT_PENDING_OR_EXPIRED`.
+
+### Requirement: QA package does not automatically discover physical peripherals
+QA packaging SHALL set `mode=REAL`, `enableRealAdapters=true`, and `discoverOnStartup=false`. Production SHALL set both boolean controls to `true`. QA package validation SHALL verify health without hardware discovery. Pairing gates remain unchanged, and this profile SHALL NOT imply physical-operation certification.
+
+#### Scenario: QA Agent starts with adapters available and no automatic hardware discovery
+- **WHEN** the QA package configuration sets `enableRealAdapters=true` and `discoverOnStartup=false`
+- **THEN** startup SHALL not invoke physical discovery, while the loopback health endpoint SHALL report the expected Agent version, x64 platform and `REAL` mode.
+
+#### Scenario: Production adapter and discovery profile is preserved
+- **WHEN** the production Agent package is generated
+- **THEN** its local configuration SHALL set both flags to `true`; isolated package health validation SHALL override adapter availability off and SHALL not access physical devices.
+
+#### Scenario: QA enrollment trust remains absent
+- **WHEN** the QA package has no accredited enrollment public key and key ID
+- **THEN** pairing remains unavailable and fail-closed; package generation SHALL neither invent trust material nor change the QA endpoint/audience.
+
+### Requirement: P0-A Windows uninstall metadata preserves data by default
+Generated `UninstallString` and `QuietUninstallString` SHALL preserve configuration/data by default and SHALL NOT imply `--remove-data`. Install, valid repair and supported update SHALL use the same policy and supported Windows quoting. Data removal SHALL require separate verified operator consent under the lifecycle contract; P0 SHALL NOT authorize destructive execution or change Agent/ROCHI behavior.
+
+#### Scenario: Normal and quiet metadata are generated
+- **WHEN** install, valid repair or supported update generates uninstall metadata without separate data-removal consent
+- **THEN** both registered commands SHALL preserve data/configuration and neither SHALL automatically contain `--remove-data`.
+
+#### Scenario: Executable path contains spaces
+- **WHEN** the intended uninstall executable is under a Windows path containing spaces
+- **THEN** generated commands SHALL preserve the executable as one correctly quoted argument and SHALL preserve the supported uninstall arguments without adding a new silent or destructive mode.
+
+#### Scenario: Explicit data-removal arguments are evaluated in a pure test
+- **WHEN** tests evaluate supported explicit `--remove-data` parsing separately from default registered commands
+- **THEN** compatibility SHALL be checked without executing removal, and silence, elevation or a registry value alone SHALL NOT substitute for verified operator consent.
+
+#### Scenario: A legacy quiet command includes data removal
+- **WHEN** an existing host registration or historical command contains `--remove-data`
+- **THEN** it SHALL require compatibility/safety review and a separately authorized correction path; source changes or pure-test success SHALL NOT be reported as correction of that host registry, and the legacy command SHALL NOT be executed by this checkpoint.
+
+### Requirement: Electron window close follows configured behavior
+The POS Electron main process SHALL apply `MANUS_ELECTRON_CLOSE_BEHAVIOR`: `quit` requests the normal Electron quit lifecycle, and `hide` hides the window while keeping the application running. This does not claim child-process ownership or physical lifecycle certification.
+
+#### Scenario: Default quit behavior closes the application normally
+- **WHEN** the user requests window close with the default or configured `quit` behavior
+- **THEN** the close handler SHALL request `app.quit()`, allow the subsequent close after `before-quit`, and SHALL NOT cancel every close request or recurse indefinitely.
+
+#### Scenario: Hide behavior preserves the running application
+- **WHEN** the user requests window close with `MANUS_ELECTRON_CLOSE_BEHAVIOR=hide`
+- **THEN** the close handler SHALL prevent window destruction and hide the window without requesting application quit.
+
+### Requirement: Electron allows an already-authorized close
+The POS Electron main process SHALL allow a close after `before-quit` or an explicitly authorized maintenance exit without requesting another quit.
+
+#### Scenario: Shutdown and maintenance close already authorized
+- **WHEN** Electron is already quitting or maintenance exit was explicitly authorized
+- **THEN** the close handler SHALL allow the window close without issuing another quit request.
+
+### Requirement: P0-B Classify Windows installation evidence before effects
+Installer admission SHALL classify read-only payload, metadata/version, registry and service evidence as proven fresh, valid repair/update, partial/inconsistent or unknown before persistent logs or target effects. Missing metadata alone SHALL NOT establish fresh state. Partial/unknown evidence SHALL reject with a sanitized diagnostic and zero effects, without automatic repair, cleanup or fallback fresh install. Recovery SHALL require a separate checkpoint.
+
+#### Scenario: Fresh installation is genuinely clean
+- **WHEN** required payload/installation metadata, uninstall registration and managed service are authoritatively absent with no conflicting installation evidence
+- **THEN** admission SHALL classify proven fresh and SHALL NOT reject merely because version/metadata are normally absent.
+
+#### Scenario: Reinstall retains expected data
+- **WHEN** installation evidence is proven absent and expected retained data/configuration is compatible with the supported reinstall contract
+- **THEN** retained data alone SHALL NOT imply partial installation, and admission SHALL preserve it without clearing or resetting it; ambiguous ownership or compatibility SHALL remain unknown.
+
+#### Scenario: Existing repair is coherent
+- **WHEN** repair is explicit or selected by the existing supported same-version contract and installed payload, metadata/version, registry and managed-service configuration are coherent
+- **THEN** admission SHALL classify valid repair without adding automatic recovery behavior; a stopped service alone SHALL NOT invalidate otherwise coherent evidence.
+
+#### Scenario: Supported update is coherent
+- **WHEN** installed evidence is coherent and the installed-to-target version transition is explicitly supported
+- **THEN** admission SHALL classify valid update and SHALL preserve existing data/configuration.
+
+#### Scenario: Metadata is absent but installation footprints remain
+- **WHEN** payload, registry or managed-service evidence is present while required metadata/version or companion installation evidence is absent
+- **THEN** admission SHALL reject partial/inconsistent state before any target effect rather than selecting fresh installation.
+
+#### Scenario: Payload, registry or service evidence conflicts
+- **WHEN** payload validation fails or installed metadata, registered version/location and managed-service configuration disagree
+- **THEN** admission SHALL reject with a specific diagnostic and SHALL NOT replace payload, repair registration, stop services or change ACLs.
+
+#### Scenario: Version transition is unsupported
+- **WHEN** the installed version or its relation to the target cannot satisfy an existing supported repair/update contract
+- **THEN** admission SHALL reject as unknown or inconsistent according to confirmed evidence without inventing compatibility or treating the installation as fresh.
+
+#### Scenario: Required observation fails or changes
+- **WHEN** a required read is denied, fails, is incomplete or exposes an identity/evidence change before admission completes
+- **THEN** admission SHALL reject unknown state without converting the failed query into absence or asserting permanent namespace stability.
+
+#### Scenario: Rejection occurs before logging or preparation
+- **WHEN** pure tests supply partial/inconsistent or unknown installation evidence
+- **THEN** every persistent-log, directory/file, ACL, service, registry and data-effect counter SHALL remain zero, and the diagnostic SHALL be returned or emitted without persistent writes or sensitive contents.
+
+#### Scenario: P0 needs another owner or deferred cleanup capability
+- **WHEN** implementation would require another file/owner, helper changes or significant productive reordering outside the authorized two-file patch
+- **THEN** that block SHALL stop for separate coordination, without modifying ROCHI, service runtime, LocalService storage or ROOT/PID contracts; P1 helper and ROOT-05 disposition SHALL remain outside P0.

@@ -38,6 +38,8 @@ La configuraci?n por defecto es `9600`, `8` bits, paridad `none`, `1` stop bit y
 
 `serialport` usa bindings N-API para Windows/Linux. El `pkg` manifest incluye sus `dist` y prebuilds, pero el binario empaquetado a?n requiere una validaci?n de artefacto por plataforma. No se activa ning?n adapter serial desde otros perif?ricos ni desde el arranque del agent.
 
+
+
 ## Diagn?stico QA
 
 `RochiA01eQaCapture` se conecta a los callbacks existentes del adapter. Guarda como m?ximo 8 errores, convierte la entrada a hexadecimal latin1 limitado a 32 bytes, limita el mensaje a 160 caracteres y mide tiempo relativo. Cuenta frames v?lidos, errores suprimidos, fragmento pendiente y snapshot del adapter. El runner `scripts/qa-rochi-diagnostic.mjs` exige `--port` y `--unit`, limita la duraci?n a 3 segundos y siempre intenta cerrar el puerto.
@@ -52,3 +54,7 @@ La sincronizaci?n inicial vive en el transporte, no en el parser: espera el prim
 - Si ya hay una captura en curso, una segunda captura responde `SCALE_CAPTURE_BUSY`.
 
 El controlador serial y el parser no cambian.
+
+## QA installer discovery profile
+
+Automatic discovery in the productive installer UI requires both `enableRealAdapters=true` and `discoverOnStartup=true` in the packaged Agent config. Missing, unreadable, malformed, or non-boolean discovery policy disables startup discovery. Local health and explicit operator actions remain unchanged. The independent Agent and package policy is specified by `controlar-descubrimiento-perifericos-reales`.

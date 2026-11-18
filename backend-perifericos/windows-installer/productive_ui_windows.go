@@ -5,8 +5,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os/exec"
+	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -198,7 +201,8 @@ func runProductiveUI(manifest installerManifest, mode productiveUIMode) error {
 		showWebViewFallback(err)
 		return nil
 	}
-	html = []byte(appendCoreFlowHarness(string(html)) + appendProductiveDevicesHarness())
+	autoDiscoveryEnabled := packagedAgentStartupDiscoveryEnabled(manifest)
+	html = []byte(appendCoreFlowHarness(string(html)) + appendProductiveDevicesHarness(autoDiscoveryEnabled))
 	if mode == productiveUIConfigure {
 		html = []byte(appendConfigureModeHarness(string(html)))
 	}
@@ -225,4 +229,42 @@ func runProductiveUI(manifest installerManifest, mode productiveUIMode) error {
 	}()
 	w.Run()
 	return nil
+}
+
+func packagedAgentStartupDiscoveryEnabled(manifest installerManifest) bool {
+	configPath, ok := embeddedAgentConfigPath(manifest)
+	if !ok {
+		return false
+	}
+	data, err := embeddedAssets.ReadFile(configPath)
+	if err != nil {
+		return false
+	}
+	return agentConfigEnablesAutomaticDiscovery(data)
+}
+
+func embeddedAgentConfigPath(manifest installerManifest) (string, bool) {
+	if manifest.BundleRoot == "" || !fs.ValidPath(manifest.BundleRoot) || !strings.HasPrefix(manifest.BundleRoot, "assets/bundle/") {
+		return "", false
+	}
+	configRelative := strings.ReplaceAll(manifest.ConfigRelative, "\\", "/")
+	if configRelative == "" || !fs.ValidPath(configRelative) {
+		return "", false
+	}
+	return path.Join(manifest.BundleRoot, configRelative), true
+}
+
+func agentConfigEnablesAutomaticDiscovery(data []byte) bool {
+	var config struct {
+		PackageProfile      string `json:"packageProfile"`
+		EnableRealAdapters *bool `json:"enableRealAdapters"`
+		DiscoverOnStartup  *bool `json:"discoverOnStartup"`
+	}
+	if json.Unmarshal(data, &config) != nil || config.EnableRealAdapters == nil || config.DiscoverOnStartup == nil {
+		return false
+	}
+	if config.PackageProfile != "dev" && config.PackageProfile != "production" {
+		return false
+	}
+	return *config.EnableRealAdapters && *config.DiscoverOnStartup
 }
