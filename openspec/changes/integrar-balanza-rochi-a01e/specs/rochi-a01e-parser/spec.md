@@ -181,3 +181,18 @@ The POS SHALL keep normal UNIT sales available while preventing WEIGHT and the w
 #### Scenario: weighted action without commercial authorization
 - **WHEN** the operator selects a WEIGHT product or the Peso option for a BOTH product
 - **THEN** POS reports that REAL capture is unavailable and does not add a weighted quantity
+
+### Requirement: exclusive commercial acquisition
+The Agent SHALL serve each commercial capture with a new serial session opened only after the capture request is accepted and every earlier serial operation on that scale has fully closed. A capture SHALL NOT join or lend its reading to any other request; non-commercial reads MAY share only another pending non-commercial read. A second concurrent capture SHALL fail with `SCALE_CAPTURE_BUSY` without reading, and a failed read SHALL release the scale.
+
+#### Scenario: capture arrives while an earlier read is closing
+- **WHEN** a capture is requested after an earlier read received its frame but before that port finished closing
+- **THEN** the capture waits, opens a new session and uses only a frame from that session.
+
+#### Scenario: administrative read during a capture
+- **WHEN** an authorization or diagnostic read is requested while a capture is reading
+- **THEN** it opens its own session after the capture and never receives the capture frame.
+
+#### Scenario: double capture request
+- **WHEN** a second capture is requested while one is in progress
+- **THEN** it fails with `SCALE_CAPTURE_BUSY` without opening the port or submitting an observation.

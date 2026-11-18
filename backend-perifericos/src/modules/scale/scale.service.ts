@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import {
   DeviceType,
   PeripheralEventName,
@@ -20,7 +20,31 @@ const DEFAULT_TERMINAL_ID = "local-terminal";
 const DEFAULT_SCALE_ID = "mock-scale-001";
 const MOCK_WEIGHT_KG = 1.25;
 export const ROCHI_SERIAL_PORT_FACTORY = Symbol("ROCHI_SERIAL_PORT_FACTORY");
+export const SCALE_MONOTONIC_CLOCK = Symbol("SCALE_MONOTONIC_CLOCK");
 const ROCHI_READ_TIMEOUT_MS = 2_500;
+
+type ConfiguredScale = ReturnType<DevicesService["getConfiguredScales"]>[number];
+type TimedReading = { response: ScaleWeightResponse; openStartedMonoMs: number; frameMonoMs: number };
+
+/**
+ * Commercial acquisition evidence. Intervals come from the Agent's local monotonic
+ * clock, so they never depend on wall-clock agreement between Windows and the API.
+ */
+export type ExclusiveScaleAcquisition = {
+  reading: ScaleWeightResponse;
+  acceptedMonoMs?: number;
+  frameMonoMs?: number;
+  requestToFrameMs?: number;
+};
+
+// Per physical scale: one serial operation at a time. Non-commercial reads may share
+// a pending non-commercial read; a commercial capture never shares and never lends.
+type ScaleLane = {
+  pending: number;
+  tail: Promise<void>;
+  shared?: Promise<ScaleWeightResponse>;
+  exclusiveActive: boolean;
+};
 
 const readUnitVerification = (metadata: Record<string, unknown> | undefined): ScaleUnitVerification | undefined => {
   const value = metadata?.unitVerification;
@@ -40,12 +64,81 @@ export class ScaleService {
     @Inject(EventsService) private readonly eventsService: EventsService,
     @Optional()
     @Inject(ROCHI_SERIAL_PORT_FACTORY)
-    private readonly rochiPortFactory: RochiSerialPortFactory = createRochiSerialPort
+    private readonly rochiPortFactory: RochiSerialPortFactory = createRochiSerialPort,
+    @Optional()
+    @Inject(SCALE_MONOTONIC_CLOCK)
+    private readonly monotonicNow: () => number = () => performance.now()
   ) {}
 
-  private readonly inFlight = new Map<string, Promise<ScaleWeightResponse>>();
+  private readonly lanes = new Map<string, ScaleLane>();
 
   getCurrentWeight(request: ScaleWeightRequest): ScaleWeightResponse | Promise<ScaleWeightResponse> {
+    const resolved = this.resolveScale(request);
+    if ("mock" in resolved) return resolved.mock;
+    const { terminalId, selected } = resolved;
+    const lane = this.lane(selected.id);
+    if (lane.shared) return lane.shared;
+    const operation = this.schedule(lane, () => this.readRochi(terminalId, selected.id, selected.serial!))
+      .then((timed) => timed.response);
+    lane.shared = operation;
+    const clear = () => { if (lane.shared === operation) lane.shared = undefined; };
+    operation.then(clear, clear);
+    return operation;
+  }
+
+  /**
+   * Commercial capture read: always opens a new serial session after this request is
+   * accepted, never joins a pending read and is never shared with another request.
+   */
+  async acquireForCapture(request: { terminalId?: string }): Promise<ExclusiveScaleAcquisition> {
+    const acceptedMonoMs = this.monotonicNow();
+    const resolved = this.resolveScale({ terminalId: request.terminalId });
+    if ("mock" in resolved) return { reading: resolved.mock };
+    const { terminalId, selected } = resolved;
+    const lane = this.lane(selected.id);
+    if (lane.exclusiveActive) throw new ConflictException("SCALE_CAPTURE_BUSY");
+    lane.exclusiveActive = true;
+    try {
+      const timed = await this.schedule(lane, () => this.readRochi(terminalId, selected.id, selected.serial!));
+      // Order is guaranteed by construction (new serial session after acceptance);
+      // this check fails closed if that invariant is ever broken.
+      if (!(timed.openStartedMonoMs >= acceptedMonoMs && timed.frameMonoMs >= timed.openStartedMonoMs)) {
+        throw new ConflictException("SCALE_ACQUISITION_ORDER_INVALID");
+      }
+      return { reading: timed.response, acceptedMonoMs, frameMonoMs: timed.frameMonoMs,
+        requestToFrameMs: Math.max(0, Math.round(timed.frameMonoMs - acceptedMonoMs)) };
+    } finally {
+      lane.exclusiveActive = false;
+    }
+  }
+
+  /** Whole milliseconds elapsed on the local monotonic clock since `monoMs`. */
+  elapsedSince(monoMs: number): number {
+    return Math.max(0, Math.round(this.monotonicNow() - monoMs));
+  }
+
+  private lane(deviceId: string): ScaleLane {
+    let lane = this.lanes.get(deviceId);
+    if (!lane) {
+      lane = { pending: 0, tail: Promise.resolve(), exclusiveActive: false };
+      this.lanes.set(deviceId, lane);
+    }
+    return lane;
+  }
+
+  // Runs immediately when the scale is idle; otherwise after every earlier operation
+  // has fully settled, including closing its serial port.
+  private schedule<T>(lane: ScaleLane, task: () => Promise<T>): Promise<T> {
+    const operation = lane.pending === 0 ? task() : lane.tail.then(task);
+    lane.pending += 1;
+    const settled = operation.then(() => undefined, () => undefined).then(() => { lane.pending -= 1; });
+    lane.tail = settled;
+    return operation;
+  }
+
+  private resolveScale(request: ScaleWeightRequest):
+    | { mock: ScaleWeightResponse }
+    | { terminalId: string; selected: ConfiguredScale } {
     const terminalId = validateIdentifier(
       request.terminalId?.trim() || DEFAULT_TERMINAL_ID,
       "terminalId"
@@ -56,7 +149,7 @@ export class ScaleService {
     );
     if (getPeripheralsConfig().mode !== "REAL") {
       this.devicesService.findRequired(deviceId, DeviceType.SCALE);
-      return this.buildMockResponse(terminalId, deviceId);
+      return { mock: this.buildMockResponse(terminalId, deviceId) };
     }
 
     const configuredScales = this.devicesService.getConfiguredScales(terminalId);
@@ -76,14 +169,7 @@ export class ScaleService {
     ) {
       throw new BadRequestException("configured SCALE is not a supported ROCHI serial device");
     }
-
-    const active = this.inFlight.get(selected.id);
-    if (active) return active;
-    const operation = this.readRochi(terminalId, selected.id, selected.serial).finally(() => {
-      this.inFlight.delete(selected.id);
-    });
-    this.inFlight.set(selected.id, operation);
-    return operation;
+    return { terminalId, selected };
   }
 
   private buildMockResponse(terminalId: string, deviceId: string): ScaleWeightResponse {
@@ -126,8 +212,9 @@ export class ScaleService {
   private async readRochi(
     terminalId: string,
     deviceId: string,
-    serial: NonNullable<ReturnType<DevicesService["getConfiguredScales"]>[number]["serial"]>
-  ): Promise<ScaleWeightResponse> {
+    serial: NonNullable<ConfiguredScale["serial"]>
+  ): Promise<TimedReading> {
+    const openStartedMonoMs = this.monotonicNow();
     const scale = new RochiA01eSerialScale({
       path: serial.port,
       sourceUnit: "UNKNOWN",
@@ -139,9 +226,10 @@ export class ScaleService {
     }, this.rochiPortFactory, "REAL");
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const result = await new Promise<{ value: number; timestamp: string }>((resolve, reject) => {
+      const result = await new Promise<{ value: number; timestamp: string; frameMonoMs: number }>((resolve, reject) => {
         timer = setTimeout(() => reject(new Error("ROCHI reading timeout")), ROCHI_READ_TIMEOUT_MS);
-        scale.onReading((value) => resolve({ value: value.value, timestamp: new Date(value.receivedAtMs).toISOString() }));
+        scale.onReading((value) => resolve({ value: value.value, timestamp: new Date(value.receivedAtMs).toISOString(),
+          frameMonoMs: this.monotonicNow() }));
         scale.onParseError((error) => reject(new Error(`ROCHI parser error: ${error.code}`)));
         scale.open().catch(reject);
       });
@@ -168,7 +256,7 @@ export class ScaleService {
           unit: response.unit, unitVerified: response.unitVerified,
           stabilityVerified: response.stabilityVerified, observedAt: response.timestamp },
       });
-      return response;
+      return { response, openStartedMonoMs, frameMonoMs: result.frameMonoMs };
     } finally {
       if (timer) clearTimeout(timer);
       await scale.close().catch(() => undefined);
