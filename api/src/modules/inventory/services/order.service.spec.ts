@@ -981,7 +981,16 @@ class FakeDeliveryClient {
   constructor(
     private readonly options: {
       items: Array<{ id: string; productId: string; ordered: number; delivered?: number }>;
-      lotPolicies: Record<string, { requiresLot: boolean; requiresExpiration?: boolean; requiresSerial?: boolean }>;
+      lotPolicies: Record<
+        string,
+        {
+          requiresLot: boolean;
+          requiresExpiration?: boolean;
+          requiresSerial?: boolean;
+          isInventoryable?: boolean;
+          name?: string;
+        }
+      >;
       balances: Record<string, DeliveryBalance[]>;
     }
   ) {}
@@ -1066,6 +1075,8 @@ class FakeDeliveryClient {
             requires_lot: this.options.lotPolicies[productId].requiresLot,
             requires_expiration: this.options.lotPolicies[productId].requiresExpiration ?? false,
             requires_serial: this.options.lotPolicies[productId].requiresSerial ?? false,
+            is_inventoryable: this.options.lotPolicies[productId].isInventoryable ?? true,
+            name: this.options.lotPolicies[productId].name ?? null,
           })) as T[],
       };
     }
@@ -1501,4 +1512,90 @@ test("OrderService.deliverOrder: valida serialIds antes de abrir la transacción
     BadRequestException
   );
   assert.equal(client.queries.length, 0);
+});
+
+test("OrderService.deliverOrder: servicio no inventariable se entrega sin stock ni movimiento", async () => {
+  const { service, client, movements } = buildDeliveryService(
+    {
+      items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 1 }],
+      lotPolicies: { [ids.product]: { requiresLot: false, isInventoryable: false, name: "Servicio Tecnico Celular" } },
+      balances: {},
+    },
+    0
+  );
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 1 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 0);
+  assert.ok(client.queries.some((query) => query.text.trim().startsWith("UPDATE order_items")));
+});
+
+test("OrderService.deliverOrder: pedido mixto entrega el servicio y descuenta solo el producto fisico", async () => {
+  const { service, client, movements } = buildDeliveryService(
+    {
+      items: [
+        { id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 1 },
+        { id: "10000000-0000-0000-0000-0000000000a2", productId: deliveryProductB, ordered: 2 },
+      ],
+      lotPolicies: {
+        [ids.product]: { requiresLot: false, isInventoryable: false, name: "Servicio" },
+        [deliveryProductB]: { requiresLot: false, name: "Cable" },
+      },
+      balances: {},
+    },
+    5
+  );
+
+  await service.deliverOrder(
+    ids.order,
+    ids.tenant,
+    [
+      { productId: ids.product, quantity: 1 },
+      { productId: deliveryProductB, quantity: 2 },
+    ],
+    deliveryContext,
+    actor
+  );
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.equal(movements[0].productId, deliveryProductB);
+});
+
+test("OrderService.deliverOrder: sin stock informa los productos fisicos que no alcanzan y no crea efectos", async () => {
+  const { service, client, movements } = buildDeliveryService(
+    {
+      items: [
+        { id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 3 },
+        { id: "10000000-0000-0000-0000-0000000000a2", productId: deliveryProductB, ordered: 4 },
+      ],
+      lotPolicies: {
+        [ids.product]: { requiresLot: false, name: "Cable blanco" },
+        [deliveryProductB]: { requiresLot: false, name: "Cable negro" },
+      },
+      balances: {},
+    },
+    2
+  );
+
+  await assert.rejects(
+    () =>
+      service.deliverOrder(
+        ids.order,
+        ids.tenant,
+        [
+          { productId: ids.product, quantity: 3 },
+          { productId: deliveryProductB, quantity: 4 },
+        ],
+        deliveryContext,
+        actor
+      ),
+    (error: Error) =>
+      /insufficient stock for delivery: Cable blanco \(disponible 2, a entregar 3\); Cable negro \(disponible 2, a entregar 4\)/.test(
+        error.message
+      )
+  );
+  assert.equal(client.committed, false);
+  assert.equal(movements.length, 0);
 });

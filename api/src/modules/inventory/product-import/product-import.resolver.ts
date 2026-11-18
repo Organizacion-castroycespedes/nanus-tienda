@@ -1,4 +1,5 @@
 import {
+  isUnitMeasurementUnit,
   PRODUCT_MEASUREMENT_UNITS,
   PRODUCT_STANDARD_IDENTIFICATION_SCHEMES,
   type ProductMeasurementUnit,
@@ -341,7 +342,7 @@ function resolveSaleModel(
     const normalized = normalizeKey(rawMeasurement) as ProductMeasurementUnit;
     if (!PRODUCT_MEASUREMENT_UNITS.includes(normalized)) {
       row.errors.push(
-        `unidad_comercial: "${rawMeasurement}" debe ser UND, KG, LB, G u OZ.`
+        `unidad_comercial: "${rawMeasurement}" debe ser UND, M, L, CM, M2, KG, LB, G u OZ.`
       );
       return {};
     }
@@ -361,11 +362,11 @@ function resolveSaleModel(
         ? "UND"
         : "KG");
 
-  if (finalSaleType === "UNIT" && finalMeasurement !== "UND") {
-    row.errors.push("Productos por UNIDAD deben usar unidad_comercial UND.");
+  if (finalSaleType === "UNIT" && !isUnitMeasurementUnit(finalMeasurement)) {
+    row.errors.push("Productos por UNIDAD deben usar unidad_comercial UND, M, L, CM o M2.");
     return {};
   }
-  if (finalSaleType !== "UNIT" && finalMeasurement === "UND") {
+  if (finalSaleType !== "UNIT" && isUnitMeasurementUnit(finalMeasurement)) {
     row.errors.push(
       "Productos por PESO o MIXTO deben usar unidad_comercial KG, LB, G u OZ."
     );

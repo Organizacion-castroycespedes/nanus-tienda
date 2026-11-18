@@ -28,6 +28,7 @@ type ProductRow = QueryResultRow & {
   requires_lot: boolean;
   requires_expiration: boolean;
   requires_serial: boolean | null;
+  allows_decimal_quantity: boolean | null;
   operational_status: ProductProps["operationalStatus"];
   rotation_class: ProductProps["rotationClass"];
   sale_type: ProductProps["saleType"];
@@ -83,6 +84,7 @@ type UpdateProductData = Partial<
     | "requiresLot"
     | "requiresExpiration"
     | "requiresSerial"
+    | "allowsDecimalQuantity"
     | "operationalStatus"
     | "rotationClass"
     | "saleType"
@@ -163,6 +165,7 @@ export class ProductRepository {
     requires_lot,
     requires_expiration,
     requires_serial,
+    allows_decimal_quantity,
     operational_status,
     rotation_class,
     sale_type,
@@ -209,6 +212,7 @@ export class ProductRepository {
       requiresLot: row.requires_lot,
       requiresExpiration: row.requires_expiration,
       requiresSerial: row.requires_serial ?? false,
+      allowsDecimalQuantity: row.allows_decimal_quantity ?? false,
       operationalStatus: row.operational_status,
       rotationClass: row.rotation_class,
       saleType: row.sale_type ?? "UNIT",
@@ -291,12 +295,13 @@ export class ProductRepository {
         image_updated_at,
         created_at,
         updated_at,
-        requires_serial
+        requires_serial,
+        allows_decimal_quantity
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19,
         $20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
-        $30, $31, $32, $33, $34, $35
+        $30, $31, $32, $33, $34, $35, $36
       )
       RETURNING
         ${this.selectColumns}
@@ -337,6 +342,7 @@ export class ProductRepository {
         product.createdAt,
         product.updatedAt,
         product.requiresSerial ?? false,
+        product.allowsDecimalQuantity ?? false,
       ],
       client
     );
@@ -506,6 +512,12 @@ export class ProductRepository {
     }
     if (data.measurementUnit !== undefined && data.measurementUnit !== null) {
       addUpdate("measurement_unit", data.measurementUnit);
+    }
+    if (
+      data.allowsDecimalQuantity !== undefined &&
+      data.allowsDecimalQuantity !== null
+    ) {
+      addUpdate("allows_decimal_quantity", data.allowsDecimalQuantity);
     }
     if (data.minStock !== undefined) {
       addUpdate("min_stock", data.minStock);

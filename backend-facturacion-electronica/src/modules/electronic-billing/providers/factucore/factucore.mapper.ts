@@ -298,7 +298,30 @@ const normalizeCommandPayments = (
   return normalized;
 };
 
-const mapUnitCode = (value: string | null | undefined) => value === "UNIT" || value === "UND" || !value ? "EA" : value;
+/**
+ * Unidad de Manus -> codigo DIAN UBL (UN/ECE Rec. 20) aceptado por FactuCore.
+ * UND se mantiene en EA (comportamiento previo); las demas unidades usan su codigo oficial.
+ */
+const MANUS_TO_DIAN_UNIT_CODES: Record<string, string> = {
+  UNIT: "EA",
+  UND: "EA",
+  KG: "KGM",
+  G: "GRM",
+  LB: "LBR",
+  OZ: "ONZ",
+  M: "MTR",
+  L: "LTR",
+  CM: "CMT",
+  M2: "MTK",
+};
+
+export const mapUnitCode = (value: string | null | undefined) => {
+  if (!value) {
+    return "EA";
+  }
+  const normalized = value.trim().toUpperCase();
+  return MANUS_TO_DIAN_UNIT_CODES[normalized] ?? normalized;
+};
 
 const toIsoString = (value: string | Date | null | undefined) => {
   if (!value) {

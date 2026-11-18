@@ -4,6 +4,7 @@ import { CheckCircle2 } from "lucide-react";
 import { Button } from "../../../components/design-system/Button";
 import { Textarea } from "../../../components/design-system/Textarea";
 import type { PurchaseDetailResponse } from "../services/purchase.service";
+import { roundQuantity } from "../utils/quantity-policy";
 
 type SettlePartialPurchaseFormProps = {
   purchase: PurchaseDetailResponse | null;
@@ -162,37 +163,41 @@ export const SettlePartialPurchaseForm = ({
             </div>
           ) : null}
 
-          <section className="rounded-lg border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700">
-            <div className="overflow-x-auto">
-              <table className="min-w-[860px] divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
+          <section
+            aria-label="Productos de la compra"
+            className="rounded-lg border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700"
+          >
+            {/* Escritorio/tablet: la tabla ocupa todo el ancho disponible. */}
+            <div className="hidden md:block">
+              <table className="w-full table-fixed divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50 text-left text-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Producto</th>
-                    <th className="px-4 py-3 font-medium">Pedido</th>
-                    <th className="px-4 py-3 font-medium">Recibido</th>
-                    <th className="px-4 py-3 font-medium">Pendiente</th>
-                    <th className="px-4 py-3 font-medium">Valor recibido</th>
-                    <th className="px-4 py-3 font-medium">Valor no recibido</th>
+                    <th className="w-[34%] px-4 py-3 font-medium">Producto</th>
+                    <th className="px-3 py-3 text-right font-medium">Pedido</th>
+                    <th className="px-3 py-3 text-right font-medium">Recibido</th>
+                    <th className="px-3 py-3 text-right font-medium">Pendiente</th>
+                    <th className="px-3 py-3 text-right font-medium">Valor recibido</th>
+                    <th className="px-4 py-3 text-right font-medium">Valor no recibido</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                   {purchase.items.map((item) => {
-                    const pending = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
+                    const pending = roundQuantity(Math.max(item.orderedQuantity - item.receivedQuantity, 0));
                     const receivedValue = item.receivedQuantity * item.cost;
                     const unreceivedValue = pending * item.cost;
 
                     return (
                       <tr key={item.id}>
-                        <td className="px-4 py-3 text-slate-900 dark:text-white">
+                        <td className="break-words px-4 py-3 text-slate-900 dark:text-white">
                           {item.productName || item.productId}
                         </td>
-                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.orderedQuantity}</td>
-                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.receivedQuantity}</td>
-                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{pending}</td>
-                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                        <td className="px-3 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{item.orderedQuantity}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{item.receivedQuantity}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{pending}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
                           {formatCurrency(receivedValue)}
                         </td>
-                        <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                        <td className="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
                           {formatCurrency(unreceivedValue)}
                         </td>
                       </tr>
@@ -201,6 +206,47 @@ export const SettlePartialPurchaseForm = ({
                 </tbody>
               </table>
             </div>
+
+            {/* Movil: una tarjeta por producto, sin scroll horizontal. */}
+            <ul className="divide-y divide-slate-100 md:hidden dark:divide-slate-700">
+              {purchase.items.map((item) => {
+                const pending = roundQuantity(Math.max(item.orderedQuantity - item.receivedQuantity, 0));
+                const receivedValue = item.receivedQuantity * item.cost;
+                const unreceivedValue = pending * item.cost;
+
+                return (
+                  <li key={item.id} className="space-y-2 p-4 text-sm">
+                    <p className="break-words font-medium text-slate-900 dark:text-white">
+                      {item.productName || item.productId}
+                    </p>
+                    <dl className="grid grid-cols-3 gap-2 text-slate-700 dark:text-slate-200">
+                      <div>
+                        <dt className="text-xs text-slate-500 dark:text-slate-400">Pedido</dt>
+                        <dd className="tabular-nums">{item.orderedQuantity}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-slate-500 dark:text-slate-400">Recibido</dt>
+                        <dd className="tabular-nums">{item.receivedQuantity}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-slate-500 dark:text-slate-400">Pendiente</dt>
+                        <dd className="tabular-nums">{pending}</dd>
+                      </div>
+                    </dl>
+                    <dl className="grid grid-cols-2 gap-2 text-slate-700 dark:text-slate-200">
+                      <div>
+                        <dt className="text-xs text-slate-500 dark:text-slate-400">Valor recibido</dt>
+                        <dd className="tabular-nums">{formatCurrency(receivedValue)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-slate-500 dark:text-slate-400">Valor no recibido</dt>
+                        <dd className="tabular-nums">{formatCurrency(unreceivedValue)}</dd>
+                      </div>
+                    </dl>
+                  </li>
+                );
+              })}
+            </ul>
           </section>
 
           <Textarea

@@ -71,6 +71,23 @@ type DeliveryScanProduct = InventoryBarcodeProduct & { name: string; source?: Pr
 
 const ORDER_DOCUMENT_LABEL = "este pedido";
 
+/**
+ * La API responde "insufficient stock for delivery: Producto A (disponible 2, a entregar 3); ...".
+ * Se muestran los productos sin saldo; los servicios nunca aparecen porque no manejan stock.
+ */
+export const buildInsufficientStockMessage = (description: string) => {
+  const detail = description.split("insufficient stock for delivery:")[1]?.trim();
+  const products = detail ? detail.split(";").map((part) => part.trim()).filter(Boolean) : [];
+  if (products.length === 0) {
+    return "No hay stock suficiente en inventario para entregar esa cantidad. Ajusta la cantidad a entregar o registra la entrada de mercancía.";
+  }
+  const heading =
+    products.length === 1
+      ? "Este producto no tiene saldo suficiente para la entrega:"
+      : "Estos productos no tienen saldo suficiente para la entrega:";
+  return `${heading}\n${products.map((product) => `• ${product}`).join("\n")}\n\nAjusta la cantidad a entregar o registra la entrada de mercancía.`;
+};
+
 const formatQuantity = (value: number) =>
   new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 }).format(value);
 
@@ -532,7 +549,7 @@ export const OrderDeliverForm = ({
       const stockMessage = apiDialog.description?.includes("insufficient lot stock for delivery")
         ? "No hay stock suficiente en lotes vigentes para esta entrega. Revisa lotes vencidos o bloqueados en Inventario > Lotes."
         : apiDialog.description?.includes("insufficient stock for delivery")
-          ? "No hay stock suficiente en inventario para entregar esa cantidad. Ajusta la cantidad a entregar o registra la entrada de mercancía."
+          ? buildInsufficientStockMessage(apiDialog.description)
           : null;
       const dialog = stockMessage ? { ...apiDialog, description: stockMessage } : apiDialog;
       // Rechazo de series (la entrega se revirtió completa): se limpian las series del producto.
@@ -787,7 +804,7 @@ export const OrderDeliverForm = ({
           ) : null}
 
           {errors.submit ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div className="whitespace-pre-line rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {errors.submit}
             </div>
           ) : null}

@@ -56,6 +56,7 @@ export type ProductFormValues = {
   requiresLot: boolean;
   requiresExpiration: boolean;
   requiresSerial: boolean;
+  allowsDecimalQuantity: boolean;
   operationalStatus: ProductOperationalStatus;
   rotationClass: "" | ProductRotationClass;
   saleType: ProductSaleType;
@@ -105,6 +106,10 @@ export const measurementUnitOptions: Array<{
   label: string;
 }> = [
   { value: "UND", label: "UND - Unidad" },
+  { value: "M", label: "M - Metro" },
+  { value: "L", label: "L - Litro" },
+  { value: "CM", label: "CM - Centímetro" },
+  { value: "M2", label: "M2 - Metro cuadrado" },
   { value: "KG", label: "KG - Kilogramo" },
   { value: "LB", label: "LB - Libra" },
   { value: "G", label: "G - Gramo" },

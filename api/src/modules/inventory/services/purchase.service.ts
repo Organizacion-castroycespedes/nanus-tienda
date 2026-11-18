@@ -38,6 +38,7 @@ import {
   type BranchScopedActor,
   type BranchScopedFilters,
 } from "../utils/access";
+import { getQuantityPolicyViolation, roundQuantity } from "../utils/quantity-policy";
 
 type CreatePurchaseItemInput = {
   id?: string;
@@ -67,9 +68,17 @@ type UpdatePurchaseInput = Partial<{
   type: PurchaseType;
   total: number;
   balance: number;
-  status: Extract<PurchaseStatus, "DRAFT" | "PENDING">;
   items: CreatePurchaseItemInput[];
 }>;
+
+type ConfirmPurchaseInput = {
+  context?: InventoryContext;
+  actor: BranchScopedActor;
+};
+
+type UpdatePurchaseOptions = {
+  context?: InventoryContext;
+};
 
 type ReceivePurchaseItemInput = {
   productId?: string;
@@ -193,6 +202,9 @@ type PurchaseItemRow = {
   requires_lot?: boolean | null;
   requires_expiration?: boolean | null;
   requires_serial?: boolean | null;
+  allows_decimal_quantity?: boolean | null;
+  sale_type?: string | null;
+  measurement_unit?: string | null;
   quantity?: string | number | null;
   ordered_quantity?: string | number | null;
   received_quantity?: string | number | null;
@@ -203,16 +215,15 @@ type PurchaseItemRow = {
   unreceived_subtotal?: string | number | null;
 };
 
-type ProductRow = {
-  id: string;
-};
-
 type ProductLotPolicyRow = {
   id: string;
   requires_lot: boolean;
   requires_expiration: boolean;
   requires_serial?: boolean | null;
   is_inventoryable: boolean;
+  name?: string | null;
+  sale_type?: string | null;
+  allows_decimal_quantity?: boolean | null;
 };
 
 type BranchRow = {
@@ -502,7 +513,9 @@ export class PurchaseService {
       ...this.mapPurchaseCancellation(purchaseRow),
       items: itemRows.map((row) => {
         const item = this.mapPurchaseItem(row);
-        const pendingQuantity = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
+        const pendingQuantity = roundQuantity(
+          Math.max(item.orderedQuantity - item.receivedQuantity, 0)
+        );
         return {
           ...item,
            productName: row.product_name ?? null,
@@ -512,8 +525,13 @@ export class PurchaseService {
           requiresLot: row.requires_lot ?? false,
           requiresExpiration: row.requires_expiration ?? false,
           requiresSerial: row.requires_serial ?? false,
+          allowsDecimalQuantity: row.allows_decimal_quantity ?? false,
+          saleType: row.sale_type ?? "UNIT",
+          measurementUnit: row.measurement_unit ?? "UND",
           pendingQuantity:
-            row.pending_quantity == null ? pendingQuantity : Number(row.pending_quantity),
+            row.pending_quantity == null
+              ? pendingQuantity
+              : roundQuantity(Number(row.pending_quantity)),
           receivedSubtotal:
             row.received_subtotal == null
               ? Number((item.receivedQuantity * item.cost).toFixed(2))
@@ -582,9 +600,19 @@ export class PurchaseService {
     client: PoolClient
   ) {
     for (const item of items) {
-      const product = await client.query<ProductRow>(
+      const product = await client.query<{
+        id: string;
+        name?: string | null;
+        sale_type?: string | null;
+        allows_decimal_quantity?: boolean | null;
+      }>(
         `
-        SELECT id
+        SELECT
+          id,
+          name,
+          sale_type,
+          COALESCE((to_jsonb(products)->>'allows_decimal_quantity')::boolean, FALSE)
+            AS allows_decimal_quantity
         FROM products
         WHERE id = $1 AND tenant_id = $2
         LIMIT 1
@@ -592,8 +620,19 @@ export class PurchaseService {
         [item.productId, tenantId]
       );
 
-      if (!product.rows[0]) {
+      const row = product.rows[0];
+      if (!row) {
         throw new BadRequestException("product not found for tenant");
+      }
+
+      const quantity = Number(item.orderedQuantity ?? item.quantity ?? 0);
+      const violation = getQuantityPolicyViolation(
+        quantity,
+        { saleType: row.sale_type, allowsDecimalQuantity: row.allows_decimal_quantity },
+        row.name ? `El producto ${row.name}` : "El producto"
+      );
+      if (violation) {
+        throw new BadRequestException(violation);
       }
     }
   }
@@ -878,7 +917,8 @@ export class PurchaseService {
     id: string,
     tenantId: string,
     data: UpdatePurchaseInput,
-    actor: BranchScopedActor
+    actor: BranchScopedActor,
+    options: UpdatePurchaseOptions = {}
   ) {
     const client = await this.db.getClient();
     try {
@@ -911,15 +951,14 @@ export class PurchaseService {
       if (!current) {
         throw new NotFoundException("purchase not found");
       }
-      if (current.status === "RECEIVED") {
-        throw new BadRequestException("received purchases cannot be updated");
+      // Solo un borrador es editable: una vez confirmada (PENDING) o recibida,
+      // reemplazar los renglones borraria cantidades recibidas y su trazabilidad.
+      if (current.status !== PURCHASE_STATUS.DRAFT) {
+        throw new ConflictException(
+          "Solo las compras en borrador pueden editarse. Esta compra ya fue confirmada, recibida o cancelada."
+        );
       }
-      if (current.status === "CANCELLED") {
-        throw new BadRequestException("cancelled purchases cannot be updated");
-      }
-      if (current.status === PURCHASE_STATUS.CERRADA_PARCIAL) {
-        throw new BadRequestException("closed partial purchases cannot be updated");
-      }
+      await this.assertPurchaseWithoutReceipts(id, tenantId, client);
 
       const purchaseAuditContext = await this.getPurchaseAuditContext(id, tenantId, client);
       await this.resolvePurchaseScope(actor, {
@@ -932,10 +971,18 @@ export class PurchaseService {
         await this.ensureProductsBelongToTenant(data.items, tenantId, client);
       }
 
+      if (data.items && data.total === undefined) {
+        throw new BadRequestException("total is required when items are updated");
+      }
       const nextType = data.type ?? current.type;
       const nextTotal =
-        data.total !== undefined ? data.total : Number(current.total);
+        data.total !== undefined ? this.resolveBalance(data.total) : Number(current.total);
       const nextTotalPaid = Number(current.total_paid ?? 0);
+      if (nextTotal < nextTotalPaid) {
+        throw new ConflictException(
+          "El total de la compra no puede ser menor a lo ya pagado"
+        );
+      }
       const nextBalance = Math.max(nextTotal - nextTotalPaid, 0);
       const nextPaymentStatus =
         nextTotalPaid <= 0
@@ -945,7 +992,7 @@ export class PurchaseService {
             : nextTotalPaid === nextTotal
               ? "PAID"
               : "OVERPAID";
-      const nextStatus = data.status ?? current.status;
+      const nextStatus = current.status;
 
       const updateResult = await client.query<PurchaseRow>(
         `
@@ -1011,11 +1058,209 @@ export class PurchaseService {
         items = itemsResult.rows.map((row) => this.mapPurchaseItem(row));
       }
 
+      if (this.auditService.isModuleEnabled("inventory")) {
+        await client.query(
+          `
+            INSERT INTO auditoria_eventos
+              (tenant_id, usuario_id, modulo, entidad, entidad_id, accion, datos_antes, datos_despues)
+            VALUES
+              ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)
+          `,
+          [
+            tenantId,
+            options.context?.userId ?? actor.userId ?? null,
+            "inventory",
+            "purchases",
+            id,
+            "PURCHASE_DRAFT_UPDATED",
+            JSON.stringify({
+              status: current.status,
+              supplierId: current.supplier_id,
+              type: current.type,
+              total: Number(current.total),
+            }),
+            JSON.stringify({
+              status: nextStatus,
+              supplierId: updateResult.rows[0]?.supplier_id ?? current.supplier_id,
+              type: nextType,
+              total: nextTotal,
+              itemsCount: items.length,
+              itemsReplaced: Boolean(data.items),
+            }),
+          ]
+        );
+      }
+
       await client.query("COMMIT");
 
       return {
         ...this.mapPurchase(updateResult.rows[0]),
+        branchId: purchaseAuditContext.branch_id,
+        branchName: purchaseAuditContext.branch_name,
+        terminalId: purchaseAuditContext.terminal_id,
+        terminalName: purchaseAuditContext.terminal_name,
         items,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async assertPurchaseWithoutReceipts(
+    purchaseId: string,
+    tenantId: string,
+    client: PoolClient
+  ) {
+    const itemsResult = await client.query<{ received_quantity: string | number }>(
+      `
+        SELECT received_quantity
+        FROM purchase_items
+        WHERE purchase_id = $1
+      `,
+      [purchaseId]
+    );
+    if (itemsResult.rows.some((item) => Number(item.received_quantity ?? 0) > 0)) {
+      throw new ConflictException("La compra ya tiene cantidades recibidas y no puede modificarse");
+    }
+
+    const movementResult = await client.query<{ id: string }>(
+      `
+        SELECT id
+        FROM stock_movements
+        WHERE tenant_id = $1
+          AND reference_type = 'PURCHASE'
+          AND reference_id = $2
+        LIMIT 1
+      `,
+      [tenantId, purchaseId]
+    );
+    if (movementResult.rows[0]) {
+      throw new ConflictException("La compra ya tiene movimientos de inventario y no puede modificarse");
+    }
+
+    return itemsResult.rows.length;
+  }
+
+  /**
+   * Confirma un borrador (DRAFT -> PENDING). No toca inventario, lotes, series ni pagos:
+   * solo cierra la edicion y habilita la recepcion.
+   */
+  async confirmPurchase(id: string, tenantId: string, data: ConfirmPurchaseInput) {
+    const client = await this.db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const purchaseResult = await client.query<PurchaseRow>(
+        `
+          SELECT
+            id,
+            tenant_id,
+            supplier_id,
+            type,
+            status,
+            total,
+            balance,
+            payment_status,
+            total_paid,
+            balance_due,
+            created_at
+          FROM purchases
+          WHERE id = $1 AND tenant_id = $2
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [id, tenantId]
+      );
+
+      const purchase = purchaseResult.rows[0];
+      if (!purchase) {
+        throw new NotFoundException("purchase not found");
+      }
+
+      const purchaseAuditContext = await this.getPurchaseAuditContext(id, tenantId, client);
+      await this.resolvePurchaseScope(data.actor, {
+        tenantId,
+        branchId: purchaseAuditContext.branch_id ?? undefined,
+      });
+
+      if (purchase.status !== PURCHASE_STATUS.DRAFT) {
+        throw new ConflictException(
+          "Solo las compras en borrador pueden confirmarse"
+        );
+      }
+
+      const itemsCount = await this.assertPurchaseWithoutReceipts(id, tenantId, client);
+      if (itemsCount === 0) {
+        throw new BadRequestException("La compra no tiene productos para confirmar");
+      }
+
+      const result = await client.query<PurchaseRow>(
+        `
+          UPDATE purchases
+          SET status = $3
+          WHERE id = $1
+            AND tenant_id = $2
+            AND status = $4
+          RETURNING
+            id,
+            tenant_id,
+            supplier_id,
+            type,
+            status,
+            total,
+            balance,
+            payment_status,
+            total_paid,
+            balance_due,
+            created_at
+        `,
+        [id, tenantId, PURCHASE_STATUS.PENDING, PURCHASE_STATUS.DRAFT]
+      );
+
+      if (!result.rows[0]) {
+        throw new ConflictException("La compra cambió de estado. Actualiza e intenta nuevamente.");
+      }
+
+      if (this.auditService.isModuleEnabled("inventory")) {
+        await client.query(
+          `
+            INSERT INTO auditoria_eventos
+              (tenant_id, usuario_id, modulo, entidad, entidad_id, accion, datos_antes, datos_despues)
+            VALUES
+              ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)
+          `,
+          [
+            tenantId,
+            data.context?.userId ?? data.actor.userId ?? null,
+            "inventory",
+            "purchases",
+            id,
+            "PURCHASE_CONFIRMED",
+            JSON.stringify({ status: purchase.status }),
+            JSON.stringify({
+              status: PURCHASE_STATUS.PENDING,
+              total: Number(purchase.total),
+              itemsCount,
+            }),
+          ]
+        );
+      }
+
+      await client.query("COMMIT");
+
+      return {
+        statusCode: 200,
+        message: "Compra confirmada correctamente",
+        data: {
+          ...this.mapPurchase(result.rows[0]),
+          branchId: purchaseAuditContext.branch_id,
+          branchName: purchaseAuditContext.branch_name,
+          terminalId: purchaseAuditContext.terminal_id,
+          terminalName: purchaseAuditContext.terminal_name,
+        },
       };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -1272,6 +1517,10 @@ export class PurchaseService {
           p.requires_lot,
           p.requires_expiration,
           COALESCE((to_jsonb(p)->>'requires_serial')::boolean, FALSE) AS requires_serial,
+          COALESCE((to_jsonb(p)->>'allows_decimal_quantity')::boolean, FALSE)
+            AS allows_decimal_quantity,
+          p.sale_type,
+          p.measurement_unit,
           pi.ordered_quantity,
           pi.received_quantity,
           pi.cost,
@@ -1315,7 +1564,12 @@ export class PurchaseService {
         WHERE ae.tenant_id = $2
           AND ae.entidad = 'purchases'
           AND ae.entidad_id = $1
-          AND ae.accion IN ('PURCHASE_CANCELLED', 'PURCHASE_PARTIAL_CLOSED')
+          AND ae.accion IN (
+            'PURCHASE_CANCELLED',
+            'PURCHASE_PARTIAL_CLOSED',
+            'PURCHASE_DRAFT_UPDATED',
+            'PURCHASE_CONFIRMED'
+          )
         ORDER BY ae.created_at ASC, ae.id ASC
       `,
       [id, tenantId]
@@ -1384,6 +1638,10 @@ export class PurchaseService {
           requires_expiration,
           COALESCE((to_jsonb(products)->>'requires_serial')::boolean, FALSE)
             AS requires_serial,
+          name,
+          sale_type,
+          COALESCE((to_jsonb(products)->>'allows_decimal_quantity')::boolean, FALSE)
+            AS allows_decimal_quantity,
           -- Compatibility bridge: before the forward-only migration, the
           -- absent JSON key resolves to TRUE for existing products.
           COALESCE((to_jsonb(products)->>'is_inventoryable')::boolean, TRUE)
@@ -1667,6 +1925,11 @@ export class PurchaseService {
         }
       }
 
+      if (purchaseRow.status === PURCHASE_STATUS.DRAFT) {
+        throw new BadRequestException(
+          "La compra está en borrador. Confírmala antes de recibir mercancía."
+        );
+      }
       if (purchaseRow.status === "RECEIVED") {
         throw new BadRequestException("purchase already received");
       }
@@ -1768,7 +2031,10 @@ export class PurchaseService {
         client
       );
       const pendingByItemId = new Map(
-        items.map((item) => [item.id, item.orderedQuantity - item.receivedQuantity])
+        items.map((item) => [
+          item.id,
+          roundQuantity(item.orderedQuantity - item.receivedQuantity),
+        ])
       );
       const createdMovements: StockMovementEntity[] = [];
 
@@ -1799,10 +2065,23 @@ export class PurchaseService {
         if (!Number.isFinite(quantity) || quantity <= 0) {
           throw new BadRequestException("received quantity must be a positive number");
         }
+        const quantityViolation = getQuantityPolicyViolation(
+          quantity,
+          {
+            saleType: productPolicy.sale_type,
+            allowsDecimalQuantity: productPolicy.allows_decimal_quantity,
+          },
+          productPolicy.name ? `El producto ${productPolicy.name}` : "El producto"
+        );
+        if (quantityViolation) {
+          throw new BadRequestException(quantityViolation);
+        }
 
-        const totalPendingQuantity = productItems.reduce(
-          (sum, item) => sum + (pendingByItemId.get(item.id) ?? 0),
-          0
+        const totalPendingQuantity = roundQuantity(
+          productItems.reduce(
+            (sum, item) => sum + (pendingByItemId.get(item.id) ?? 0),
+            0
+          )
         );
         if (quantity > totalPendingQuantity) {
           throw new BadRequestException(
@@ -1859,8 +2138,8 @@ export class PurchaseService {
           }
 
           const receivedDelta = Math.min(remainingQuantity, itemPendingQuantity);
-          pendingByItemId.set(item.id, itemPendingQuantity - receivedDelta);
-          remainingQuantity -= receivedDelta;
+          pendingByItemId.set(item.id, roundQuantity(itemPendingQuantity - receivedDelta));
+          remainingQuantity = roundQuantity(remainingQuantity - receivedDelta);
           allocations.push({ item, quantity: receivedDelta });
 
           await client.query(

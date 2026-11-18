@@ -29,6 +29,8 @@ export const PaymentDialog = ({ title, busy, onClose, children }: PaymentDialogP
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // Un dialogo de confirmacion encima ya atendio la tecla.
+        if (event.defaultPrevented) return;
         event.preventDefault();
         if (!busyRef.current) onCloseRef.current();
         return;

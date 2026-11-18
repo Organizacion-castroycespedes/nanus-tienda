@@ -154,6 +154,7 @@ export class InventoryService {
       requiresLot: row.requires_lot,
       requiresExpiration: row.requires_expiration,
       requiresSerial: Boolean(row.requires_serial),
+      allowsDecimalQuantity: Boolean(row.allows_decimal_quantity),
       operationalStatus: row.operational_status,
       rotationClass: row.rotation_class,
       minStock: row.min_stock === null ? null : Number(row.min_stock),

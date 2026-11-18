@@ -4,7 +4,22 @@ export type ProductRotationClass = "HIGH" | "MEDIUM" | "LOW" | "NO_MOVEMENT";
 
 export type ProductSaleType = "UNIT" | "WEIGHT" | "BOTH";
 
-export type ProductMeasurementUnit = "UND" | "KG" | "LB" | "G" | "OZ";
+export type ProductMeasurementUnit =
+  | "UND"
+  | "M"
+  | "L"
+  | "CM"
+  | "M2"
+  | "KG"
+  | "LB"
+  | "G"
+  | "OZ";
+
+/** Unidades de venta por unidad (V118). Las demas son de peso. */
+export const UNIT_MEASUREMENT_UNITS: readonly ProductMeasurementUnit[] = ["UND", "M", "L", "CM", "M2"];
+
+export const isUnitMeasurementUnit = (value: unknown): value is ProductMeasurementUnit =>
+  (UNIT_MEASUREMENT_UNITS as readonly unknown[]).includes(value);
 
 export type ProductImageMimeType = "image/jpeg" | "image/png" | "image/webp";
 
@@ -89,6 +104,8 @@ export type ProductResponse = {
   requiresLot?: boolean;
   requiresExpiration?: boolean;
   requiresSerial?: boolean;
+  /** V118: permite cantidades con hasta 2 decimales en compras, recepcion y venta por unidad. */
+  allowsDecimalQuantity?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass | null;
   saleType?: ProductSaleType;

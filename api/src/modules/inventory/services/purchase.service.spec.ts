@@ -211,6 +211,9 @@ class FakeClient {
       };
     }
     if (trimmed.includes("SELECT received_quantity") && trimmed.includes("FROM purchase_items")) {
+      if (this.scenario.purchaseItems?.length === 0) {
+        return { rows: [] };
+      }
       return { rows: [{ received_quantity: this.scenario.receivedQuantity ?? 0 }] };
     }
     if (trimmed.includes("FROM terminals")) {
@@ -287,6 +290,28 @@ class FakeClient {
     }
     if (trimmed.includes("FROM payment_allocations")) {
       return { rows: [{ total_paid: this.scenario.totalPaid ?? 0 }] };
+    }
+    if (trimmed.startsWith("UPDATE purchases") && trimmed.includes("supplier_id = COALESCE")) {
+      return {
+        rows: [
+          {
+            ...buildPurchaseRow(this.scenario),
+            supplier_id: params[2] ?? ids.supplier,
+            type: params[3],
+            status: params[4],
+            total: params[5],
+            balance: params[6],
+            total_paid: params[7],
+            balance_due: params[8],
+            payment_status: params[9],
+          },
+        ],
+      };
+    }
+    if (trimmed.startsWith("UPDATE purchases") && /SET status = \$3\s+WHERE/.test(trimmed)) {
+      return {
+        rows: [{ ...buildPurchaseRow(this.scenario), status: params[2] }],
+      };
     }
     if (trimmed.startsWith("UPDATE purchases")) {
       if (trimmed.includes("motivo_liquidacion")) {
@@ -1945,4 +1970,160 @@ test("PurchaseService.receivePurchase: producto sin serie sigue rechazando locat
       ),
     /lot data is not allowed/
   );
+});
+
+const draftUpdatePayload = () => ({
+  supplierId: ids.supplier,
+  type: "CASH" as const,
+  total: 150,
+  items: [
+    { productId: ids.product, quantity: 3, cost: 50, subtotal: 150 },
+  ],
+});
+
+test("PurchaseService.updatePurchase: edita borrador, reemplaza items y audita PURCHASE_DRAFT_UPDATED", async () => {
+  const { service, db } = buildService({ status: "DRAFT", itemReceivedQuantity: 0 });
+
+  const result = await service.updatePurchase(ids.purchase, ids.tenant, draftUpdatePayload(), actor, {
+    context: { tenantId: ids.tenant, userId: ids.user },
+  });
+
+  assert.equal(result.status, "DRAFT");
+  assert.equal(Number(result.total), 150);
+  assert.equal(result.items.length, 1);
+  assert.equal(db.client.insertedItems.length, 1);
+  const auditIndex = db.client.queries.findIndex((query) =>
+    query.startsWith("INSERT INTO auditoria_eventos")
+  );
+  assert.ok(auditIndex >= 0);
+  assert.equal(db.client.params[auditIndex][5], "PURCHASE_DRAFT_UPDATED");
+  assert.ok(db.client.queries.includes("COMMIT"));
+  assert.ok(
+    !db.client.queries.some((query) => /stock_movements\s*\(|INSERT INTO stock_movements/.test(query)),
+    "editar un borrador no debe generar movimientos de inventario"
+  );
+});
+
+for (const status of ["PENDING", "PARTIAL", "RECEIVED", "CERRADA_PARCIAL", "CANCELLED"] as const) {
+  test(`PurchaseService.updatePurchase: rechaza editar compra en estado ${status}`, async () => {
+    const { service, db } = buildService({ status, itemReceivedQuantity: 0 });
+
+    await assert.rejects(
+      () => service.updatePurchase(ids.purchase, ids.tenant, draftUpdatePayload(), actor),
+      ConflictException
+    );
+    assert.ok(!db.client.queries.some((query) => query.startsWith("DELETE FROM purchase_items")));
+    assert.ok(db.client.queries.includes("ROLLBACK"));
+  });
+}
+
+test("PurchaseService.updatePurchase: rechaza borrador con cantidades recibidas", async () => {
+  const { service, db } = buildService({ status: "DRAFT", receivedQuantity: 2 });
+
+  await assert.rejects(
+    () => service.updatePurchase(ids.purchase, ids.tenant, draftUpdatePayload(), actor),
+    ConflictException
+  );
+  assert.ok(!db.client.queries.some((query) => query.startsWith("DELETE FROM purchase_items")));
+});
+
+test("PurchaseService.updatePurchase: rechaza total menor a lo pagado", async () => {
+  const { service } = buildService({ status: "DRAFT", itemReceivedQuantity: 0, totalPaid: 80 });
+
+  await assert.rejects(
+    () =>
+      service.updatePurchase(
+        ids.purchase,
+        ids.tenant,
+        { ...draftUpdatePayload(), total: 50, items: [{ productId: ids.product, quantity: 1, cost: 50, subtotal: 50 }] },
+        actor
+      ),
+    ConflictException
+  );
+});
+
+test("PurchaseService.updatePurchase: exige total cuando se envian items", async () => {
+  const { service } = buildService({ status: "DRAFT", itemReceivedQuantity: 0 });
+  const { total: _total, ...payload } = draftUpdatePayload();
+
+  await assert.rejects(
+    () => service.updatePurchase(ids.purchase, ids.tenant, payload, actor),
+    BadRequestException
+  );
+});
+
+test("PurchaseService.confirmPurchase: pasa DRAFT a PENDING y audita PURCHASE_CONFIRMED", async () => {
+  const { service, db, stockMovementService } = buildService({
+    status: "DRAFT",
+    itemReceivedQuantity: 0,
+  });
+
+  const result = await service.confirmPurchase(ids.purchase, ids.tenant, {
+    actor,
+    context: { tenantId: ids.tenant, userId: ids.user },
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.data.status, "PENDING");
+  const updateIndex = db.client.queries.findIndex((query) => /SET status = \$3\s+WHERE/.test(query));
+  assert.deepEqual(db.client.params[updateIndex].slice(2), ["PENDING", "DRAFT"]);
+  const auditIndex = db.client.queries.findIndex((query) =>
+    query.startsWith("INSERT INTO auditoria_eventos")
+  );
+  assert.equal(db.client.params[auditIndex][5], "PURCHASE_CONFIRMED");
+  assert.equal(stockMovementService.movements.length, 0);
+  assert.ok(db.client.queries.includes("COMMIT"));
+});
+
+for (const status of ["PENDING", "PARTIAL", "RECEIVED", "CERRADA_PARCIAL", "CANCELLED"] as const) {
+  test(`PurchaseService.confirmPurchase: rechaza compra en estado ${status}`, async () => {
+    const { service, db } = buildService({ status, itemReceivedQuantity: 0 });
+
+    await assert.rejects(
+      () => service.confirmPurchase(ids.purchase, ids.tenant, { actor }),
+      ConflictException
+    );
+    assert.ok(!db.client.queries.some((query) => /SET status = \$3\s+WHERE/.test(query)));
+  });
+}
+
+test("PurchaseService.confirmPurchase: rechaza borrador sin productos", async () => {
+  const { service } = buildService({ status: "DRAFT", purchaseItems: [] });
+
+  await assert.rejects(
+    () => service.confirmPurchase(ids.purchase, ids.tenant, { actor }),
+    BadRequestException
+  );
+});
+
+test("PurchaseService.confirmPurchase: respeta tenant_id", async () => {
+  const { service } = buildService({ status: "DRAFT", tenantMatches: false });
+
+  await assert.rejects(
+    () => service.confirmPurchase(ids.purchase, ids.otherTenant, { actor }),
+    NotFoundException
+  );
+});
+
+test("PurchaseService.receivePurchase: rechaza recibir un borrador sin tocar inventario", async () => {
+  const { service, db, stockMovementService } = buildService({
+    status: "DRAFT",
+    itemReceivedQuantity: 0,
+  });
+
+  await assert.rejects(
+    () =>
+      service.receivePurchase(
+        ids.purchase,
+        ids.tenant,
+        [{ purchaseItemId: ids.purchaseItem, productId: ids.product, quantity: 1 }],
+        { tenantId: ids.tenant, branchId: ids.branch, userId: ids.user },
+        actor,
+        { supplierInvoiceNumber: "FAC-1" },
+        "idem-draft-1"
+      ),
+    /borrador/
+  );
+  assert.equal(stockMovementService.movements.length, 0);
+  assert.ok(!db.client.queries.some((query) => query.startsWith("UPDATE purchase_items")));
 });
