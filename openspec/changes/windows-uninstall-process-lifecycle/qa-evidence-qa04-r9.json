@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "QA-04-R9",
+  "scope": "single-authority Windows uninstall cleanup; repository and disposable validation only",
+  "priorFindings": {
+    "qa04R8Gate": "FAIL",
+    "blocker": "unused runUninstallCleanup retained service-error classification for registry deletion"
+  },
+  "git": {
+    "branch": "fix/develop/windows-uninstall-process-lifecycle",
+    "baseHead": "1c024c90a6583a0cde91d7ef126c15f8906da4f7",
+    "stagedFiles": 0
+  },
+  "implementation": {
+    "removedFunction": "runUninstallCleanup",
+    "authoritativeCliEntrypoint": "runUninstallCleanupWithResult",
+    "authoritativeUninstallEntrypoint": "uninstallWithResult",
+    "legacyWrapper": "uninstall delegates to uninstallWithResult",
+    "registryDeletionPath": "runUninstallCleanupWithResult -> DeleteUninstallMetadata -> deleteUninstallMetadata",
+    "duplicateCleanupImplementationPresent": false
+  },
+  "tests": {
+    "targeted": {
+      "result": "PASS",
+      "registryFlowTopLevel": 1,
+      "registryFlowSubtests": 2,
+      "singleAuthorityTopLevel": 1
+    },
+    "goSuite": {
+      "result": "PASS",
+      "topLevelPassEvents": 133,
+      "subtestPassEvents": 23
+    },
+    "goBuild": "PASS",
+    "disposableWindowsIntegration": {
+      "result": "PASS",
+      "tests": 1,
+      "fixture": "unique testing.TempDir with copied child executables",
+      "liveManusResourcesUsed": false
+    },
+    "backendUnitTests": {
+      "result": "PASS",
+      "tests": 177
+    },
+    "posManifestTests": {
+      "result": "PASS",
+      "tests": 6
+    },
+    "packagingProvenanceTests": {
+      "result": "PASS",
+      "tests": 3
+    }
+  },
+  "registryErrorRegression": {
+    "serviceDomainError": "non-success; registration evidence retained; completed impossible",
+    "genericRegistryError": "non-success; registration evidence retained; completed impossible",
+    "missingCanonicalKeyOnlyBenign": true
+  },
+  "processSafetyPreserved": {
+    "nativeDiscoveryFailClosed": true,
+    "pidAndPathRevalidation": true,
+    "finalRescanRequired": true,
+    "unrelatedProcessPreserved": true
+  },
+  "validation": {
+    "openspecChangeStrict": "PASS",
+    "gitDiffCheck": "PASS with existing LF/CRLF warnings only",
+    "protectedHashesUnchanged": true,
+    "installerBuildExecuted": false,
+    "liveInstallUninstallRepairExecuted": false,
+    "liveServiceControlExecuted": false,
+    "liveRegistryMutationExecuted": false,
+    "liveProcessTerminationExecuted": false,
+    "aclMutationExecuted": false
+  },
+  "protectedPOS": {
+    "backend-perifericos/windows-installer/assets/pos-manifest.json": "F1BB5CBB620DE5B65B48A6148BFB9B345F196E6881EAE89525BDEB5331FCD4FA",
+    "backend-perifericos/windows-installer/assets/pos/resources/app.asar": "17B6EC6A77DDBA93236AC9F3497FF4E338C75F199AE85899A77CA0E0536724A4",
+    "backend-perifericos/windows-installer/assets/pos/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D",
+    "desktop/electron/resources/manus-shell.config.json": "1D27C76AC28B98A2D4013350FA53FD79DFF7483D81D407872355926667698B3D"
+  },
+  "globalOpenSpec": {
+    "status": "not rerun",
+    "preexistingUnrelatedFailures": 11
+  },
+  "historicalEvidencePreserved": [
+    "qa-evidence-qa04-r8.json"
+  ],
+  "readiness": {
+    "finalGate": true,
+    "build02": true,
+    "selectiveCommit": true,
+    "distribution": false
+  }
+}

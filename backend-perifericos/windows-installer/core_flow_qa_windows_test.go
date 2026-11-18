@@ -39,7 +39,7 @@ func TestInstallerElevationPolicyRelaunchesInteractiveInstallOnly(t *testing.T) 
 }
 
 func TestConfigureModeUsesDeviceUIWithoutInstallerCore(t *testing.T) {
-	html := appendConfigureModeHarness("<body></body>" + appendProductiveDevicesHarness())
+	html := appendConfigureModeHarness("<body></body>" + appendProductiveDevicesHarness(true))
 	for _, marker := range []string{"data-manus-configure-mode=\"true\"", "__manusConfigureMode=true", "__manusCoreComplete=true", "go('devices')", "data-manus-productive-devices=\"true\""} {
 		if !contains(html, marker) {
 			t.Fatalf("configure UI missing %q", marker)
@@ -69,7 +69,7 @@ func TestConfigureModeFailsClosedWithoutInstalledVersion(t *testing.T) {
 }
 
 func TestProductivePrinterReadinessUsesCanonicalAgentState(t *testing.T) {
-	html := appendProductiveDevicesHarness()
+	html := appendProductiveDevicesHarness(true)
 	for _, marker := range []string{
 		"function canonicalPrinterReady(device)",
 		"metadata.queueInstalled===true",

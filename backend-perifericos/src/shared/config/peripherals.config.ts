@@ -12,6 +12,7 @@ export type PeripheralsConfig = {
   mode: PeripheralsMode;
   agentName: string;
   realAdaptersEnabled: boolean;
+  discoverOnStartup: boolean;
   usbPrintTransport: UsbPrintTransport;
   usbRawPhysicalCutCertified: boolean;
   allowedOrigins: string[];
@@ -76,6 +77,15 @@ export const parseMode = (value: string | undefined): PeripheralsMode => {
 const parseRealAdaptersEnabled = (value: string | undefined): boolean =>
   value?.trim().toLowerCase() === "true";
 
+const parseDiscoverOnStartup = (
+  value: string | undefined,
+  realAdaptersEnabled: boolean
+): boolean => realAdaptersEnabled && value?.trim().toLowerCase() === "true";
+
+const packageAllowsStartupDiscovery = (): boolean =>
+  process.env.PERIPHERALS_PACKAGE_PROFILE === "dev" ||
+  process.env.PERIPHERALS_PACKAGE_PROFILE === "production";
+
 const parseUsbPrintTransport = (value: string | undefined): UsbPrintTransport =>
   value?.trim().toUpperCase() === "GDI" ? "GDI" : "RAW";
 
@@ -133,32 +143,39 @@ export const buildPrivateNetworkAccessMiddleware = (
   next();
 };
 
-export const getPeripheralsConfig = (): PeripheralsConfig => ({
-  port: parsePort(process.env.PERIPHERALS_PORT),
-  bind: parseBind(process.env.PERIPHERALS_BIND),
-  mode: parseMode(process.env.PERIPHERALS_MODE),
-  agentName:
-    process.env.PERIPHERALS_AGENT_NAME?.trim() ||
-    "manus-pos-peripheral-agent",
-  realAdaptersEnabled: parseRealAdaptersEnabled(
+export const getPeripheralsConfig = (): PeripheralsConfig => {
+  const realAdaptersEnabled = parseRealAdaptersEnabled(
     process.env.PERIPHERALS_ENABLE_REAL_ADAPTERS
-  ),
-  usbPrintTransport: parseUsbPrintTransport(
-    process.env.PERIPHERALS_USB_PRINT_TRANSPORT
-  ),
-  usbRawPhysicalCutCertified:
-    process.env.PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED?.trim().toLowerCase() ===
-    "true",
-  allowedOrigins: parseAllowedOrigins(process.env.PERIPHERALS_ALLOWED_ORIGINS),
-  logLevel: parseLogLevel(process.env.PERIPHERALS_LOG_LEVEL),
-  logLimit: parseLogLimit(process.env.PERIPHERALS_LOG_LIMIT),
-  printerWidthChars: parsePrinterWidthChars(
-    process.env.PERIPHERALS_PRINTER_WIDTH_CHARS
-  ),
-  version: resolveAgentVersion(),
-  startedAt: STARTED_AT,
-  enrollmentApiBaseUrl: process.env.PERIPHERALS_ENROLLMENT_API_BASE_URL?.trim() || undefined,
-  enrollmentSigningPublicKeyPem: process.env.PERIPHERALS_ENROLLMENT_SIGNING_PUBLIC_KEY_PEM?.replace(/\\n/g, "\n") || undefined,
-  enrollmentAudience: process.env.PERIPHERALS_ENROLLMENT_AUDIENCE?.trim() || undefined,
-  enrollmentSigningKeyId: process.env.PERIPHERALS_ENROLLMENT_SIGNING_KEY_ID?.trim() || undefined,
-});
+  );
+  return {
+    port: parsePort(process.env.PERIPHERALS_PORT),
+    bind: parseBind(process.env.PERIPHERALS_BIND),
+    mode: parseMode(process.env.PERIPHERALS_MODE),
+    agentName:
+      process.env.PERIPHERALS_AGENT_NAME?.trim() ||
+      "manus-pos-peripheral-agent",
+    realAdaptersEnabled,
+    discoverOnStartup: packageAllowsStartupDiscovery() && parseDiscoverOnStartup(
+      process.env.PERIPHERALS_DISCOVER_ON_STARTUP,
+      realAdaptersEnabled
+    ),
+    usbPrintTransport: parseUsbPrintTransport(
+      process.env.PERIPHERALS_USB_PRINT_TRANSPORT
+    ),
+    usbRawPhysicalCutCertified:
+      process.env.PERIPHERALS_USB_RAW_PHYSICAL_CUT_CERTIFIED?.trim().toLowerCase() ===
+      "true",
+    allowedOrigins: parseAllowedOrigins(process.env.PERIPHERALS_ALLOWED_ORIGINS),
+    logLevel: parseLogLevel(process.env.PERIPHERALS_LOG_LEVEL),
+    logLimit: parseLogLimit(process.env.PERIPHERALS_LOG_LIMIT),
+    printerWidthChars: parsePrinterWidthChars(
+      process.env.PERIPHERALS_PRINTER_WIDTH_CHARS
+    ),
+    version: resolveAgentVersion(),
+    startedAt: STARTED_AT,
+    enrollmentApiBaseUrl: process.env.PERIPHERALS_ENROLLMENT_API_BASE_URL?.trim() || undefined,
+    enrollmentSigningPublicKeyPem: process.env.PERIPHERALS_ENROLLMENT_SIGNING_PUBLIC_KEY_PEM?.replace(/\\n/g, "\n") || undefined,
+    enrollmentAudience: process.env.PERIPHERALS_ENROLLMENT_AUDIENCE?.trim() || undefined,
+    enrollmentSigningKeyId: process.env.PERIPHERALS_ENROLLMENT_SIGNING_KEY_ID?.trim() || undefined,
+  };
+};

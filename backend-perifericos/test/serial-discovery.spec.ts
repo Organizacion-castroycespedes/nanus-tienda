@@ -12,6 +12,7 @@ import { buildRochiSerialDescriptor } from "../src/shared/usb/usb-printer-discov
 import {
   extractUsbVidPid,
   parseWindowsSerialDiagnostics,
+  WindowsPrinterDiscoveryProvider,
 } from "../src/platform/windows/windows-printer-discovery.provider";
 import type { DiscoveredSerialDevice } from "../src/shared/discovery/device-discovery-provider";
 import type { UsbPrinterDiscovery } from "../src/shared/usb/usb-printer-discovery";
@@ -39,6 +40,40 @@ const rawRochi = (port = "COM3"): DiscoveredSerialDevice => ({
   architecture: "amd64",
 });
 
+const serialInventoryRow = (
+  DeviceID: string,
+  PNPDeviceID: string,
+  options: { Name?: string; Status?: string; Present?: boolean } = {},
+) => ({
+  DeviceID,
+  Name: options.Name ?? `Serial device (${DeviceID})`,
+  PNPDeviceID,
+  Status: options.Status ?? "OK",
+  Present: options.Present ?? true,
+});
+
+const serialInventoryProvider = (
+  cimOutput: string | Error,
+  pnpOutput: string | Error,
+  issues: Array<{ source: string; reason: string }> = [],
+) => new WindowsPrinterDiscoveryProvider(
+  (_command, args) => {
+    const script = args.at(-1) ?? "";
+    if (script.includes("Get-CimInstance Win32_SerialPort")) {
+      if (cimOutput instanceof Error) throw cimOutput;
+      return cimOutput;
+    }
+    if (script.includes("Get-PnpDevice -PresentOnly")) {
+      assert.match(script, /\$_.Class -eq 'Ports'/);
+      if (pnpOutput instanceof Error) throw pnpOutput;
+      return pnpOutput;
+    }
+    throw new Error("unexpected Windows discovery command in serial test");
+  },
+  () => {},
+  (source, reason) => { issues.push({ source, reason }); },
+);
+
 test("Windows serial parser reads COM port and structured PnP identity", () => {
   const parsed = parseWindowsSerialDiagnostics(JSON.stringify({
     DeviceID: "com3",
@@ -59,6 +94,92 @@ test("Windows serial parser reads COM port and structured PnP identity", () => {
     vendorId: "1A86",
     productId: "7523",
   });
+});
+
+test("serial provider combines CIM COM3/COM4 with PnP-only healthy COM6", async () => {
+  const provider = serialInventoryProvider(
+    JSON.stringify([
+      serialInventoryRow("COM3", "BTHENUM\\DEVICE-3"),
+      serialInventoryRow("COM4", "BTHENUM\\DEVICE-4"),
+    ]),
+    JSON.stringify(serialInventoryRow("COM6", "USB\\VID_1A86&PID_7523\\ROCHI-QA", {
+      Name: "USB-SERIAL CH340 (COM6)",
+    })),
+  );
+
+  const devices = await provider.listSerialDevices();
+  assert.deepEqual(devices.map((device) => device.port), ["COM3", "COM4", "COM6"]);
+  const com6 = devices.find((device) => device.port === "COM6")!;
+  assert.deepEqual({ vendorId: com6.vendorId, productId: com6.productId }, { vendorId: "1A86", productId: "7523" });
+  assert.equal(buildRochiSerialDescriptor(com6)?.type, "ROCHI_A01E");
+  assert.equal(com6.present, true);
+});
+
+test("identical CIM and PnP identity/port records produce one candidate", async () => {
+  const identity = "USB\\VID_1A86&PID_7523\\ROCHI-DUPLICATE";
+  const provider = serialInventoryProvider(
+    JSON.stringify(serialInventoryRow("COM6", identity, { Name: "CH340" })),
+    JSON.stringify(serialInventoryRow("com6", identity.toLowerCase(), { Name: "USB-SERIAL CH340 (COM6)" })),
+  );
+
+  const devices = await provider.listSerialDevices();
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0].port, "COM6");
+  assert.equal(devices[0].name, "USB-SERIAL CH340 (COM6)");
+});
+
+test("serial provider excludes absent and non-OK records from both inventories", async () => {
+  const provider = serialInventoryProvider(
+    JSON.stringify([
+      serialInventoryRow("COM3", "BTHENUM\\HEALTHY"),
+      serialInventoryRow("COM4", "BTHENUM\\UNKNOWN", { Status: "Unknown" }),
+      serialInventoryRow("COM5", "BTHENUM\\ABSENT", { Present: false }),
+    ]),
+    JSON.stringify([
+      serialInventoryRow("COM6", "USB\\VID_1A86&PID_7523\\UNKNOWN", { Status: "Unknown" }),
+      serialInventoryRow("COM7", "USB\\VID_1A86&PID_7523\\ABSENT", { Present: false }),
+    ]),
+  );
+
+  const devices = await provider.listSerialDevices();
+  assert.deepEqual(devices.map((device) => device.port), ["COM3"]);
+});
+
+test("ambiguous identity-to-port and port-to-identity mappings are excluded", async () => {
+  const provider = serialInventoryProvider(
+    JSON.stringify([
+      serialInventoryRow("COM3", "USB\\VID_1A86&PID_7523\\SCALE-A"),
+      serialInventoryRow("COM7", "USB\\VID_1A86&PID_7523\\SCALE-C"),
+    ]),
+    JSON.stringify([
+      serialInventoryRow("COM6", "USB\\VID_1A86&PID_7523\\SCALE-A"),
+      serialInventoryRow("COM7", "USB\\VID_1A86&PID_7523\\SCALE-D"),
+    ]),
+  );
+
+  assert.deepEqual(await provider.listSerialDevices(), []);
+});
+
+test("a failed or malformed inventory preserves valid candidates from the other source", async () => {
+  const validCim = JSON.stringify(serialInventoryRow("COM3", "BTHENUM\\CIM"));
+  const validPnp = JSON.stringify(serialInventoryRow("COM6", "USB\\VID_1A86&PID_7523\\PNP"));
+  for (const [cim, pnp, expectedPort, failedSource] of [
+    [new Error("CIM unavailable"), validPnp, "COM6", "Win32_SerialPort"],
+    [validCim, new Error("PnP unavailable"), "COM3", "Get-PnpDevice"],
+    [validCim, "{invalid-json", "COM3", "Get-PnpDevice"],
+    ["{invalid-json", validPnp, "COM6", "Win32_SerialPort"],
+  ] as const) {
+    const issues: Array<{ source: string; reason: string }> = [];
+    const provider = serialInventoryProvider(cim, pnp, issues);
+    const devices = await provider.listSerialDevices();
+    assert.deepEqual(devices.map((device) => device.port), [expectedPort]);
+    assert.ok(issues.some((issue) => issue.source === failedSource));
+  }
+});
+
+test("serial discovery rejects when both independent inventories fail", async () => {
+  const provider = serialInventoryProvider(new Error("CIM unavailable"), "not-json");
+  await assert.rejects(provider.listSerialDevices(), /both Win32_SerialPort and Get-PnpDevice serial inventories failed/);
 });
 
 test("only demonstrated CH340 VID/PID becomes ROCHI_A01E", () => {

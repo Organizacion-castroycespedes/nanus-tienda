@@ -23,6 +23,7 @@ import {
   nextRetryAttempt,
   type ConnectivityState,
 } from "./connectivity.js";
+import { handleWindowClose, parseCloseBehavior, type CloseBehavior } from "./window-close-policy.js";
 
 const DEFAULT_WINDOW_TITLE = "Manus POS";
 const DEFAULT_WINDOW_WIDTH = 1024;
@@ -35,8 +36,6 @@ const SAFE_EXTERNAL_PROTOCOLS = new Set(["https:"]);
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
-type CloseBehavior = "quit" | "hide";
-
 const parsePositiveInteger = (value: string | undefined, fallback: number) => {
   if (!value) {
     return fallback;
@@ -44,10 +43,6 @@ const parsePositiveInteger = (value: string | undefined, fallback: number) => {
 
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-
-const parseCloseBehavior = (value: string | undefined): CloseBehavior => {
-  return value === "hide" ? "hide" : "quit";
 };
 
 let electronConfig = resolveElectronConfig();
@@ -225,8 +220,15 @@ const createMainWindow = async () => {
   });
 
   window.on("close", (event) => {
-    if (!isQuitting && !maintenanceExitAllowed) {
-      event.preventDefault();
+    const action = handleWindowClose(
+      closeBehavior,
+      isQuitting,
+      maintenanceExitAllowed,
+      event,
+      window,
+      () => app.quit(),
+    );
+    if (action === "hide") {
       window.webContents.send("manusTerminal.closeBlocked");
     }
   });

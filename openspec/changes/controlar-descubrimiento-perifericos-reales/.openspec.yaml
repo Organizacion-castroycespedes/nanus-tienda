@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-13
+goal: Allow explicitly enabled real peripheral adapters while keeping startup
+  discovery independently controlled and fail-closed.
