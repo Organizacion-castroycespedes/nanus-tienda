@@ -393,7 +393,7 @@ export class ScaleAuthorizationRuntimeService {
       `SELECT p.id AS pos_terminal_id, p.branch_id, p.operational_terminal_id,
          ps.scale_device_id, COALESCE(ps.enable_scale, false) AS enable_scale,
          d.id AS device_id, d.registration_status, d.installation_id,
-         c.status AS credential_status, c.expires_at AS credential_expires_at,
+         c.credential_id, c.status AS credential_status, c.expires_at AS credential_expires_at,
          b.id AS binding_id, b.logical_scale_id, b.status AS binding_status, b.unit_state,
          b.unit_verification_method, b.unit_verification_unit, b.unit_verified_by_user_id, b.verified_at
        FROM pos_terminals p
