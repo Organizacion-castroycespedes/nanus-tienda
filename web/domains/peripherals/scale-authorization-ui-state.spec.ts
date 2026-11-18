@@ -187,3 +187,106 @@ test("only stale-challenge API rejections clear the held challenge", () => {
   }
   assert.equal(isStalePairingChallengeError(null), false);
 });
+
+const PREVIOUS_SCALE = "serial-rochi-a01e-960a8f6286fa3222";
+const CURRENT_SCALE = "serial-rochi-a01e-fb2f9ed4566578b4";
+const rebindSnapshot = (status: string, logicalScaleId: string, unitState = "KG_VERIFIED"): ScaleAuthorizationSnapshot => ({
+  ...snapshot(), scaleDeviceId: CURRENT_SCALE,
+  binding: { id: `binding-${status}`, logicalScaleId, status, unitState, verificationMethod: "OPERATOR_CONFIRMATION",
+    unit: "kg", verifiedBy: "operator-1", verifiedAt: "2026-10-07T12:00:00.000Z" },
+});
+const freshRead = { now: new Date("2026-10-07T12:00:05.000Z"), testResult: testRead() };
+
+test("a REVOKED binding for a previous physical scale does not block a new association", () => {
+  const ui = deriveScaleAuthorizationUiState({ snapshot: rebindSnapshot("REVOKED", PREVIOUS_SCALE), localAgent: agent,
+    configuredScaleId: CURRENT_SCALE, hasCurrentKgConfirmationEvidence: true, ...freshRead });
+  assert.equal(ui.matchingScale, true);
+  assert.equal(ui.hasActiveBinding, false);
+  assert.equal(ui.canCreateBinding, true);
+  assert.equal(ui.reason, "BINDING_REQUIRED");
+  // Historical KG evidence on the revoked binding never authorizes anything.
+  assert.equal(ui.currentKgVerified, false);
+  assert.equal(ui.authorized, false);
+  assert.equal(ui.canConfirmKg, false);
+  assert.equal(ui.canTestReal, false);
+  assert.equal(ui.realAvailable, false);
+});
+
+test("a REVOKED binding for the same scale is also history, not authorization", () => {
+  const ui = deriveScaleAuthorizationUiState({ snapshot: rebindSnapshot("REVOKED", CURRENT_SCALE), localAgent: agent,
+    configuredScaleId: CURRENT_SCALE, ...freshRead });
+  assert.equal(ui.canCreateBinding, true);
+  assert.equal(ui.authorized, false);
+  assert.equal(ui.currentKgVerified, false);
+  assert.equal(ui.realAvailable, false);
+  assert.equal(ui.reason, "BINDING_REQUIRED");
+});
+
+test("PENDING or AUTHORIZED bindings for another scale keep every operation protected", () => {
+  for (const status of ["PENDING", "AUTHORIZED"]) {
+    const ui = deriveScaleAuthorizationUiState({ snapshot: rebindSnapshot(status, PREVIOUS_SCALE), localAgent: agent,
+      configuredScaleId: CURRENT_SCALE, hasCurrentKgConfirmationEvidence: true, ...freshRead });
+    assert.equal(ui.matchingScale, false, status);
+    assert.equal(ui.hasActiveBinding, true, status);
+    assert.equal(ui.canCreateBinding, false, status);
+    assert.equal(ui.canConfirmKg, false, status);
+    assert.equal(ui.canTestReal, false, status);
+    assert.equal(ui.realAvailable, false, status);
+    assert.equal(ui.reason, "SCALE_MISMATCH", status);
+  }
+});
+
+test("a new association still requires an authenticated Agent and the configured scale", () => {
+  const revoked = rebindSnapshot("REVOKED", PREVIOUS_SCALE);
+  const notEnrolled = deriveScaleAuthorizationUiState({ snapshot: revoked, localAgent: { ...agent, enrolled: false },
+    configuredScaleId: CURRENT_SCALE, testResult: null });
+  assert.equal(notEnrolled.canCreateBinding, false);
+  assert.equal(notEnrolled.reason, "AGENT_NOT_AUTHENTICATED");
+  const credentialInactive = deriveScaleAuthorizationUiState({ snapshot: { ...revoked, agent: { ...revoked.agent, authenticated: false } },
+    localAgent: agent, configuredScaleId: CURRENT_SCALE, testResult: null });
+  assert.equal(credentialInactive.canCreateBinding, false);
+  const otherConfigured = deriveScaleAuthorizationUiState({ snapshot: revoked, localAgent: agent,
+    configuredScaleId: PREVIOUS_SCALE, testResult: null });
+  assert.equal(otherConfigured.canCreateBinding, false);
+  assert.equal(otherConfigured.reason, "SCALE_MISMATCH");
+  const noScale = deriveScaleAuthorizationUiState({ snapshot: { ...revoked, scaleDeviceId: null }, localAgent: agent,
+    configuredScaleId: null, testResult: null });
+  assert.equal(noScale.canCreateBinding, false);
+});
+
+test("an active binding blocks a second association and REAL needs a current AUTHORIZED KG_VERIFIED binding", () => {
+  const pending = deriveScaleAuthorizationUiState({ snapshot: rebindSnapshot("PENDING", CURRENT_SCALE, "NOT_VERIFIED"),
+    localAgent: agent, configuredScaleId: CURRENT_SCALE, ...freshRead });
+  assert.equal(pending.canCreateBinding, false);
+  assert.equal(pending.realAvailable, false);
+  assert.equal(pending.reason, "UNIT_NOT_VERIFIED");
+  const authorizedUnverified = deriveScaleAuthorizationUiState({ snapshot: rebindSnapshot("AUTHORIZED", CURRENT_SCALE, "NOT_VERIFIED"),
+    localAgent: agent, configuredScaleId: CURRENT_SCALE, ...freshRead });
+  assert.equal(authorizedUnverified.realAvailable, false);
+  assert.equal(authorizedUnverified.canTestReal, false);
+  const authorized = deriveScaleAuthorizationUiState({ snapshot: rebindSnapshot("AUTHORIZED", CURRENT_SCALE),
+    localAgent: agent, configuredScaleId: CURRENT_SCALE, ...freshRead });
+  assert.equal(authorized.canCreateBinding, false);
+  assert.equal(authorized.currentKgVerified, true);
+  assert.equal(authorized.realAvailable, true);
+  assert.equal(deriveScaleAuthorizationUiState({ snapshot: rebindSnapshot("AUTHORIZED", CURRENT_SCALE), localAgent: agent,
+    configuredScaleId: CURRENT_SCALE, testResult: null }).realAvailable, false);
+});
+
+test("no binding at all allows a new association for the configured scale", () => {
+  const ui = deriveScaleAuthorizationUiState({ snapshot: { ...snapshot(), scaleDeviceId: CURRENT_SCALE, binding: null },
+    localAgent: agent, configuredScaleId: CURRENT_SCALE, testResult: null });
+  assert.equal(ui.canCreateBinding, true);
+  assert.equal(ui.reason, "BINDING_REQUIRED");
+});
+
+test("historical KG on a revoked binding is never reused as current evidence", () => {
+  const revoked = rebindSnapshot("REVOKED", CURRENT_SCALE);
+  assert.equal(buildAgentUnitVerificationFromConfirmedBinding(revoked.binding), null);
+  assert.equal(buildAgentMetadataAfterBackendKgConfirmation({ configured: true }, revoked.binding), null);
+  assert.equal(isCurrentKgConfirmationEvidence({
+    evidence: kgEvidence({ bindingId: revoked.binding!.id, logicalScaleId: CURRENT_SCALE }), snapshot: revoked,
+    localAgent: agent, configuredScaleId: CURRENT_SCALE,
+    configuredDevice: { ...configuredDevice, id: CURRENT_SCALE }, now: new Date("2026-10-07T12:00:05.000Z"),
+  }), false);
+});
