@@ -59,6 +59,8 @@ export type PosCartItem = {
   isInventoryable?: boolean;
   /** Producto con número de serie: la cantidad es la cantidad de series seleccionadas. */
   requiresSerial?: boolean;
+  /** V118: se puede vender fraccionado (hasta 2 decimales). Ausente = solo enteros. */
+  allowsDecimalQuantity?: boolean;
   serials?: PosCartSerial[];
   taxId: string | null;
   priceWithoutTax: number;

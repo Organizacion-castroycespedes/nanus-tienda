@@ -495,6 +495,38 @@ export class ProductSerialRepository {
     return Number(result.rows[0]?.affected ?? 0);
   }
 
+  /** V119: series entregadas en un pedido (order_id, sin sale_id) al anular la venta de ese pedido. */
+  async markOrderSaleReturned(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      saleId: string;
+      orderId: string;
+      lines: Array<{ productId: string; quantity: number }>;
+      returnInventory: boolean;
+      userId: string | null;
+      reason: string | null;
+    }
+  ) {
+    const result = await client.query<{ affected: number }>(
+      `SELECT public.prc_product_serials_mark_returned_order_sale(
+          $1::uuid, $2::uuid, $3::uuid, $4::jsonb, $5::boolean, $6::uuid, $7::text
+        ) AS affected`,
+      [
+        input.tenantId,
+        input.saleId,
+        input.orderId,
+        JSON.stringify(
+          input.lines.map((line) => ({ product_id: line.productId, quantity: line.quantity }))
+        ),
+        input.returnInventory,
+        input.userId,
+        input.reason,
+      ]
+    );
+    return Number(result.rows[0]?.affected ?? 0);
+  }
+
   async findEvents(tenantId: string, serialId: string) {
     const result = await this.query<ProductSerialEventRow>(
       `SELECT

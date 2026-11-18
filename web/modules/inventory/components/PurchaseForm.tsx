@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
+import { SearchableSelect, type SearchableSelectOption } from "../../../components/design-system/SearchableSelect";
 import { Select } from "../../../components/design-system/Select";
 import { listBranches } from "../../../domains/branches/api";
 import type { BranchResponse } from "../../../domains/branches/dtos";
@@ -13,7 +14,12 @@ import type { ProductResponse } from "../../../domains/products/dtos";
 import { useConfirm } from "../../../hooks/use-confirm";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { getProducts } from "../services/product.service";
-import { createPurchase, type PurchaseResponse } from "../services/purchase.service";
+import {
+  createPurchase,
+  updatePurchaseDraft,
+  type PurchaseDetailResponse,
+  type PurchaseResponse,
+} from "../services/purchase.service";
 import { getSuppliers, type SupplierResponse } from "../services/supplier.service";
 import { buildTenantPath, resolveTenantSlug } from "../../../domains/auth/tenant-path";
 import { useAppSelector } from "../../../store/hooks";
@@ -48,6 +54,7 @@ import {
   type PurchaseCaptureLine,
 } from "../purchase-capture/purchase-capture-lines";
 import { PurchaseInvoiceTable, type PurchaseInvoiceRow } from "../purchase-capture/PurchaseInvoiceTable";
+import { getQuantityPolicyViolation } from "../utils/quantity-policy";
 
 type PurchaseFormValues = {
   supplierId: string;
@@ -71,6 +78,8 @@ type PurchaseFormProps = {
   ) => void;
   onError?: (error: unknown) => void;
   onDirtyChange?: (isDirty: boolean) => void;
+  /** Borrador a editar. Si se omite, el formulario crea una compra nueva. */
+  purchase?: PurchaseDetailResponse | null;
 };
 
 type PendingDialog =
@@ -84,17 +93,32 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
-const todayLabel = () =>
+const formatDateLabel = (value: Date | string) =>
   new Intl.DateTimeFormat("es-CO", { dateStyle: "medium", timeZone: "America/Bogota" }).format(
-    new Date()
+    new Date(value)
   );
+
+/** Lineas de captura a partir de los items guardados del borrador. */
+const buildLinesFromPurchase = (purchase?: PurchaseDetailResponse | null): PurchaseCaptureLine[] =>
+  (purchase?.items ?? []).map((item) => {
+    const quantity = Number(item.orderedQuantity);
+    return {
+      productId: item.productId,
+      quantity,
+      mode: Number.isInteger(quantity) ? "UNIT" : "WEIGHT",
+      cost: Number(item.cost),
+      costEdited: true,
+    };
+  });
 
 export const PurchaseForm = ({
   onCancel,
   onSuccess,
   onError,
   onDirtyChange,
+  purchase = null,
 }: PurchaseFormProps) => {
+  const isEdit = Boolean(purchase);
   const router = useRouter();
   const confirm = useConfirm();
   const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
@@ -102,14 +126,26 @@ export const PurchaseForm = ({
   const currentPosBranchId = useAppSelector((state) => state.pos.branchId);
   const currentPosTerminalId = useAppSelector((state) => state.pos.terminalId);
   const authBranchName = authUser?.branchName ?? null;
-  const [values, setValues] = useState<PurchaseFormValues>({
-    supplierId: "",
-    branchId: currentBranch ?? "",
-    type: "CASH",
-  });
-  const [lines, setLinesState] = useState<PurchaseCaptureLine[]>([]);
+  const [values, setValues] = useState<PurchaseFormValues>(() => ({
+    supplierId: purchase?.supplierId ?? "",
+    branchId: purchase?.branchId ?? currentBranch ?? "",
+    type: purchase?.type ?? "CASH",
+  }));
+  const [lines, setLinesState] = useState<PurchaseCaptureLine[]>(() =>
+    buildLinesFromPurchase(purchase)
+  );
   // Fuente sincrónica para escaneos consecutivos antes del siguiente render.
-  const linesRef = useRef<PurchaseCaptureLine[]>([]);
+  const linesRef = useRef<PurchaseCaptureLine[]>(lines);
+  const purchaseItemNames = useMemo(
+    () =>
+      new Map(
+        (purchase?.items ?? []).map((item) => [
+          item.productId,
+          { name: item.productName ?? item.productId, sku: item.productSku ?? null },
+        ])
+      ),
+    [purchase]
+  );
   const [errors, setErrors] = useState<PurchaseFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
@@ -142,13 +178,14 @@ export const PurchaseForm = ({
   );
 
   useEffect(() => {
-    if (!currentBranch) {
+    // En edicion la sucursal es la del borrador y no se cambia.
+    if (!currentBranch || isEdit) {
       return;
     }
     setValues((prev) =>
       prev.branchId === currentBranch ? prev : { ...prev, branchId: currentBranch }
     );
-  }, [currentBranch]);
+  }, [currentBranch, isEdit]);
 
   // Si la sucursal cambia desde el selector global de alcance, las líneas ya no aplican.
   const previousBranchRef = useRef(values.branchId);
@@ -310,19 +347,55 @@ export const PurchaseForm = ({
     () => new Map(products.map((product) => [product.id, product])),
     [products]
   );
+
+  // En edicion: ajusta el modo (unidad/peso) de las lineas guardadas segun el catalogo,
+  // para que los escaneos posteriores sumen sobre la misma linea.
+  const modesReconciledRef = useRef(!isEdit);
+  useEffect(() => {
+    if (modesReconciledRef.current || products.length === 0) {
+      return;
+    }
+    modesReconciledRef.current = true;
+    const next = linesRef.current.map((line) => {
+      const product = productsById.get(line.productId);
+      if (!product) {
+        return line;
+      }
+      const saleType = resolveInventoryProductSaleType(product);
+      const mode: InventoryCaptureMode =
+        saleType === "UNIT" ? "UNIT" : saleType === "BOTH" ? line.mode : "WEIGHT";
+      return mode === line.mode ? line : { ...line, mode };
+    });
+    linesRef.current = next;
+    setLinesState(next);
+  }, [products, productsById]);
+
+  const supplierOptions: SearchableSelectOption[] = useMemo(
+    () =>
+      suppliers.map((supplier) => ({
+        value: supplier.id,
+        label: supplier.name,
+        description: supplier.documentNumber ? `Documento ${supplier.documentNumber}` : null,
+        keywords: [supplier.legalName, supplier.documentNumber].filter(
+          (keyword): keyword is string => Boolean(keyword)
+        ),
+      })),
+    [suppliers]
+  );
   const selectedSupplier = suppliers.find((supplier) => supplier.id === values.supplierId);
 
   const invoiceRows: PurchaseInvoiceRow[] = useMemo(
     () =>
       lines.map((line) => {
         const product = productsById.get(line.productId);
+        const saved = purchaseItemNames.get(line.productId);
         return {
           line,
-          name: product?.name ?? line.productId,
-          code: product?.primaryBarcode ?? product?.sku ?? null,
+          name: product?.name ?? saved?.name ?? line.productId,
+          code: product?.primaryBarcode ?? product?.sku ?? saved?.sku ?? null,
         };
       }),
-    [lines, productsById]
+    [lines, productsById, purchaseItemNames]
   );
 
   const { items: payloadItems, total } = useMemo(() => buildPurchaseItemsPayload(lines), [lines]);
@@ -468,7 +541,10 @@ export const PurchaseForm = ({
   };
 
   const removeLine = async (line: PurchaseCaptureLine) => {
-    const name = productsById.get(line.productId)?.name ?? "este producto";
+    const name =
+      productsById.get(line.productId)?.name ??
+      purchaseItemNames.get(line.productId)?.name ??
+      "este producto";
     try {
       await confirm({
         title: "Eliminar producto",
@@ -531,11 +607,12 @@ export const PurchaseForm = ({
       nextErrors.supplierId = "Debes seleccionar un proveedor.";
     }
 
-    if (!values.branchId) {
+    if (!values.branchId && !isEdit) {
       nextErrors.branchId = "Debes seleccionar una sucursal.";
     }
 
-    if (!resolvedTerminalId) {
+    // En edicion la terminal ya quedo fijada al crear el borrador.
+    if (!isEdit && !resolvedTerminalId) {
       nextErrors.terminalId =
         values.branchId && !terminalLoading
           ? "La sucursal seleccionada no tiene terminal activa disponible. Abre caja o selecciona contexto para operar la compra."
@@ -543,6 +620,7 @@ export const PurchaseForm = ({
     }
 
     if (
+      !isEdit &&
       resolvedTerminalId === currentPosTerminalId &&
       currentPosBranchId &&
       values.branchId &&
@@ -556,6 +634,28 @@ export const PurchaseForm = ({
       nextErrors.items = "Agrega al menos un producto a la compra.";
     } else if (lines.some((line) => !(line.quantity > 0) || !(line.cost >= 0))) {
       nextErrors.items = "Todos los productos deben tener cantidad mayor a 0 y costo válido.";
+    } else {
+      // V118: enteros salvo productos marcados "Permite cantidades con decimales".
+      for (const line of lines) {
+        if (line.mode !== "UNIT") {
+          continue;
+        }
+        const product = productsById.get(line.productId);
+        const savedItem = purchase?.items.find((item) => item.productId === line.productId);
+        const violation = getQuantityPolicyViolation(
+          line.quantity,
+          {
+            saleType: product?.saleType ?? savedItem?.saleType ?? "UNIT",
+            allowsDecimalQuantity:
+              product?.allowsDecimalQuantity ?? savedItem?.allowsDecimalQuantity ?? false,
+          },
+          product?.name ?? savedItem?.productName ?? "El producto"
+        );
+        if (violation) {
+          nextErrors.items = violation;
+          break;
+        }
+      }
     }
 
     setErrors(nextErrors);
@@ -569,8 +669,49 @@ export const PurchaseForm = ({
       return;
     }
 
+    try {
+      await confirm(
+        isEdit
+          ? {
+              title: "Guardar cambios del borrador",
+              description: `Se reemplazarán el proveedor, el tipo y los productos del borrador por lo que ves en pantalla (${lines.length} producto(s), total ${formatCurrency(total)}).\n\nLa compra seguirá en borrador y no se moverá inventario.`,
+              confirmText: "Guardar cambios",
+              cancelText: "Seguir editando",
+              variant: "warning",
+            }
+          : {
+              title: "Guardar compra como borrador",
+              description: `Se registrará la compra de ${selectedSupplier?.name ?? "el proveedor"} por ${formatCurrency(total)} con ${lines.length} producto(s).\n\nQuedará en borrador: podrás editarla y luego confirmarla para recibir la mercancía. Guardar no mueve inventario.`,
+              confirmText: "Guardar borrador",
+              cancelText: "Seguir editando",
+              variant: "default",
+            }
+      );
+    } catch {
+      return;
+    }
+
     setErrors({});
     setIsSubmitting(true);
+
+    if (purchase) {
+      try {
+        const response = await updatePurchaseDraft(purchase.id, {
+          supplierId: values.supplierId,
+          type: values.type,
+          total,
+          items: payloadItems,
+        });
+        onDirtyChange?.(false);
+        onSuccess(response);
+      } catch (error) {
+        onError?.(error);
+        setErrors({ submit: "No se pudieron guardar los cambios del borrador." });
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
 
     try {
       const response = await createPurchase({
@@ -630,10 +771,13 @@ export const PurchaseForm = ({
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Purchases</p>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Crear compra</h2>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            {isEdit ? "Editar borrador de compra" : "Crear compra"}
+          </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Registra la factura del proveedor escaneando los productos. Guardar la compra no
-            mueve inventario; el stock entra al confirmar la recepción.
+            {isEdit
+              ? "Ajusta proveedor, tipo, productos, cantidades y costos. La sucursal, la terminal y la fecha quedan fijas. Cuando esté lista, confírmala desde el listado para poder recibirla."
+              : "Registra la factura del proveedor escaneando los productos. La compra se guarda como borrador editable; guardarla no mueve inventario y el stock entra al confirmar la recepción."}
           </p>
         </div>
         <Button variant="ghost" onClick={onCancel}>
@@ -647,26 +791,30 @@ export const PurchaseForm = ({
           className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)] dark:border-slate-700 dark:bg-slate-900/40"
         >
           <div className="space-y-2">
-            <Select
+            <SearchableSelect
+              id="purchase-supplier"
               label="Proveedor"
-              required
               value={values.supplierId}
+              options={supplierOptions}
+              loading={catalogLoading}
               disabled={catalogLoading || suppliers.length === 0}
-              onChange={(event) => {
+              placeholder={catalogLoading ? "Cargando..." : "Selecciona un proveedor"}
+              searchPlaceholder="Buscar por nombre, razón social o documento"
+              noResultsMessage="No hay proveedores que coincidan"
+              onChange={(supplierId) => {
+                if (supplierId === values.supplierId) {
+                  return;
+                }
                 markDirty();
-                setValues((prev) => ({ ...prev, supplierId: event.target.value }));
+                setValues((prev) => ({ ...prev, supplierId }));
                 setErrors((prev) => ({ ...prev, supplierId: undefined, submit: undefined }));
               }}
-            >
-              <option value="">
-                {catalogLoading ? "Cargando..." : "Selecciona un proveedor"}
-              </option>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </Select>
+            />
+            {isEdit && values.supplierId && !selectedSupplier && purchase?.supplierName ? (
+              <p className="text-xs text-amber-700">
+                Proveedor actual: {purchase.supplierName} (inactivo). Selecciona otro o conserva el actual.
+              </p>
+            ) : null}
             {selectedSupplier ? (
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {[
@@ -685,7 +833,19 @@ export const PurchaseForm = ({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {isSuperRole ? (
+            {isEdit ? (
+              <div className="space-y-1">
+                <Input
+                  label="Sucursal"
+                  value={purchase?.branchName ?? selectedBranchName}
+                  disabled
+                  readOnly
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  No se puede cambiar. Si es incorrecta, cancela el borrador y crea uno nuevo.
+                </p>
+              </div>
+            ) : isSuperRole ? (
               <div className="space-y-1">
                 <Select
                   label="Sucursal"
@@ -712,7 +872,14 @@ export const PurchaseForm = ({
             )}
 
             <div className="space-y-1">
-              {selectedBranchTerminals.length > 1 ? (
+              {isEdit ? (
+                <Input
+                  label="Terminal"
+                  value={purchase?.terminalName ?? "-"}
+                  disabled
+                  readOnly
+                />
+              ) : selectedBranchTerminals.length > 1 ? (
                 <Select
                   label="Terminal"
                   required
@@ -740,7 +907,7 @@ export const PurchaseForm = ({
               ) : (
                 <Input label="Terminal" value={terminalDisplayName} disabled readOnly />
               )}
-              {terminalError ? (
+              {terminalError && !isEdit ? (
                 <p className="text-xs text-amber-700">{terminalError}</p>
               ) : null}
               {errors.terminalId ? (
@@ -772,7 +939,12 @@ export const PurchaseForm = ({
               <option value="CREDIT">CREDIT</option>
             </Select>
 
-            <Input label="Fecha" value={todayLabel()} disabled readOnly />
+            <Input
+              label="Fecha"
+              value={formatDateLabel(purchase?.createdAt ?? new Date())}
+              disabled
+              readOnly
+            />
           </div>
         </div>
 
@@ -839,7 +1011,7 @@ export const PurchaseForm = ({
           </div>
           <div className="flex flex-wrap gap-3">
             <Button type="submit" isLoading={isSubmitting} className="flex-1 sm:flex-none">
-              Guardar compra
+              {isEdit ? "Guardar cambios" : "Guardar borrador"}
             </Button>
             <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
               Cancelar

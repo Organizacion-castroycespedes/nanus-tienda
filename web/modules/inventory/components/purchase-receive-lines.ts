@@ -19,8 +19,14 @@ export const toFiniteNumber = (value: unknown) => {
   return Number.isFinite(numberValue) ? numberValue : 0;
 };
 
+/** Pendiente redondeado a 3 decimales: evita mostrar 0.15000000000000036 (11 - 10.85). */
 export const getPendingQuantity = (item: PurchaseReceiveLineInput) =>
-  Math.max(toFiniteNumber(item.orderedQuantity) - toFiniteNumber(item.receivedQuantity), 0);
+  Math.max(
+    Math.round(
+      (toFiniteNumber(item.orderedQuantity) - toFiniteNumber(item.receivedQuantity)) * 1000
+    ) / 1000,
+    0
+  );
 
 export const getPendingReceiveRows = <T extends PurchaseReceiveLineInput>(
   items: T[]

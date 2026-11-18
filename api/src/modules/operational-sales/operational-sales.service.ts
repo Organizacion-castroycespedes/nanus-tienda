@@ -29,6 +29,14 @@ const VOID_REQUEST_RETRY_BASE_MS = 60_000;
 const VOID_REQUEST_RETRY_MAX_MS = 30 * 60_000;
 const VOID_REQUEST_MAX_ATTEMPTS = 20;
 
+/** Linea fisica facturada en una venta de pedido que se devuelve al anularla. */
+type OrderSaleVoidLine = {
+  productId: string;
+  quantity: number;
+  isInventoryable: boolean;
+  requiresSerial: boolean;
+};
+
 const isUndefinedTableError = (error: unknown) =>
   Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "42P01");
 
@@ -999,6 +1007,329 @@ export class OperationalSalesService {
     };
   }
 
+  /**
+   * Lineas a devolver al anular una venta que viene de un pedido. Devuelve null si la venta
+   * tiene salidas de inventario propias (reference_table = 'sales'): entonces es el flujo normal.
+   */
+  private async loadOrderSaleVoidLines(
+    client: { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> },
+    tenantId: string,
+    saleId: string
+  ): Promise<OrderSaleVoidLine[] | null> {
+    const ownMovements = await client.query(
+      `SELECT 1
+         FROM stock_movements
+        WHERE tenant_id = $1 AND reference_type = 'SALE' AND reference_id = $2
+          AND reference_table = 'sales' AND type = 'OUT'
+        LIMIT 1`,
+      [tenantId, saleId]
+    );
+    if (ownMovements.rows.length > 0) {
+      return null;
+    }
+
+    const linesResult = await client.query(
+      `SELECT si.product_id,
+              SUM(si.quantity)::text AS quantity,
+              BOOL_OR(COALESCE((to_jsonb(p) ->> 'is_inventoryable')::boolean, TRUE)) AS is_inventoryable,
+              BOOL_OR(COALESCE((to_jsonb(p) ->> 'requires_serial')::boolean, FALSE)) AS requires_serial
+         FROM sale_items si
+         JOIN products p ON p.id = si.product_id AND p.tenant_id = $1
+        WHERE si.sale_id = $2
+        GROUP BY si.product_id
+        ORDER BY si.product_id`,
+      [tenantId, saleId]
+    );
+    return linesResult.rows
+      .map((row) => ({
+        productId: String(row.product_id),
+        quantity: Number(row.quantity),
+        isInventoryable: row.is_inventoryable !== false,
+        requiresSerial: Boolean(row.requires_serial),
+      }))
+      .filter((line) => line.isInventoryable && line.quantity > 0);
+  }
+
+  /**
+   * Devuelve al inventario lo facturado en una venta de pedido: una entrada por producto en la
+   * sucursal de la entrega y, si la entrega consumio lotes, el saldo vuelve a esos lotes (los de la
+   * salida mas reciente primero), descontando lo ya devuelto por otras anulaciones del mismo pedido.
+   * No toca la entrega, FEFO ni consumeDeliveryLots.
+   */
+  private async returnOrderSaleInventory(
+    client: { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> },
+    input: {
+      tenantId: string;
+      saleId: string;
+      orderId: string;
+      userId: string | null;
+      lines: OrderSaleVoidLine[];
+    }
+  ) {
+    const round3 = (value: number) => Math.round(value * 1000) / 1000;
+    const { tenantId, saleId, orderId } = input;
+
+    for (const line of input.lines) {
+      const orderOuts = await client.query(
+        `SELECT id, quantity::text AS quantity, branch_id, terminal_id, pos_session_code, user_id
+           FROM stock_movements
+          WHERE tenant_id = $1 AND reference_type = 'SALE' AND reference_table = 'orders'
+            AND reference_id = $2 AND product_id = $3 AND type = 'OUT'
+          ORDER BY created_at DESC, id DESC`,
+        [tenantId, orderId, line.productId]
+      );
+      if (orderOuts.rows.length === 0) {
+        continue;
+      }
+
+      const returnedResult = await client.query(
+        `SELECT COALESCE(SUM(sm.quantity), 0)::text AS returned
+           FROM stock_movements sm
+           JOIN sales s ON s.id::text = sm.reference_id::text AND s.tenant_id = sm.tenant_id
+          WHERE sm.tenant_id = $1 AND sm.reference_type = 'SALE' AND sm.reference_table = 'sales'
+            AND sm.type = 'IN' AND sm.product_id = $3 AND s.order_id = $2 AND s.id <> $4`,
+        [tenantId, orderId, line.productId, saleId]
+      );
+      const delivered = orderOuts.rows.reduce((sum, row) => sum + Number(row.quantity), 0);
+      const returnable = round3(delivered - Number(returnedResult.rows[0]?.returned ?? 0));
+      const quantity = round3(Math.min(line.quantity, returnable));
+      if (quantity <= 0) {
+        continue;
+      }
+
+      const reference = orderOuts.rows[0];
+      const reverseMovement = await this.stockMovementService!.createMovement(
+        {
+          id: crypto.randomUUID(),
+          tenantId,
+          productId: line.productId,
+          type: "IN",
+          quantity,
+          referenceType: "SALE",
+          referenceId: saleId,
+          branchId: reference.branch_id,
+          terminalId: reference.terminal_id,
+          posSessionCode: reference.pos_session_code,
+          userId: input.userId ?? reference.user_id,
+          referenceTable: "sales",
+          createdAt: new Date(),
+        },
+        client as never
+      );
+
+      const deliveredLots = await client.query(
+        `SELECT sml.lot_id, sml.location_id, sml.quantity::text AS quantity
+           FROM stock_movement_lots sml
+           JOIN stock_movements sm ON sm.id = sml.stock_movement_id
+          WHERE sml.tenant_id = $1 AND sml.stock_movement_id = ANY($2::uuid[])
+          ORDER BY sm.created_at DESC, sml.created_at DESC, sml.id DESC`,
+        [tenantId, orderOuts.rows.map((row) => row.id)]
+      );
+      if (deliveredLots.rows.length === 0) {
+        continue;
+      }
+
+      const returnedLots = await client.query(
+        `SELECT sml.lot_id, sml.location_id, SUM(sml.quantity)::text AS quantity
+           FROM stock_movement_lots sml
+           JOIN stock_movements sm ON sm.id = sml.stock_movement_id
+           JOIN sales s ON s.id::text = sm.reference_id::text AND s.tenant_id = sm.tenant_id
+          WHERE sml.tenant_id = $1 AND sm.reference_table = 'sales' AND sm.type = 'IN'
+            AND sm.product_id = $3 AND s.order_id = $2 AND s.id <> $4
+          GROUP BY sml.lot_id, sml.location_id`,
+        [tenantId, orderId, line.productId, saleId]
+      );
+      const lotKey = (lotId: string, locationId: string | null) => `${lotId}|${locationId ?? ""}`;
+      const alreadyReturned = new Map<string, number>(
+        returnedLots.rows.map((row) => [lotKey(row.lot_id, row.location_id), Number(row.quantity)])
+      );
+
+      let remaining = quantity;
+      for (const lot of deliveredLots.rows) {
+        if (remaining <= 0) {
+          break;
+        }
+        const key = lotKey(lot.lot_id, lot.location_id);
+        const consumedByPrevious = Math.min(alreadyReturned.get(key) ?? 0, Number(lot.quantity));
+        alreadyReturned.set(key, round3((alreadyReturned.get(key) ?? 0) - consumedByPrevious));
+        const available = round3(Number(lot.quantity) - consumedByPrevious);
+        if (available <= 0) {
+          continue;
+        }
+        const lotQty = round3(Math.min(available, remaining));
+        remaining = round3(remaining - lotQty);
+
+        const balanceResult = await client.query(
+          `UPDATE inventory_lot_balances
+              SET quantity_on_hand = quantity_on_hand + $1,
+                  last_movement_at = NOW(),
+                  updated_at = NOW()
+            WHERE tenant_id = $2
+              AND branch_id = $3
+              AND product_id = $4
+              AND lot_id = $5
+              AND (($6::uuid IS NULL AND location_id IS NULL) OR location_id = $6::uuid)
+            RETURNING id`,
+          [lotQty, tenantId, reference.branch_id, line.productId, lot.lot_id, lot.location_id]
+        );
+        if (!balanceResult.rows[0]) {
+          throw new BadRequestException("inventory lot balance not found for reversal");
+        }
+
+        await client.query(
+          `INSERT INTO stock_movement_lots (
+            id, tenant_id, stock_movement_id, product_id, lot_id,
+            location_id, quantity, created_at
+          ) VALUES (
+            gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW()
+          )`,
+          [tenantId, reverseMovement.id, line.productId, lot.lot_id, lot.location_id, lotQty]
+        );
+      }
+
+      if (remaining > 0) {
+        throw new BadRequestException(
+          "No se encontraron los lotes de la entrega del pedido para devolver el inventario"
+        );
+      }
+    }
+  }
+
+  /**
+   * Reembolsa en caja lo pagado en el pedido hasta el total de la venta anulada, descontando lo ya
+   * reembolsado por anulaciones de otras ventas del mismo pedido. Crea el pago REFUND (OUT) y su
+   * movimiento de caja como el flujo del POS; marca REFUNDED el pago del pedido solo si se devuelve
+   * completo. Devuelve el monto reembolsado.
+   */
+  private async refundOrderSalePayments(
+    client: { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> },
+    input: {
+      tenantId: string;
+      saleId: string;
+      orderId: string;
+      branchId: string;
+      saleTotal: number;
+      cashSessionId: string | null;
+      reason: string;
+      userId: string | null;
+    }
+  ) {
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    const { tenantId, saleId, orderId } = input;
+
+    const orderPayments = await client.query(
+      `SELECT id, payment_method_id, amount::text AS amount, reference_number, cash_session_id
+         FROM payments
+        WHERE tenant_id = $1 AND reference_type = 'SALES_ORDER' AND reference_id = $2
+          AND direction = 'IN' AND status = 'COMPLETED'
+        ORDER BY created_at DESC, id DESC
+        FOR UPDATE`,
+      [tenantId, orderId]
+    );
+    if (orderPayments.rows.length === 0) {
+      return 0;
+    }
+
+    // Reembolsos de otras ventas del mismo pedido y pagos del pedido ya devueltos completos.
+    const previous = await client.query(
+      `SELECT
+          COALESCE((
+            SELECT SUM(p.amount)
+              FROM payments p
+              JOIN sales s ON s.id::text = p.reference_id::text AND s.tenant_id = p.tenant_id
+             WHERE p.tenant_id = $1 AND p.reference_type = 'REFUND' AND p.direction = 'OUT'
+               AND p.status = 'COMPLETED' AND s.order_id = $2 AND s.id <> $3
+          ), 0)::text AS refunded_by_other_sales,
+          COALESCE((
+            SELECT SUM(p.amount)
+              FROM payments p
+             WHERE p.tenant_id = $1 AND p.reference_type = 'SALES_ORDER' AND p.reference_id = $2
+               AND p.direction = 'IN' AND p.status = 'REFUNDED'
+          ), 0)::text AS fully_refunded_order_payments`,
+      [tenantId, orderId, saleId]
+    );
+    let consumed = round2(
+      Math.max(
+        Number(previous.rows[0]?.refunded_by_other_sales ?? 0) -
+          Number(previous.rows[0]?.fully_refunded_order_payments ?? 0),
+        0
+      )
+    );
+
+    let remaining = round2(Math.max(input.saleTotal, 0));
+    let refunded = 0;
+    for (const payment of orderPayments.rows) {
+      if (remaining <= 0) {
+        break;
+      }
+      const paymentAmount = Number(payment.amount);
+      const alreadyUsed = Math.min(consumed, paymentAmount);
+      consumed = round2(consumed - alreadyUsed);
+      const available = round2(paymentAmount - alreadyUsed);
+      if (available <= 0) {
+        continue;
+      }
+      const refundAmount = round2(Math.min(available, remaining));
+      remaining = round2(remaining - refundAmount);
+      refunded = round2(refunded + refundAmount);
+
+      const targetCashSessionId = input.cashSessionId ?? payment.cash_session_id ?? null;
+      const refundPayment = await client.query(
+        `INSERT INTO payments (
+          tenant_id, branch_id, payment_method_id, cash_session_id,
+          reference_type, reference_id, direction, status, amount,
+          reference_number, notes, created_by
+        ) VALUES (
+          $1, $2, $3, $4, 'REFUND', $5, 'OUT', 'COMPLETED', $6,
+          $7, $8, $9
+        ) RETURNING id`,
+        [
+          tenantId,
+          input.branchId,
+          payment.payment_method_id,
+          targetCashSessionId,
+          saleId,
+          refundAmount,
+          payment.reference_number,
+          `Anulación de venta de pedido: ${input.reason}`,
+          input.userId,
+        ]
+      );
+      const refundPaymentId = refundPayment.rows[0]?.id;
+
+      if (targetCashSessionId) {
+        await client.query(
+          `INSERT INTO cash_movements (
+            tenant_id, branch_id, cash_session_id, payment_id,
+            movement_type, direction, reference_type, reference_id,
+            amount, description, created_by, created_at
+          ) VALUES (
+            $1, $2, $3, $4, 'PAYMENT', 'OUT', 'REFUND', $5, $6, $7, $8, NOW()
+          )`,
+          [
+            tenantId,
+            input.branchId,
+            targetCashSessionId,
+            refundPaymentId,
+            saleId,
+            refundAmount,
+            `Anulación venta ${saleId} (pedido ${orderId}): ${input.reason}`,
+            input.userId,
+          ]
+        );
+      }
+
+      if (alreadyUsed === 0 && refundAmount === paymentAmount) {
+        await client.query(
+          `UPDATE payments SET status = 'REFUNDED' WHERE id = $1 AND tenant_id = $2`,
+          [payment.id, tenantId]
+        );
+      }
+    }
+
+    return refunded;
+  }
+
   private async applySaleVoid(
     actor: OperationalSaleActor,
     tenantId: string,
@@ -1015,8 +1346,10 @@ export class OperationalSalesService {
         branch_id: string;
         status: string;
         payment_status: string;
+        order_id?: string | null;
+        total?: string | null;
       }>(
-        `SELECT id, branch_id, status, payment_status
+        `SELECT id, branch_id, status, payment_status, order_id, total::text AS total
            FROM sales
           WHERE id = $1 AND tenant_id = $2
           FOR UPDATE`,
@@ -1038,6 +1371,13 @@ export class OperationalSalesService {
         [tenantId, sale.branch_id]
       );
       const currentCashSession = openSessionResult.rows[0];
+
+      // Venta que viene de un pedido: su salida de inventario se creo al entregar el pedido
+      // (reference_table = 'orders'), no a nombre de la venta. Flujo aparte; las ventas del POS
+      // (con salidas propias) siguen exactamente el flujo de abajo.
+      const orderSaleLines = sale.order_id
+        ? await this.loadOrderSaleVoidLines(client, tenantId, saleId)
+        : null;
 
       // 1. Return inventory / Kardex if requested
       if (dto.returnInventory !== false) {
@@ -1141,6 +1481,16 @@ export class OperationalSalesService {
         }
       }
 
+      if (orderSaleLines && sale.order_id && dto.returnInventory !== false) {
+        await this.returnOrderSaleInventory(client, {
+          tenantId,
+          saleId,
+          orderId: sale.order_id,
+          userId: actor.id ?? null,
+          lines: orderSaleLines,
+        });
+      }
+
       // 1b. Series: RETURNED si el inventario vuelve; si no, evento VOIDED_NOT_RETURNED.
       if (this.productSerialService) {
         await this.productSerialService.markReturnedForSale(client, {
@@ -1150,6 +1500,19 @@ export class OperationalSalesService {
           userId: actor.id ?? null,
           reason: dto.reason ?? null,
         });
+        if (orderSaleLines && sale.order_id) {
+          await this.productSerialService.markReturnedForOrderSale(client, {
+            tenantId,
+            saleId,
+            orderId: sale.order_id,
+            lines: orderSaleLines
+              .filter((line) => line.requiresSerial)
+              .map((line) => ({ productId: line.productId, quantity: line.quantity })),
+            returnInventory: dto.returnInventory !== false,
+            userId: actor.id ?? null,
+            reason: dto.reason ?? null,
+          });
+        }
       }
 
       // 2. Payments & Cash session refund
@@ -1168,7 +1531,7 @@ export class OperationalSalesService {
           FOR UPDATE`,
         [tenantId, saleId]
       );
-      const finalSaleStatus = paymentsResult.rows.some(
+      let finalSaleStatus = paymentsResult.rows.some(
         (payment) => payment.status === "COMPLETED"
       )
         ? "REFUNDED"
@@ -1233,6 +1596,24 @@ export class OperationalSalesService {
             `UPDATE payments SET status = 'CANCELLED' WHERE id = $1 AND tenant_id = $2`,
             [p.id, tenantId]
           );
+        }
+      }
+
+      // 2b. Venta de pedido: los pagos quedaron a nombre del pedido (SALES_ORDER), no de la venta.
+      // Flujo aparte: solo si la venta no tiene pagos propios; las ventas del POS no entran aqui.
+      if (sale.order_id && paymentsResult.rows.length === 0) {
+        const refunded = await this.refundOrderSalePayments(client, {
+          tenantId,
+          saleId,
+          orderId: sale.order_id,
+          branchId: sale.branch_id,
+          saleTotal: Number(sale.total ?? 0),
+          cashSessionId: currentCashSession?.id ?? null,
+          reason: dto.reason.trim(),
+          userId: actor.id ?? null,
+        });
+        if (refunded > 0) {
+          finalSaleStatus = "REFUNDED";
         }
       }
 

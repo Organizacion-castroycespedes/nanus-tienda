@@ -474,6 +474,29 @@ export class ProductSerialService {
     }
   }
 
+  /** V119: anulación de una venta que viene de un pedido (las series quedaron con order_id). */
+  async markReturnedForOrderSale(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      saleId: string;
+      orderId: string;
+      lines: Array<{ productId: string; quantity: number }>;
+      returnInventory: boolean;
+      userId: string | null;
+      reason: string | null;
+    }
+  ) {
+    if (input.lines.length === 0) {
+      return 0;
+    }
+    try {
+      return await this.repository.markOrderSaleReturned(client, input);
+    } catch (error) {
+      throw mapSerialDatabaseError(error) ?? error;
+    }
+  }
+
   /** Prevalidación de solo lectura para escáner, pegado masivo o archivo, antes de recibir. */
   async prevalidate(
     tenantId: string,

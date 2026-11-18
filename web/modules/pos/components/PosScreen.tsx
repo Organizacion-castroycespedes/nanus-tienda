@@ -1856,6 +1856,7 @@ export const PosScreen = () => {
         price: Number(product.priceWithTax ?? product.price),
         stock,
         isInventoryable,
+        allowsDecimalQuantity: Boolean(product.allowsDecimalQuantity),
         taxId: product.taxId ?? null,
         priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
         baseUnitPrice: Number(product.priceWithTax ?? product.price),
@@ -1883,7 +1884,17 @@ export const PosScreen = () => {
       }
       const currentCart = cartRef.current;
       const existing = currentCart.find((item) => item.productId === product.id);
-      const nextQuantity = existing ? existing.quantity + 1 : 1;
+      let nextQuantity = existing ? existing.quantity + 1 : 1;
+      // V118: en productos fraccionables, "+" completa hasta el stock (ej. 10 -> 10.85 m).
+      const availableStock = Number(product.stock ?? 0);
+      if (
+        product.allowsDecimalQuantity &&
+        isInventoryableProduct(product) &&
+        nextQuantity > availableStock &&
+        availableStock > (existing?.quantity ?? 0)
+      ) {
+        nextQuantity = Math.floor(availableStock * 100 + 1e-6) / 100;
+      }
       const added = setProductQuantityInCart(product, nextQuantity);
       if (added) {
         focusProductSearch();
@@ -2286,9 +2297,25 @@ export const PosScreen = () => {
       return;
     }
 
-    const safeQuantity = target.isInventoryable === false
+    // V118: enteros salvo productos que admiten decimales (hasta 2). El tope sigue siendo el stock.
+    const allowsDecimal =
+      target.allowsDecimalQuantity ??
+      Boolean(productsRef.current.find((product) => product.id === productId)?.allowsDecimalQuantity);
+    const normalizeQuantity = (value: number) =>
+      allowsDecimal ? Math.floor(value * 100 + 1e-6) / 100 : Math.floor(value + 1e-6);
+    const cappedQuantity = target.isInventoryable === false
       ? nextQuantity
       : Math.min(nextQuantity, target.stock);
+    const safeQuantity = normalizeQuantity(cappedQuantity);
+    if (safeQuantity <= 0) {
+      showToast(
+        allowsDecimal
+          ? "La cantidad debe ser mayor a cero."
+          : "Este producto se vende por unidades enteras y no hay una unidad completa disponible.",
+        "warning"
+      );
+      return;
+    }
     if (safeQuantity === target.quantity && target.pricingStatus !== POS_CART_PRICING_STATUSES.ERROR) {
       return;
     }

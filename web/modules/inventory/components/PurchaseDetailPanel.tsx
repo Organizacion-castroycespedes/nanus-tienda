@@ -2,6 +2,7 @@
 
 import { Button } from "../../../components/design-system/Button";
 import type { PurchaseDetailResponse } from "../services/purchase.service";
+import { roundQuantity } from "../utils/quantity-policy";
 
 type PurchaseDetailPanelProps = {
   purchase: PurchaseDetailResponse | null;
@@ -11,7 +12,11 @@ type PurchaseDetailPanelProps = {
   canPay?: boolean;
   canCancel?: boolean;
   canViewTicket?: boolean;
+  canEdit?: boolean;
+  canConfirm?: boolean;
   onClose: () => void;
+  onEdit?: () => void;
+  onConfirmPurchase?: () => void;
   onReceive?: () => void;
   onLiquidate?: () => void;
   onPay?: () => void;
@@ -39,7 +44,9 @@ const formatDateTime = (value?: string | null) =>
     : "-";
 
 const displayStatus = (status?: string | null) =>
-  status === "CANCELLED"
+  status === "DRAFT"
+    ? "BORRADOR"
+    : status === "CANCELLED"
     ? "CANCELADA"
     : status === "CERRADA_PARCIAL"
       ? "CERRADA_PARCIAL"
@@ -53,7 +60,11 @@ export const PurchaseDetailPanel = ({
   canPay = false,
   canCancel = false,
   canViewTicket = false,
+  canEdit = false,
+  canConfirm = false,
   onClose,
+  onEdit,
+  onConfirmPurchase,
   onReceive,
   onLiquidate,
   onPay,
@@ -241,7 +252,7 @@ export const PurchaseDetailPanel = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {purchase.items.map((item) => {
-                    const pending = Math.max(item.orderedQuantity - item.receivedQuantity, 0);
+                    const pending = roundQuantity(Math.max(item.orderedQuantity - item.receivedQuantity, 0));
 
                     return (
                       <tr key={item.id}>
@@ -274,7 +285,11 @@ export const PurchaseDetailPanel = ({
                     <p className="font-medium text-slate-900 dark:text-white">
                       {event.action === "PURCHASE_PARTIAL_CLOSED"
                         ? "Compra cerrada parcialmente"
-                        : "Compra cancelada"}
+                        : event.action === "PURCHASE_DRAFT_UPDATED"
+                          ? "Borrador modificado"
+                          : event.action === "PURCHASE_CONFIRMED"
+                            ? "Compra confirmada"
+                            : "Compra cancelada"}
                     </p>
                     <p className="mt-1 text-slate-700 dark:text-slate-200">
                       Estado anterior: {displayStatus(event.estadoAnterior)} | Estado nuevo:{" "}
@@ -299,6 +314,16 @@ export const PurchaseDetailPanel = ({
             <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">
               Volver
             </Button>
+            {canEdit && onEdit ? (
+              <Button variant="outline" onClick={onEdit} className="w-full sm:w-auto">
+                Editar borrador
+              </Button>
+            ) : null}
+            {canConfirm && onConfirmPurchase ? (
+              <Button onClick={onConfirmPurchase} className="w-full sm:w-auto">
+                Confirmar compra
+              </Button>
+            ) : null}
             {canReceive && onReceive ? <Button variant="outline" onClick={onReceive} className="w-full sm:w-auto">Recibir</Button> : null}
             {canPay && onPay ? <Button variant="outline" onClick={onPay} className="w-full sm:w-auto">Pagar</Button> : null}
             {canCancel && onCancelPurchase ? (
