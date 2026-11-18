@@ -387,3 +387,100 @@ test("observation controller logs receipt and authenticated stage without reques
     assert.equal(serialized.includes(forbidden), false);
   }
 });
+
+const withPairingSigningEnv = async (run: (signingPublicPem: string) => Promise<void>) => {
+  const { generateKeyPairSync } = await import("node:crypto");
+  const pair = generateKeyPairSync("ed25519");
+  const names = ["AGENT_ENROLLMENT_SIGNING_KEY_ID", "AGENT_ENROLLMENT_SIGNING_PRIVATE_KEY_PEM", "AGENT_ENROLLMENT_AUDIENCE"] as const;
+  const previous = names.map((name) => process.env[name]);
+  process.env.AGENT_ENROLLMENT_SIGNING_KEY_ID = "qa-fixture-key";
+  process.env.AGENT_ENROLLMENT_SIGNING_PRIVATE_KEY_PEM = pair.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  process.env.AGENT_ENROLLMENT_AUDIENCE = "manus-agent:qa";
+  try { await run(pair.publicKey.export({ type: "spki", format: "pem" }).toString()); } finally {
+    names.forEach((name, index) => { if (previous[index] === undefined) delete process.env[name]; else process.env[name] = previous[index]; });
+  }
+};
+
+const makePairingService = (issuedCredentialIds: Set<string>) => {
+  const client = {
+    query: async (sql: string) => {
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql.trim())) return { rows: [], rowCount: 0 };
+      if (sql.includes("FROM terminal_devices") && sql.includes("FOR UPDATE")) {
+        return { rows: [{ id: "device-1", tenant_id: "tenant-1", installation_id: "install-1", registration_status: "ACTIVE" }], rowCount: 1 };
+      }
+      if (sql.includes("FROM pos_terminals")) return { rows: [{ id: "pos-1", branch_id: "branch-1", operational_terminal_id: "terminal-1" }], rowCount: 1 };
+      if (sql.includes("FROM terminals")) return { rows: [{ id: "terminal-1" }], rowCount: 1 };
+      if (sql.includes("FROM terminal_device_bindings")) return { rows: [{}], rowCount: 1 };
+      if (sql.includes("FROM terminal_device_credentials")) return { rows: [], rowCount: 0 };
+      throw new Error(`UNEXPECTED_QUERY ${sql.trim().slice(0, 40)}`);
+    },
+    release: () => undefined,
+  };
+  const database = {
+    getClient: async () => client,
+    query: async () => ({ rows: [{ id: "device-1", tenant_id: "tenant-1", registration_status: "ACTIVE" }], rowCount: 1 }),
+  };
+  // Mirrors the terminal_device_credentials_credential_id_unique index (V103).
+  const credentials = { issue: async (_client: unknown, input: { credentialId: string }) => {
+    if (issuedCredentialIds.has(input.credentialId)) throw Object.assign(new Error("duplicate key"), { code: "23505" });
+    issuedCredentialIds.add(input.credentialId);
+    return { id: "credential-row" };
+  } };
+  return new ScaleAuthorizationRuntimeService(database as never, credentials as never, {} as never, {} as never);
+};
+
+test("pairing challenge from the service is backdated, bounded and single-use", async () => {
+  await withPairingSigningEnv(async () => {
+    const { generateKeyPairSync } = await import("node:crypto");
+    const enrollmentPublicKeyPem = generateKeyPairSync("rsa", { modulusLength: 3072 }).publicKey
+      .export({ type: "spki", format: "pem" }).toString();
+    const service = makePairingService(new Set());
+    const before = Date.now();
+    const signedChallenge = await service.createPairingChallenge({ installationId: "install-1", nonce: "n".repeat(48), enrollmentPublicKeyPem });
+    const after = Date.now();
+    const issued = Date.parse(signedChallenge.challenge.issuedAt);
+    const expires = Date.parse(signedChallenge.challenge.expiresAt);
+    assert.ok(issued >= before - 2_000 && issued <= after - 2_000, "issuedAt is API now minus 2,000 ms");
+    assert.equal(expires - issued, 300_000);
+    const approval = { signedChallenge, pairingCode: signedChallenge.challenge.pairingCode, posTerminalId: "pos-1",
+      logicalScaleId: "scale-1", enrollmentPublicKeyPem };
+    const actor = { tenantId: "tenant-1", userId: "user-1" };
+    const first = await service.approvePairing(approval, actor as never);
+    assert.equal(first.credentialId, signedChallenge.challenge.jti);
+    await assert.rejects(service.approvePairing(approval, actor as never),
+      (error: unknown) => error instanceof ConflictException && (error as Error).message === "PAIRING_CHALLENGE_ALREADY_USED");
+    const tampered = { ...approval, signedChallenge: { ...signedChallenge,
+      challenge: { ...signedChallenge.challenge, issuedAt: new Date(issued - 1_000).toISOString() } } };
+    await assert.rejects(service.approvePairing(tampered, actor as never),
+      (error: unknown) => error instanceof ForbiddenException && (error as Error).message === "PAIRING_CHALLENGE_INVALID");
+    await assert.rejects(service.approvePairing({ ...approval, pairingCode: "0000000000" }, actor as never), ForbiddenException);
+  });
+});
+
+test("terminal snapshot exposes the latest credential ID so revocation targets it", async () => {
+  const queries: { sql: string; params: unknown[] }[] = [];
+  const row = {
+    pos_terminal_id: "pos-1", branch_id: "branch-1", operational_terminal_id: "terminal-1",
+    scale_device_id: "scale-1", enable_scale: true,
+    device_id: "device-1", registration_status: "BOUND", installation_id: "install-1",
+    credential_id: "credential-jti-1", credential_status: "ACTIVE", credential_expires_at: new Date(Date.now() + 60_000),
+    binding_id: "binding-1", logical_scale_id: "scale-1", binding_status: "REVOKED", unit_state: "NOT_VERIFIED",
+    unit_verification_method: null, unit_verification_unit: null, unit_verified_by_user_id: null, verified_at: null,
+  };
+  const database = { query: async (sql: string, params: unknown[]) => { queries.push({ sql, params }); return { rows: [row], rowCount: 1 }; } };
+  const service = new ScaleAuthorizationRuntimeService(database as never, {} as never, {} as never, {} as never);
+  const state = await service.getTerminalState("pos-1", { tenantId: "tenant-1", userId: "user-1" } as never);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].sql, /c\.credential_id/);
+  assert.deepEqual(queries[0].params, ["pos-1", "tenant-1"]);
+  assert.equal(state.agent.credentialId, "credential-jti-1");
+  assert.equal(state.agent.authenticated, true);
+  // The latest binding may be REVOKED; the snapshot reports it as such for the UI guard.
+  assert.equal(state.binding?.status, "REVOKED");
+  const expired = { ...row, credential_status: "ACTIVE", credential_expires_at: new Date(Date.now() - 1_000) };
+  const expiredService = new ScaleAuthorizationRuntimeService({ query: async () => ({ rows: [expired], rowCount: 1 }) } as never,
+    {} as never, {} as never, {} as never);
+  const expiredState = await expiredService.getTerminalState("pos-1", { tenantId: "tenant-1", userId: "user-1" } as never);
+  assert.equal(expiredState.agent.credentialId, "credential-jti-1");
+  assert.equal(expiredState.agent.authenticated, false);
+});

@@ -43,6 +43,14 @@ export type AgentCredentialEnvelope = {
 const canonical = (value: unknown): Buffer =>
   Buffer.from(JSON.stringify(value), "utf8");
 
+// The signed validity window is measured from issuedAt and never exceeds this
+// lifetime; Agents qa.16 and qa.17 both reject a longer window.
+export const AGENT_PAIRING_CHALLENGE_MAX_LIFETIME_MS = 5 * 60_000;
+// issuedAt is signed slightly in the past so an Agent whose clock lags the API
+// by at most this margin (observed: ~200 ms) still sees issuedAt <= its clock.
+// Agent qa.16 has no future-skew allowance; qa.17 keeps its own 2,000 ms one.
+export const AGENT_PAIRING_ISSUED_AT_BACKDATE_MS = 2_000;
+
 export const publicKeyFingerprint = (pem: string): string => {
   const key = createPublicKey(pem);
   if (key.asymmetricKeyType !== "rsa" || (key.asymmetricKeyDetails?.modulusLength ?? 0) < 3072) {
@@ -67,7 +75,13 @@ export const createSignedAgentPairingChallenge = (input: {
   if (!input.keyId || !input.audience || !input.installationId || !input.terminalDeviceId
     || !input.nonce || input.nonce.length < 32) throw new Error("AGENT_PAIRING_INPUT_INVALID");
   const now = input.now ?? new Date();
-  const expiresAt = new Date(now.getTime() + (input.ttlMs ?? 5 * 60_000));
+  const lifetimeMs = input.ttlMs ?? AGENT_PAIRING_CHALLENGE_MAX_LIFETIME_MS;
+  if (!Number.isInteger(lifetimeMs) || lifetimeMs <= AGENT_PAIRING_ISSUED_AT_BACKDATE_MS
+    || lifetimeMs > AGENT_PAIRING_CHALLENGE_MAX_LIFETIME_MS || !Number.isFinite(now.getTime())) {
+    throw new Error("AGENT_PAIRING_INPUT_INVALID");
+  }
+  const issuedAt = new Date(now.getTime() - AGENT_PAIRING_ISSUED_AT_BACKDATE_MS);
+  const expiresAt = new Date(issuedAt.getTime() + lifetimeMs);
   const challenge: AgentPairingChallenge = {
     typ: "MANUS_AGENT_PAIRING_V1",
     jti: input.jti ?? randomUUID(),
@@ -77,7 +91,7 @@ export const createSignedAgentPairingChallenge = (input: {
     enrollmentKeyFingerprint: publicKeyFingerprint(input.enrollmentPublicKeyPem),
     nonce: input.nonce,
     pairingCode: input.pairingCode ?? randomBytes(4).readUInt32BE().toString().padStart(10, "0").slice(-10),
-    issuedAt: now.toISOString(),
+    issuedAt: issuedAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
   };
   const signed = canonical(challenge);
@@ -104,7 +118,7 @@ export const verifySignedAgentPairingChallenge = (input: {
     || challenge.terminalDeviceId !== input.expectedTerminalDeviceId
     || challenge.enrollmentKeyFingerprint !== input.expectedEnrollmentKeyFingerprint
     || !Number.isFinite(expiry) || !Number.isFinite(issued) || issued > now.getTime()
-    || expiry <= now.getTime() || expiry - issued > 5 * 60_000) return false;
+    || expiry <= now.getTime() || expiry - issued > AGENT_PAIRING_CHALLENGE_MAX_LIFETIME_MS) return false;
   try {
     return verify(null, canonical(challenge), input.publicKeyPem, Buffer.from(input.signed.signature, "base64url"));
   } catch {

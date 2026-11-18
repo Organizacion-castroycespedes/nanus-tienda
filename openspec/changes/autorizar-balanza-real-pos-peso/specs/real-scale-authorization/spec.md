@@ -81,6 +81,47 @@ The Peripheral Agent SHALL enroll against its fixed HTTPS API using a locally ge
 - **WHEN** browser approval supplies a public key whose fingerprint differs from the signed Agent challenge
 - **THEN** approval fails closed and no credential is issued.
 
+### Requirement: API signs pairing challenges with a bounded issue-time backdate
+The API SHALL sign `issuedAt` exactly 2,000 ms before its current clock and SHALL set `expiresAt` to `issuedAt` plus a lifetime greater than 2,000 ms and at most 300,000 ms, so the signed window measured from `issuedAt` never exceeds 300,000 ms. This backdate SHALL NOT relax signature, identity, nonce, single-use or expiry checks.
+
+#### Scenario: Installed Agent without its own skew allowance accepts a lagging clock
+- **WHEN** an Agent that rejects any `issuedAt` later than its clock receives a correctly signed challenge and its clock lags the API by at most 2,000 ms
+- **THEN** the Agent accepts the challenge only when every signature and identity binding also matches.
+
+#### Scenario: Signer refuses an unbounded lifetime
+- **WHEN** a challenge is requested with a lifetime that is not an integer, is at most 2,000 ms or exceeds 300,000 ms, or with an invalid clock
+- **THEN** signing fails with `AGENT_PAIRING_INPUT_INVALID` and no challenge is issued.
+
+#### Scenario: Backdated challenge is replayed or tampered
+- **WHEN** an approval reuses an already-consumed challenge `jti`, or presents a challenge whose signed fields were altered
+- **THEN** approval fails closed with `PAIRING_CHALLENGE_ALREADY_USED` or `PAIRING_CHALLENGE_INVALID` and no additional credential is issued.
+
+### Requirement: Revoke only revocable scale authorization state
+The operator UI SHALL request binding revocation only for a binding whose status is `PENDING` or `AUTHORIZED`, and SHALL request credential revocation only while the backend snapshot reports an authenticated credential. The terminal snapshot SHALL expose the latest credential ID so revocation targets that credential.
+
+#### Scenario: Latest binding is already revoked
+- **WHEN** the operator changes the associated scale and the snapshot's latest binding is `REVOKED`
+- **THEN** the UI saves the association without calling binding revocation and reports success.
+
+#### Scenario: Prior binding revocation fails after the association is saved
+- **WHEN** the terminal association is saved but revoking a prior revocable binding fails
+- **THEN** the UI reports that the association was saved and the prior authorization still needs revocation, instead of reporting the whole save as failed.
+
+#### Scenario: Snapshot identifies the credential
+- **WHEN** the terminal has a credential row
+- **THEN** the snapshot returns its `credentialId`, and revocation still requires a matching tenant and an `ACTIVE` credential.
+
+### Requirement: Approve only a current pairing challenge
+The operator UI SHALL NOT submit a pairing approval with a challenge that expires within 5,000 ms. It SHALL clear the stale challenge and require a new one from the Agent. API verification SHALL remain the authority.
+
+#### Scenario: Locally held challenge has expired
+- **WHEN** the operator approves after the held challenge's `expiresAt` is within 5,000 ms or past
+- **THEN** no approval request is sent, the challenge is cleared and the operator is asked to start pairing again.
+
+#### Scenario: API rejects the challenge
+- **WHEN** approval returns `PAIRING_CHALLENGE_INVALID` or `PAIRING_CHALLENGE_ALREADY_USED`
+- **THEN** the UI clears the held challenge so it cannot be resubmitted, and no credential is delivered to the Agent.
+
 ### Requirement: Keep credential secret outside the renderer
 The API SHALL persist only credential verifier/hash and lifecycle metadata, and SHALL encrypt the one-time credential envelope to the Agent key bound by the signed challenge. The renderer MAY relay only the signed challenge and opaque ciphertext; only the Agent decrypts and persists the secret with DPAPI. Neither private key nor plaintext Agent credential may enter renderer state, localStorage, logs, URLs or installer command lines.
 
