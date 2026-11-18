@@ -59,6 +59,7 @@ export type CreateProductPayload = {
   requiresLot?: boolean;
   requiresExpiration?: boolean;
   requiresSerial?: boolean;
+  allowsDecimalQuantity?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass | null;
   saleType?: ProductSaleType;

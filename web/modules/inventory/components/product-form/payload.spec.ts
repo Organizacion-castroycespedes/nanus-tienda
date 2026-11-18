@@ -28,4 +28,11 @@ describe("buildProductUpdatePayload", () => {
       }),
     ).toEqual({ cost: 40 });
   });
+
+  it("keeps a unit-family measurement unit and drops weight units", () => {
+    expect(
+      buildProductUpdatePayload({ measurementUnit: "M", allowsDecimalQuantity: true }),
+    ).toEqual({ measurementUnit: "M", allowsDecimalQuantity: true });
+    expect(buildProductUpdatePayload({ measurementUnit: "KG", cost: 1 })).toEqual({ cost: 1 });
+  });
 });

@@ -19,6 +19,7 @@ import type {
   PaymentMethod,
   PaymentReferenceType,
 } from "../types";
+import { useConfirm } from "../../../hooks/use-confirm";
 import { PaymentMethodSelector } from "../../shared/payments/PaymentMethodSelector";
 import { PaymentDialog } from "../../shared/payments/PaymentDialog";
 import { parseDocumentPaymentAmount } from "../../shared/payments/payment-allocation.helper";
@@ -74,6 +75,11 @@ type DocumentPaymentFormProps = {
   blockReason?: string | null;
   confirmLabel?: string;
   cancelLabel?: string;
+  /**
+   * Si se define, se pide confirmacion con advertencia antes de registrar el pago.
+   * Opcional para no cambiar el flujo de los demas consumidores (pedidos).
+   */
+  submitConfirmation?: { title: string; description: string };
   onCancel: () => void;
   onSuccess: (context?: DocumentPaymentSuccessContext) => void;
   onError?: (error: unknown) => void;
@@ -132,10 +138,12 @@ export const DocumentPaymentForm = ({
   blockReason,
   confirmLabel = "Registrar pago",
   cancelLabel = "Cancelar",
+  submitConfirmation,
   onCancel,
   onSuccess,
   onError,
 }: DocumentPaymentFormProps) => {
+  const confirm = useConfirm();
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [financialInstitutions, setFinancialInstitutions] = useState<FinancialInstitution[]>([]);
   const [cashSession, setCashSession] = useState<CashSession | null>(null);
@@ -354,6 +362,20 @@ export const DocumentPaymentForm = ({
     if (validationError) {
       setSubmitError(validationError);
       return;
+    }
+
+    if (submitConfirmation) {
+      try {
+        await confirm({
+          title: submitConfirmation.title,
+          description: `${submitConfirmation.description}\n\nMonto a registrar: ${formatCurrency(enteredTotal)}`,
+          confirmText: confirmLabel,
+          cancelText: "Volver",
+          variant: "warning",
+        });
+      } catch {
+        return;
+      }
     }
 
     setSubmitting(true);
