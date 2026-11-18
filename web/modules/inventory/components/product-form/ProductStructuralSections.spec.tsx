@@ -32,6 +32,7 @@ const values: ProductFormValues = {
   requiresLot: false,
   requiresExpiration: false,
   requiresSerial: false,
+  allowsDecimalQuantity: false,
   operationalStatus: "ACTIVE",
   rotationClass: "",
   saleType: "UNIT",

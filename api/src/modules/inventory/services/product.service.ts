@@ -10,6 +10,7 @@ import { DatabaseService } from "../../../common/db/database.service";
 import {
   PRODUCT_OPERATIONAL_STATUSES,
   PRODUCT_MEASUREMENT_UNITS,
+  isUnitMeasurementUnit,
   PRODUCT_ROTATION_CLASSES,
   PRODUCT_SALE_TYPES,
   ProductEntity,
@@ -69,6 +70,7 @@ type CreateProductInput = {
   requiresLot?: boolean;
   requiresExpiration?: boolean;
   requiresSerial?: boolean;
+  allowsDecimalQuantity?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass;
   saleType?: ProductSaleType;
@@ -104,6 +106,7 @@ type UpdateProductInput = Partial<
     | "requiresLot"
     | "requiresExpiration"
     | "requiresSerial"
+    | "allowsDecimalQuantity"
     | "operationalStatus"
     | "rotationClass"
     | "saleType"
@@ -137,6 +140,7 @@ type ProductOperationalRules = {
   requiresLot: boolean;
   requiresExpiration: boolean;
   requiresSerial: boolean;
+  allowsDecimalQuantity: boolean;
   operationalStatus: ProductOperationalStatus;
   rotationClass: ProductRotationClass;
   minStock: number | null;
@@ -610,13 +614,13 @@ export class ProductService {
     this.assertSaleType(rules.saleType);
     this.assertMeasurementUnit(rules.measurementUnit);
 
-    if (rules.saleType === "UNIT" && rules.measurementUnit !== "UND") {
+    if (rules.saleType === "UNIT" && !isUnitMeasurementUnit(rules.measurementUnit)) {
       throw new BadRequestException(
-        "UNIT products must use UND measurementUnit"
+        "UNIT products must use UND, M, L, CM or M2 measurementUnit"
       );
     }
 
-    if (rules.saleType !== "UNIT" && rules.measurementUnit === "UND") {
+    if (rules.saleType !== "UNIT" && isUnitMeasurementUnit(rules.measurementUnit)) {
       throw new BadRequestException(
         "WEIGHT or BOTH products must use KG, LB, G or OZ measurementUnit"
       );
@@ -633,6 +637,17 @@ export class ProductService {
   ) {
     const changedFields = PRODUCT_STRUCTURAL_FIELDS.filter((field) => {
       if (!this.hasOwn(data, field) || data[field] === undefined) {
+        return false;
+      }
+      // V118: dentro de la venta por unidad se puede cambiar la unidad (UND, M, L, CM, M2);
+      // no cambia el modelo de venta ni la bascula, solo la unidad mostrada y facturada.
+      if (
+        field === "measurementUnit" &&
+        current.saleType === "UNIT" &&
+        (data.saleType === undefined || data.saleType === "UNIT") &&
+        isUnitMeasurementUnit(current.measurementUnit) &&
+        isUnitMeasurementUnit(data.measurementUnit)
+      ) {
         return false;
       }
       return data[field] !== current[field as ProductStructuralField];
@@ -806,6 +821,72 @@ export class ProductService {
     }
   }
 
+  private validateDecimalQuantityRules(
+    rules: ProductOperationalRules,
+    saleModel: ProductSaleModelRules
+  ) {
+    if (!rules.allowsDecimalQuantity) {
+      return;
+    }
+    if (saleModel.saleType !== "UNIT") {
+      throw new BadRequestException(
+        "allowsDecimalQuantity requires UNIT saleType (weighted products already use decimals)"
+      );
+    }
+    if (rules.requiresSerial) {
+      throw new BadRequestException(
+        "allowsDecimalQuantity cannot be combined with requiresSerial"
+      );
+    }
+  }
+
+  /**
+   * Quitar la marca de decimales solo si el stock actual de cada sucursal es entero
+   * y no hay compras abiertas con cantidades decimales. Un movimiento decimal historico
+   * ya compensado (ej. ajuste IN 0.01 corregido con OUT 0.01) no bloquea.
+   */
+  private async assertCanDisableDecimalQuantity(
+    tenantId: string,
+    productId: string,
+    client: import("pg").PoolClient
+  ) {
+    const result = await client.query<{ has_fraction: boolean }>(
+      `
+        SELECT (
+          EXISTS (
+            SELECT 1
+            FROM (
+              SELECT
+                sm.branch_id,
+                SUM(CASE WHEN sm.type = 'IN' THEN sm.quantity ELSE -sm.quantity END) AS stock
+              FROM stock_movements sm
+              WHERE sm.tenant_id = $1 AND sm.product_id = $2
+              GROUP BY sm.branch_id
+            ) AS branch_stock
+            WHERE branch_stock.stock <> trunc(branch_stock.stock)
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM purchase_items pi
+            JOIN purchases p ON p.id = pi.purchase_id AND p.tenant_id = $1
+            WHERE pi.product_id = $2
+              AND p.status IN ('DRAFT', 'PENDING', 'PARTIAL')
+              AND (
+                pi.ordered_quantity <> trunc(pi.ordered_quantity)
+                OR pi.received_quantity <> trunc(pi.received_quantity)
+              )
+          )
+        ) AS has_fraction
+      `,
+      [tenantId, productId]
+    );
+    if (result.rows[0]?.has_fraction) {
+      throw new BadRequestException(
+        "No se puede quitar la marca de decimales: el producto tiene stock fraccionado en alguna sucursal o compras abiertas con cantidades decimales. Ajusta el stock a un número entero primero."
+      );
+    }
+  }
+
   private groupActiveBarcodesByProduct(barcodes: ProductBarcodeEntity[]) {
     return barcodes.reduce<Record<string, PosProductBarcode[]>>(
       (acc, barcode) => {
@@ -850,6 +931,7 @@ export class ProductService {
       requiresLot: product.requiresLot ?? false,
       requiresExpiration: product.requiresExpiration ?? false,
       requiresSerial: product.requiresSerial ?? false,
+      allowsDecimalQuantity: product.allowsDecimalQuantity ?? false,
       operationalStatus: product.operationalStatus ?? "ACTIVE",
       rotationClass: product.rotationClass ?? null,
       minStock: product.minStock ?? null,
@@ -887,6 +969,8 @@ export class ProductService {
       requiresExpiration:
         data.requiresExpiration ?? current.requiresExpiration,
       requiresSerial: data.requiresSerial ?? current.requiresSerial,
+      allowsDecimalQuantity:
+        data.allowsDecimalQuantity ?? current.allowsDecimalQuantity,
       operationalStatus: data.operationalStatus ?? current.operationalStatus,
       rotationClass:
         data.rotationClass !== undefined
@@ -911,11 +995,13 @@ export class ProductService {
       "requiresExpiration"
     );
     this.assertOptionalBoolean(product.requiresSerial, "requiresSerial");
+    this.assertOptionalBoolean(product.allowsDecimalQuantity, "allowsDecimalQuantity");
     const operationalRules = this.buildCreateOperationalRules(product);
     this.validateOperationalRules(operationalRules);
     const saleModel = this.buildCreateSaleModel(product);
     this.validateSaleModel(saleModel);
     this.validateSerialRules(operationalRules, saleModel);
+    this.validateDecimalQuantityRules(operationalRules, saleModel);
     await this.validateProductClassification(
       product.tenantId,
       product.categoryId ?? null,
@@ -994,6 +1080,7 @@ export class ProductService {
           requiresLot: entity.requiresLot,
           requiresExpiration: entity.requiresExpiration,
           requiresSerial: entity.requiresSerial,
+          allowsDecimalQuantity: entity.allowsDecimalQuantity,
           operationalStatus: entity.operationalStatus,
           rotationClass: entity.rotationClass,
           saleType: entity.saleType,
@@ -1228,12 +1315,14 @@ export class ProductService {
     this.assertOptionalBoolean(data.requiresLot, "requiresLot");
     this.assertOptionalBoolean(data.requiresExpiration, "requiresExpiration");
     this.assertOptionalBoolean(data.requiresSerial, "requiresSerial");
+    this.assertOptionalBoolean(data.allowsDecimalQuantity, "allowsDecimalQuantity");
 
     const operationalRules = this.buildUpdateOperationalRules(current, data);
     this.validateOperationalRules(operationalRules);
     const saleModel = this.buildUpdateSaleModel(current, data);
     this.validateSaleModel(saleModel);
     this.validateSerialRules(operationalRules, saleModel);
+    this.validateDecimalQuantityRules(operationalRules, saleModel);
     const categoryWasProvided = this.hasOwn(data, "categoryId");
     const subcategoryWasProvided = this.hasOwn(data, "subcategoryId");
     const nextCategoryId = categoryWasProvided
@@ -1322,6 +1411,10 @@ export class ProductService {
         if (data.isInventoryable === false) {
           await this.assertCanDisableInventoryability(tenantId, id, client);
         }
+      }
+
+      if (data.allowsDecimalQuantity === false && current.allowsDecimalQuantity) {
+        await this.assertCanDisableDecimalQuantity(tenantId, id, client);
       }
 
       const shouldRecalcStoredPrices =

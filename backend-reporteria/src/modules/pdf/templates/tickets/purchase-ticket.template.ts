@@ -28,15 +28,17 @@ const buildLiquidationMetadata = (dataset: PurchaseTicketDataset) =>
   isClosedPartial(dataset)
     ? [
         {
-          label: "Motivo liquidacion",
+          // Etiquetas cortas: la columna de etiquetas del ticket de 80 mm no alcanza
+          // para "Motivo liquidacion" y se montaba sobre el valor.
+          label: "Motivo liq.",
           value: dataset.header.motivoLiquidacion ?? "N/A",
         },
         {
-          label: "Fecha liquidacion",
+          label: "Fecha liq.",
           value: formatDate(dataset.header.liquidadoEn),
         },
         {
-          label: "Usuario liquido",
+          label: "Liquidó",
           value:
             dataset.header.liquidadoPorNombre ??
             dataset.header.liquidadoPor ??
@@ -101,7 +103,7 @@ export const buildPurchaseTicketTemplate = (dataset: PurchaseTicketDataset) => {
                         stack: [
                           { text: item.productName, bold: true },
                           {
-                            text: `Pedida: ${item.quantity} | Recibida: ${item.receivedQuantity} | No recibida: ${item.unreceivedQuantity ?? Math.max(item.quantity - item.receivedQuantity, 0)}`,
+                            text: `Pedida: ${item.quantity} | Recibida: ${item.receivedQuantity} | No recibida: ${item.unreceivedQuantity ?? Math.round(Math.max(item.quantity - item.receivedQuantity, 0) * 1000) / 1000}`,
                             color: "#475569",
                           },
                           {

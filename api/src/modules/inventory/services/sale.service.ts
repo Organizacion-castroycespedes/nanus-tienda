@@ -90,6 +90,7 @@ import {
 import { ParametersService } from "../../parameters/parameters.service";
 import { StockMovementService } from "./stock-movement.service";
 import { ProductSerialService } from "../serials/product-serial.service";
+import { getQuantityPolicyViolation } from "../utils/quantity-policy";
 import {
   normalizeVatResponsibility,
   type VatResponsibility,
@@ -867,6 +868,15 @@ export class SaleService {
       const saleItemId = crypto.randomUUID();
       if (saleMode === "UNIT") {
         const unitItem = item as Extract<SaleLineRequest, { saleMode?: "UNIT" }>;
+        // V118: verificacion temprana entero/decimal; no cambia inventory_create_sale_v2.
+        const quantityViolation = getQuantityPolicyViolation(
+          Number(unitItem.quantity),
+          { saleType: product.saleType, allowsDecimalQuantity: product.allowsDecimalQuantity },
+          `El producto ${product.name}`
+        );
+        if (quantityViolation) {
+          throw new BadRequestException(quantityViolation);
+        }
         preparedItems.push({
           saleItemId,
           saleMode,

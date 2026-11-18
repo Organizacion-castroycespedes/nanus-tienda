@@ -77,6 +77,7 @@ type CreateProductBody = {
   requiresLot?: boolean;
   requiresExpiration?: boolean;
   requiresSerial?: boolean;
+  allowsDecimalQuantity?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass;
   saleType?: ProductSaleType;

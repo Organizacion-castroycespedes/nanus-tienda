@@ -54,7 +54,12 @@ import { InventoryProductSearchResults } from "../barcode/InventoryProductSearch
 import { InventoryQuantityDialog } from "../barcode/InventoryQuantityDialog";
 import { InventoryScanBar } from "../barcode/InventoryScanBar";
 import { useInventoryBarcodeCapture } from "../barcode/use-inventory-barcode-capture";
+import { useConfirm } from "../../../hooks/use-confirm";
 import { SerialCaptureDialog } from "../serials/SerialCaptureDialog";
+import {
+  getQuantityPolicyViolation,
+  isIntegerOnlyQuantity,
+} from "../utils/quantity-policy";
 import { formatSerialProgress, isWholeSerialQuantity } from "../serials/serial-capture";
 
 type ReceiveFormErrors = {
@@ -163,6 +168,7 @@ export const PurchaseReceiveForm = ({
   const invoicePrefilledRef = useRef(false);
   const typedInvoiceRef = useRef(false);
   const sounds = useMemo(() => createInventoryScanSoundPlayer(), []);
+  const confirm = useConfirm();
   const formRef = useRef<HTMLFormElement>(null);
 
   const nextEntryKey = () => {
@@ -358,10 +364,17 @@ export const PurchaseReceiveForm = ({
     purchase?.status === "RECEIVED" ||
     purchase?.status === "CERRADA_PARCIAL";
 
-  const getItemPolicy = (item: { productId: string; requiresLot?: boolean; requiresExpiration?: boolean; requiresSerial?: boolean; isPerishable?: boolean; isInventoryable?: boolean }) => {
+  const getItemPolicy = (item: { productId: string; requiresLot?: boolean; requiresExpiration?: boolean; requiresSerial?: boolean; isPerishable?: boolean; isInventoryable?: boolean; allowsDecimalQuantity?: boolean; saleType?: string; measurementUnit?: string }) => {
     const product = productById.get(item.productId);
     const isInventoryable = product?.isInventoryable ?? item.isInventoryable ?? true;
+    const quantityPolicy = {
+      saleType: product?.saleType ?? item.saleType ?? "UNIT",
+      allowsDecimalQuantity: Boolean(product?.allowsDecimalQuantity ?? item.allowsDecimalQuantity),
+    };
     return {
+      quantityPolicy,
+      integerOnly: isIntegerOnlyQuantity(quantityPolicy),
+      measurementUnit: product?.measurementUnit ?? item.measurementUnit ?? "UND",
       product,
       isInventoryable,
       requiresLot: isInventoryable && Boolean(product?.requiresLot ?? item.requiresLot),
@@ -571,8 +584,13 @@ export const PurchaseReceiveForm = ({
       if (!item) {
         continue;
       }
-      const { requiresLot, requiresExpiration, requiresSerial } = getItemPolicy(item);
+      const { requiresLot, requiresExpiration, requiresSerial, quantityPolicy } = getItemPolicy(item);
       const label = item.productName || item.productId;
+
+      const quantityViolation = getQuantityPolicyViolation(quantity, quantityPolicy, label);
+      if (quantityViolation) {
+        itemErrors.push(quantityViolation);
+      }
 
       if (requiresSerial) {
         if (!isWholeSerialQuantity(quantity)) {
@@ -669,6 +687,20 @@ export const PurchaseReceiveForm = ({
       return;
     }
 
+    const productCount = new Set(receivableEntries.map((entry) => entry.purchaseItemId)).size;
+    const unitsTotal = receivableEntries.reduce((sum, entry) => sum + getReceiveQuantity(entry), 0);
+    try {
+      await confirm({
+        title: "Confirmar recepción de mercancía",
+        description: `Factura ${supplierInvoiceNumber.trim()} de ${purchase?.supplierName ?? "el proveedor"}.\nEntrarán ${productCount} producto(s), ${formatQuantity(unitsTotal)} unidades en total.\n\nEl inventario se actualizará de inmediato. Si hay un error, solo se puede corregir con un ajuste de inventario.`,
+        confirmText: "Sí, recibir mercancía",
+        cancelText: "Revisar de nuevo",
+        variant: "warning",
+      });
+    } catch {
+      return;
+    }
+
     setErrors({});
     setIsSubmitting(true);
 
@@ -728,7 +760,12 @@ export const PurchaseReceiveForm = ({
     }
   };
 
-  const renderQuantityInput = (entry: ReceiveEntryValue, pending: number, label = "") => {
+  const renderQuantityInput = (
+    entry: ReceiveEntryValue,
+    pending: number,
+    label = "",
+    integerOnly = false
+  ) => {
     const othersPrepared =
       (preparedByItem[entry.purchaseItemId] ?? 0) - getReceiveQuantity(entry);
     const maxForEntry = Math.max(Math.round((pending - othersPrepared) * 100) / 100, 0);
@@ -737,8 +774,19 @@ export const PurchaseReceiveForm = ({
         label={label}
         type="number"
         min="0"
-        step="0.01"
+        step={integerOnly ? "1" : "0.01"}
+        inputMode={integerOnly ? "numeric" : "decimal"}
         max={String(maxForEntry)}
+        // La ruedita del mouse no debe cambiar la cantidad a recibir.
+        onWheel={(event) => event.currentTarget.blur()}
+        onKeyDown={(event) => {
+          if (integerOnly && (event.key === "." || event.key === ",")) {
+            event.preventDefault();
+          }
+          if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+            event.preventDefault();
+          }
+        }}
         placeholder="0"
         aria-label={label || "Cantidad a recibir"}
         value={entry.quantity}
@@ -916,7 +964,7 @@ export const PurchaseReceiveForm = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {rows.map(({ item, pending }) => {
-                    const { product, isInventoryable, requiresLot, requiresExpiration, isPerishable, requiresSerial } =
+                    const { product, isInventoryable, requiresLot, requiresExpiration, isPerishable, requiresSerial, integerOnly, measurementUnit } =
                       getItemPolicy(item);
                     const itemEntries = entries.filter((entry) => entry.purchaseItemId === item.id);
                     const prepared = preparedByItem[item.id] ?? 0;
@@ -970,6 +1018,19 @@ export const PurchaseReceiveForm = ({
                                     Requiere serie
                                   </span>
                                 ) : null}
+                                {isInventoryable ? (
+                                  <span
+                                    className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                      integerOnly
+                                        ? "border-slate-200 bg-slate-50 text-slate-600"
+                                        : "border-teal-200 bg-teal-50 text-teal-700"
+                                    }`}
+                                  >
+                                    {integerOnly
+                                      ? `Solo enteros · ${measurementUnit}`
+                                      : `Admite decimales · ${measurementUnit}`}
+                                  </span>
+                                ) : null}
                                 {requiresExpiration ? (
                                   <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                                     Requiere vencimiento
@@ -983,16 +1044,16 @@ export const PurchaseReceiveForm = ({
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.orderedQuantity}</td>
-                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{item.receivedQuantity}</td>
-                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{pending}</td>
+                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatQuantity(Number(item.orderedQuantity))}</td>
+                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatQuantity(Number(item.receivedQuantity))}</td>
+                          <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{formatQuantity(pending)}</td>
                           <td className="px-4 py-3">
                             {isSplit ? (
                               <p className="text-sm font-medium text-slate-900 dark:text-white">
                                 {formatQuantity(prepared)} en {itemEntries.length} lotes
                               </p>
                             ) : itemEntries[0] ? (
-                              renderQuantityInput(itemEntries[0], pending)
+                              renderQuantityInput(itemEntries[0], pending, "", integerOnly)
                             ) : null}
                           </td>
                         </tr>
@@ -1064,7 +1125,7 @@ export const PurchaseReceiveForm = ({
                                         : "grid-cols-[minmax(170px,1fr)_minmax(190px,1fr)_minmax(250px,1.2fr)_minmax(170px,1fr)]"
                                     } items-end`}
                                   >
-                                    {isSplit ? renderQuantityInput(entry, pending, `Cantidad lote ${entryIndex + 1}`) : null}
+                                    {isSplit ? renderQuantityInput(entry, pending, `Cantidad lote ${entryIndex + 1}`, integerOnly) : null}
                                     <Input
                                       label={isSplit ? `Lote ${entryIndex + 1}` : "Lote"}
                                       required
