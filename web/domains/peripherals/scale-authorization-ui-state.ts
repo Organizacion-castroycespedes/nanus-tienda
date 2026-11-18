@@ -100,6 +100,56 @@ export const buildAgentMetadataAfterBackendKgConfirmation = (
   return unitVerification ? { ...(metadata ?? {}), unitVerification } : null;
 };
 
+// The API revokes only PENDING or AUTHORIZED bindings and only ACTIVE credentials;
+// any other state answers SCALE_BINDING_NOT_ACTIVE / ACTIVE_CREDENTIAL_NOT_FOUND.
+export const isRevocableScaleBinding = (binding: ScaleAuthorizationSnapshot["binding"] | null | undefined) =>
+  Boolean(binding?.id && (binding.status === "PENDING" || binding.status === "AUTHORIZED"));
+
+export const shouldRevokeBindingForScaleChange = (
+  binding: ScaleAuthorizationSnapshot["binding"] | null | undefined,
+  nextScaleDeviceId: string | null,
+) => isRevocableScaleBinding(binding) && binding?.logicalScaleId !== nextScaleDeviceId;
+
+export const isRevocableAgentCredential = (snapshot: ScaleAuthorizationSnapshot | null | undefined) =>
+  Boolean(snapshot?.agent.credentialId && snapshot.agent.authenticated);
+
+export type ScaleSaveRevocation = "NOT_REQUIRED" | "REVOKED" | "FAILED";
+
+export const describeScaleSaveOutcome = (input: {
+  scaleAssociated: boolean;
+  revocation: ScaleSaveRevocation;
+  revocationError?: string | null;
+  refreshError?: string | null;
+}): { kind: "success" | "warning"; message: string } => {
+  const saved = input.scaleAssociated ? "Balanza asociada." : "Balanza desasociada.";
+  if (input.revocation === "FAILED") {
+    return { kind: "warning", message: `${saved} No se pudo revocar la autorización comercial anterior: ${input.revocationError ?? "error desconocido"}. Revócala antes de crear una nueva.` };
+  }
+  if (input.refreshError) {
+    return { kind: "warning", message: `${saved} No se pudo actualizar el estado mostrado: ${input.refreshError}. Usa "Actualizar estado".` };
+  }
+  return { kind: "success", message: saved };
+};
+
+// A held challenge must outlive the approval round trip; API verification remains authoritative.
+export const PAIRING_APPROVAL_EXPIRY_MARGIN_MS = 5_000;
+
+export const isAgentPairingChallengeUsable = (
+  pairing: AgentPairingStatus["pairing"] | null | undefined,
+  now: Date = new Date(),
+) => {
+  const expiresAt = Date.parse(pairing?.expiresAt ?? "");
+  return Number.isFinite(expiresAt) && expiresAt - now.getTime() > PAIRING_APPROVAL_EXPIRY_MARGIN_MS;
+};
+
+const STALE_PAIRING_CHALLENGE_CODES = new Set(["PAIRING_CHALLENGE_INVALID", "PAIRING_CHALLENGE_ALREADY_USED"]);
+
+export const isStalePairingChallengeError = (error: unknown) => {
+  const candidate = error as { message?: unknown; code?: unknown } | null;
+  return Boolean(candidate && ((typeof candidate.message === "string" && STALE_PAIRING_CHALLENGE_CODES.has(candidate.message))
+    || (typeof candidate.code === "string" && STALE_PAIRING_CHALLENGE_CODES.has(candidate.code))));
+};
+
 export const loadScaleAuthorizationRefresh = async <TAgent, TSnapshot, TDevices>(loaders: {
   agent: () => Promise<TAgent>;
   snapshot: () => Promise<TSnapshot>;

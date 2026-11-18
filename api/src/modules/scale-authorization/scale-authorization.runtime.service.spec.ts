@@ -456,3 +456,31 @@ test("pairing challenge from the service is backdated, bounded and single-use", 
     await assert.rejects(service.approvePairing({ ...approval, pairingCode: "0000000000" }, actor as never), ForbiddenException);
   });
 });
+
+test("terminal snapshot exposes the latest credential ID so revocation targets it", async () => {
+  const queries: { sql: string; params: unknown[] }[] = [];
+  const row = {
+    pos_terminal_id: "pos-1", branch_id: "branch-1", operational_terminal_id: "terminal-1",
+    scale_device_id: "scale-1", enable_scale: true,
+    device_id: "device-1", registration_status: "BOUND", installation_id: "install-1",
+    credential_id: "credential-jti-1", credential_status: "ACTIVE", credential_expires_at: new Date(Date.now() + 60_000),
+    binding_id: "binding-1", logical_scale_id: "scale-1", binding_status: "REVOKED", unit_state: "NOT_VERIFIED",
+    unit_verification_method: null, unit_verification_unit: null, unit_verified_by_user_id: null, verified_at: null,
+  };
+  const database = { query: async (sql: string, params: unknown[]) => { queries.push({ sql, params }); return { rows: [row], rowCount: 1 }; } };
+  const service = new ScaleAuthorizationRuntimeService(database as never, {} as never, {} as never, {} as never);
+  const state = await service.getTerminalState("pos-1", { tenantId: "tenant-1", userId: "user-1" } as never);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].sql, /c\.credential_id/);
+  assert.deepEqual(queries[0].params, ["pos-1", "tenant-1"]);
+  assert.equal(state.agent.credentialId, "credential-jti-1");
+  assert.equal(state.agent.authenticated, true);
+  // The latest binding may be REVOKED; the snapshot reports it as such for the UI guard.
+  assert.equal(state.binding?.status, "REVOKED");
+  const expired = { ...row, credential_status: "ACTIVE", credential_expires_at: new Date(Date.now() - 1_000) };
+  const expiredService = new ScaleAuthorizationRuntimeService({ query: async () => ({ rows: [expired], rowCount: 1 }) } as never,
+    {} as never, {} as never, {} as never);
+  const expiredState = await expiredService.getTerminalState("pos-1", { tenantId: "tenant-1", userId: "user-1" } as never);
+  assert.equal(expiredState.agent.credentialId, "credential-jti-1");
+  assert.equal(expiredState.agent.authenticated, false);
+});
