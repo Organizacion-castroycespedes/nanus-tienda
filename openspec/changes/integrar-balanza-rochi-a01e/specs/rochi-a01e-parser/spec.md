@@ -2,6 +2,21 @@
 
 ## ADDED Requirements
 
+### Requirement: installer automatic discovery follows the explicit discovery policy
+The productive installer UI SHALL start physical device discovery automatically only when the packaged Agent configuration has both `enableRealAdapters` and `discoverOnStartup` set to the boolean `true`. Missing, unreadable, malformed, or non-boolean discovery policy SHALL suppress automatic discovery.
+
+#### Scenario: QA package suppresses installer discovery while adapters remain available
+- **WHEN** the packaged Agent configuration sets `enableRealAdapters` to `true` and `discoverOnStartup` to `false`
+- **THEN** installer completion may show the device screen but SHALL NOT call `/devices/discover` automatically
+
+#### Scenario: production package preserves configured discovery
+- **WHEN** the packaged Agent configuration sets both booleans to `true`
+- **THEN** the installer retains its existing automatic device discovery behavior
+
+#### Scenario: discovery policy configuration is unavailable
+- **WHEN** the packaged Agent configuration or its `discoverOnStartup` boolean is missing or invalid
+- **THEN** the installer SHALL skip automatic device discovery
+
 ### Requirement: parse valid frames
 The parser SHALL accept exactly three decimal digits, a period, three decimal digits, and the `CR LF` delimiter.
 
@@ -155,6 +170,10 @@ The Peripheral Agent SHALL discover a connected ROCHI candidate through CH340 `V
 - **WHEN** Windows re-enumerates the same PnP device on another COM port
 - **THEN** reconciliation updates the port without creating a duplicate configured device
 
+#### Scenario: Healthy CH340 port appears only in present PnP inventory
+- **WHEN** `Win32_SerialPort` omits a COM port and the independent `Get-PnpDevice -PresentOnly` inventory reports that healthy port with exact `VID_1A86/PID_7523`
+- **THEN** discovery SHALL expose one ROCHI_A01E configuration candidate with the current COM and stable PnP identity, without claiming serial communication, weight, unit, or commercial authorization
+
 ### Requirement: conservative REAL scale response
 The scale endpoint SHALL return physical readings with `source=REAL` and SHALL not infer unit or stability.
 
@@ -181,3 +200,18 @@ The POS SHALL keep normal UNIT sales available while preventing WEIGHT and the w
 #### Scenario: weighted action without commercial authorization
 - **WHEN** the operator selects a WEIGHT product or the Peso option for a BOTH product
 - **THEN** POS reports that REAL capture is unavailable and does not add a weighted quantity
+
+### Requirement: exclusive commercial acquisition
+The Agent SHALL serve each commercial capture with a new serial session opened only after the capture request is accepted and every earlier serial operation on that scale has fully closed. A capture SHALL NOT join or lend its reading to any other request; non-commercial reads MAY share only another pending non-commercial read. A second concurrent capture SHALL fail with `SCALE_CAPTURE_BUSY` without reading, and a failed read SHALL release the scale.
+
+#### Scenario: capture arrives while an earlier read is closing
+- **WHEN** a capture is requested after an earlier read received its frame but before that port finished closing
+- **THEN** the capture waits, opens a new session and uses only a frame from that session.
+
+#### Scenario: administrative read during a capture
+- **WHEN** an authorization or diagnostic read is requested while a capture is reading
+- **THEN** it opens its own session after the capture and never receives the capture frame.
+
+#### Scenario: double capture request
+- **WHEN** a second capture is requested while one is in progress
+- **THEN** it fails with `SCALE_CAPTURE_BUSY` without opening the port or submitting an observation.

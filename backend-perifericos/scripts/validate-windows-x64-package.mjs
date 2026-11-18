@@ -73,7 +73,11 @@ assert.equal(localConfig.port, 4050);
 assert.equal(localConfig.bind, "127.0.0.1");
 assert.equal(localConfig.mode, "REAL");
 assert.equal(localConfig.logLevel, "INFO");
-assert.equal(localConfig.enableRealAdapters, true);
+assert.equal(localConfig.enableRealAdapters, environment.agentRealAdaptersEnabled);
+assert.equal(localConfig.discoverOnStartup, environment.agentDiscoveryOnStartupEnabled);
+assert.equal(localConfig.packageProfile, environment.agentPackageProfile);
+assert.equal(localConfig.enrollmentApiBaseUrl, environment.agentApiBaseUrl || "");
+assert.equal(localConfig.enrollmentAudience, environment.agentAudience || "");
 assert.equal(localConfig.usbPrintTransport, "RAW");
 assert.equal(localConfig.usbRawPhysicalCutCertified, false);
 assert.equal(localConfig.logLimit, 500);
@@ -146,21 +150,26 @@ assert.ok(
 
 const port = 44051;
 let childOutput = "";
+const childEnvironment = { ...process.env };
+for (const name of Object.keys(childEnvironment)) {
+  if (name.startsWith("PERIPHERALS_")) delete childEnvironment[name];
+}
+Object.assign(childEnvironment, {
+  PERIPHERALS_CONFIG_PATH: join(artifactRoot, "config", "agent.config.local.json"),
+  PERIPHERALS_VERSION: agentVersion,
+  PERIPHERALS_PORT: String(port),
+  PERIPHERALS_BIND: "127.0.0.1",
+  PROGRAMDATA: join(isolatedRuntimeRoot, "ProgramData"),
+  LOCALAPPDATA: join(isolatedRuntimeRoot, "LocalAppData"),
+});
+if (environment.name !== "qa") {
+  // Production packaging keeps real adapters enabled. The validator's health
+  // smoke process opts out so validation never enumerates host peripherals.
+  childEnvironment.PERIPHERALS_ENABLE_REAL_ADAPTERS = "false";
+}
 const child = spawn(runtime, [main], {
   cwd: artifactRoot,
-  env: {
-    ...process.env,
-    PERIPHERALS_CONFIG_PATH: join(artifactRoot, "config", "agent.config.local.json"),
-    PERIPHERALS_VERSION: agentVersion,
-    PERIPHERALS_PORT: String(port),
-    // The artifact config above is asserted as REAL. Disable only startup
-    // discovery for this smoke so a slow Windows spooler cannot hide health;
-    // the POST below still exercises real Windows discovery explicitly.
-    PERIPHERALS_ENABLE_REAL_ADAPTERS: "false",
-    PERIPHERALS_BIND: "127.0.0.1",
-    PROGRAMDATA: join(isolatedRuntimeRoot, "ProgramData"),
-    LOCALAPPDATA: join(isolatedRuntimeRoot, "LocalAppData"),
-  },
+  env: childEnvironment,
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true,
 });
@@ -224,9 +233,6 @@ try {
     /Content-Type/i
   );
 
-  const discovery = await request(`http://127.0.0.1:${port}/devices/discover`, "POST", 15000);
-  assert.equal(discovery.statusCode, 201);
-  assert.ok(Array.isArray(JSON.parse(discovery.body).devices));
 } finally {
   let exited = false;
   child.once("exit", () => { exited = true; });

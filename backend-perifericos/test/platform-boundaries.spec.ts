@@ -8,6 +8,30 @@ import { resolvePlatformPaths } from "../src/platform/platform-paths";
 import { FileAgentInstallationStateStore } from "../src/platform/agent-installation-state.store";
 import { loadAgentLocalConfig } from "../src/platform/agent-local-config";
 import { WindowsPrinterDiscoveryProvider, parseWindowsPrinterDiagnostics, parseWindowsPnpDiagnosticsDetailed } from "../src/platform/windows/windows-printer-discovery.provider";
+import { forbidHardwareIO } from "./support/no-hardware";
+
+forbidHardwareIO();
+
+test("default Windows discovery provider refuses native commands under node:test", async () => {
+  const provider = new WindowsPrinterDiscoveryProvider();
+  await assert.rejects(
+    provider.listUsbPrinters(),
+    /Physical Windows discovery is disabled under node:test/
+  );
+  // Serial discovery queries two independent inventories (qa.16 CIM/PnP reconciliation) and
+  // wraps their failures; each native query must still be refused by the node:test guard.
+  const serialFailures: Array<{ source: string; reason: string }> = [];
+  const serialProvider = new WindowsPrinterDiscoveryProvider(undefined, undefined,
+    (source, reason) => serialFailures.push({ source, reason }));
+  await assert.rejects(
+    serialProvider.listSerialDevices(),
+    /both Win32_SerialPort and Get-PnpDevice serial inventories failed/
+  );
+  assert.deepEqual(serialFailures.map((failure) => failure.source).sort(), ["Get-PnpDevice", "Win32_SerialPort"]);
+  for (const failure of serialFailures) {
+    assert.match(failure.reason, /Physical Windows discovery is disabled under node:test/);
+  }
+});
 
 test("portable core files contain no Windows API names", () => {
   const coreFiles = [

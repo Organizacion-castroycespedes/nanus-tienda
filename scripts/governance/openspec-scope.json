@@ -226,7 +226,6 @@
         "backend-perifericos/src/modules/scale/scale.types.ts",
         "backend-perifericos/src/platform/device-registry-state.store.ts",
         "backend-perifericos/src/platform/system-usb-printer-discovery.ts",
-        "backend-perifericos/src/platform/windows/windows-printer-discovery.provider.ts",
         "backend-perifericos/src/shared/discovery/device-discovery-provider.ts",
         "backend-perifericos/src/shared/discovery/printer-reconciliation.spec.ts",
         "backend-perifericos/src/shared/discovery/printer-reconciliation.ts",
@@ -234,7 +233,6 @@
         "backend-perifericos/src/shared/types/peripheral.types.ts",
         "backend-perifericos/src/shared/usb/usb-printer-discovery.ts",
         "backend-perifericos/src/shared/utils/request-validation.util.ts",
-        "backend-perifericos/test/platform-boundaries.spec.ts",
         "backend-perifericos/test/rochi-a01e.disconnect-flow.spec.mjs",
         "backend-perifericos/test/rochi-a01e.disconnect-runner.spec.mjs",
         "backend-perifericos/test/rochi-a01e.parser.spec.ts",
@@ -255,8 +253,6 @@
         "backend-perifericos/windows-installer/localservice_state_windows_test.go",
         "backend-perifericos/windows-installer/managed_acl_windows.go",
         "backend-perifericos/windows-installer/managed_acl_windows_test.go",
-        "backend-perifericos/windows-installer/productive_devices_windows.go",
-        "backend-perifericos/windows-installer/productive_ui_windows.go",
         "backend-perifericos/windows-installer/readonly_bridge_windows.go",
         "backend-perifericos/windows-installer/task_query_windows.go",
         "backend-perifericos/windows-installer/task_query_windows_test.go",
@@ -295,16 +291,11 @@
       "paths": [
         "api/src/modules/app.module.ts",
         "api/src/modules/scale-authorization/**",
-        "backend-perifericos/scripts/package-windows-x64.mjs",
         "backend-perifericos/src/app.module.ts",
-        "backend-perifericos/src/main.ts",
         "backend-perifericos/src/modules/agent-security/**",
         "backend-perifericos/src/modules/devices/devices.controller.ts",
         "backend-perifericos/src/modules/scale/scale.controller.ts",
         "backend-perifericos/src/modules/scale/scale.module.ts",
-        "backend-perifericos/src/platform/agent-local-config.ts",
-        "backend-perifericos/src/shared/config/peripherals.config.ts",
-        "backend-perifericos/test/agent-local-config.spec.ts",
         "backend-perifericos/test/agent-enrollment-endpoint.spec.ts",
         "backend-perifericos/test/agent-pairing.crypto.spec.ts",
         "backend-perifericos/test/agent-pairing.service.spec.ts",
@@ -315,13 +306,10 @@
         "backend-perifericos/test/devices-http-reconciliation.spec.ts",
         "backend-perifericos/test/mock-simulator.spec.ts",
         "backend-perifericos/test/usb-printer.spec.ts",
-        "backend-perifericos/windows-installer/main_windows.go",
-        "backend-perifericos/windows-installer/main_windows_test.go",
         "desktop/electron/agent-client.ts",
         "desktop/electron/electron-api.ts",
         "desktop/electron/main.ts",
         "desktop/electron/preload.ts",
-        "desktop/electron/scripts/environments.mjs",
         "scripts/database/tests/test_v103_scale_authorization_migration.py",
         "web/domains/peripherals/api.ts",
         "web/domains/peripherals/components/PeripheralsAdminWorkspace.tsx",
@@ -329,7 +317,10 @@
         "web/domains/peripherals/scale-authorization.api.ts",
         "web/domains/peripherals/scale-authorization-ui-state.spec.ts",
         "web/domains/peripherals/scale-authorization-ui-state.ts",
-        "openspec/changes/autorizar-balanza-real-pos-peso/**"
+        "openspec/changes/autorizar-balanza-real-pos-peso/**",
+        "desktop/electron/package.json",
+        "desktop/electron/window-close-policy.ts",
+        "desktop/electron/window-close-policy.spec.ts"
       ],
       "exemptions": []
     },
@@ -852,6 +843,64 @@
         "scripts/database/rollbacks/V119__order_sale_void_serials_rollback.sql",
         "scripts/database/tests/test_v119_order_sale_void_serials_migration.py",
         "scripts/database/tests/v119_order_sale_void_serials_scenarios.sql"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "controlar-descubrimiento-perifericos-reales",
+      "paths": [
+        "openspec/changes/controlar-descubrimiento-perifericos-reales/**",
+        "backend-perifericos/scripts/package-windows-x64.mjs",
+        "backend-perifericos/scripts/validate-windows-x64-package.mjs",
+        "backend-perifericos/src/main.ts",
+        "backend-perifericos/src/platform/agent-local-config.ts",
+        "backend-perifericos/src/platform/peripheral-discovery-policy.ts",
+        "backend-perifericos/src/platform/windows/windows-printer-discovery.provider.ts",
+        "backend-perifericos/src/shared/config/peripherals.config.ts",
+        "backend-perifericos/test/agent-local-config.spec.ts",
+        "backend-perifericos/test/peripheral-discovery-policy.spec.ts",
+        "backend-perifericos/test/platform-boundaries.spec.ts",
+        "backend-perifericos/windows-installer/peripheral_discovery_policy_windows_test.go",
+        "backend-perifericos/windows-installer/main_windows_test.go",
+        "backend-perifericos/windows-installer/productive_devices_windows.go",
+        "backend-perifericos/windows-installer/productive_ui_windows.go",
+        "desktop/electron/scripts/environments.mjs"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "windows-uninstall-process-lifecycle",
+      "paths": [
+        "openspec/changes/windows-uninstall-process-lifecycle/**",
+        "backend-perifericos/windows-installer/main_windows.go",
+        "backend-perifericos/windows-installer/install_transition_admission_windows.go",
+        "backend-perifericos/windows-installer/install_transition_admission_windows_test.go",
+        "backend-perifericos/windows-installer/pos_process_cleanup_windows.go",
+        "backend-perifericos/windows-installer/process_discovery_scope_windows.go",
+        "backend-perifericos/windows-installer/pos_process_cleanup_windows_test.go",
+        "backend-perifericos/windows-installer/managed_root_identity_windows.go",
+        "backend-perifericos/windows-installer/managed_root_identity_windows_test.go",
+        "backend-perifericos/windows-installer/managed_tree_operations_windows.go",
+        "backend-perifericos/windows-installer/managed_tree_operations_windows_test.go",
+        "backend-perifericos/windows-installer/uninstall_operation_identity_windows.go",
+        "backend-perifericos/windows-installer/uninstall_operation_identity_windows_test.go",
+        "backend-perifericos/windows-installer/pos_job_ownership_windows.go",
+        "backend-perifericos/windows-installer/pos_job_ownership_windows_test.go",
+        "backend-perifericos/windows-installer/pos_supervisor_windows.go",
+        "backend-perifericos/windows-installer/pos_supervisor_windows_test.go",
+        "backend-perifericos/windows-installer/qa-uac-observer/main_windows.go",
+        "backend-perifericos/windows-installer/qa-uac-observer/main_windows_test.go"
+      ]
+    },
+    {
+      "change_id": "versionar-candidato-qa-windows",
+      "paths": [
+        "openspec/changes/versionar-candidato-qa-windows/**",
+        "backend-perifericos/scripts/agent-version.mjs",
+        "backend-perifericos/scripts/agent-version.spec.mjs",
+        "backend-perifericos/scripts/build-windows-qa-static.mjs",
+        "backend-perifericos/scripts/validate-windows-qa-static.mjs",
+        "backend-perifericos/scripts/qa-static-build.spec.mjs"
       ],
       "exemptions": []
     }

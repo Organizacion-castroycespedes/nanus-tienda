@@ -35,8 +35,13 @@ export class WindowsPrinterDiscoveryParseError extends Error {
   }
 }
 
-const systemCommandRunner: WindowsDiscoveryCommandRunner = (command, args) =>
-  new Promise((resolve, reject) => {
+const systemCommandRunner: WindowsDiscoveryCommandRunner = (command, args) => {
+  if (process.env.NODE_TEST_CONTEXT) {
+    return Promise.reject(new Error(
+      "Physical Windows discovery is disabled under node:test; inject a fake command runner."
+    ));
+  }
+  return new Promise((resolve, reject) => {
     execFile(command, args, {
       encoding: "utf8",
       windowsHide: true,
@@ -47,6 +52,7 @@ const systemCommandRunner: WindowsDiscoveryCommandRunner = (command, args) =>
       else resolve(stdout);
     });
   });
+};
 
 const windowsPnpInventoryScript = String.raw`
 $d=@(Get-PnpDevice -PresentOnly | Where-Object {
@@ -66,13 +72,33 @@ $d=@(Get-PnpDevice -PresentOnly | Where-Object {
 }); ConvertTo-Json -InputObject $d -Compress
 `;
 
+const windowsSerialInventoryScripts = {
+  cim: String.raw`$d=@(Get-CimInstance Win32_SerialPort | ForEach-Object { [PSCustomObject]@{ DeviceID=[string]$_.DeviceID; Name=[string]$_.Name; PNPDeviceID=[string]$_.PNPDeviceID; Status=[string]$_.Status; Present=($null -ne $_.PNPDeviceID -and $_.Status -eq 'OK') } }); ConvertTo-Json -InputObject $d -Compress`,
+  pnp: String.raw`$d=@(Get-PnpDevice -PresentOnly | Where-Object { $_.Class -eq 'Ports' } | ForEach-Object { $m=[regex]::Match([string]$_.FriendlyName,'\((COM\d+)\)'); if($m.Success){ [PSCustomObject]@{ DeviceID=$m.Groups[1].Value; Name=[string]$_.FriendlyName; PNPDeviceID=[string]$_.InstanceId; Status=[string]$_.Status; Present=$true } } }); ConvertTo-Json -InputObject $d -Compress`,
+} as const;
+
+type WindowsSerialInventorySource = "Win32_SerialPort" | "Get-PnpDevice";
+type WindowsSerialInventoryResult =
+  | { ok: true; source: WindowsSerialInventorySource; records: WindowsSerialDiagnostic[] }
+  | { ok: false; source: WindowsSerialInventorySource; error: unknown; reason: string };
+
 export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider {
   private lastUsbDiscoveryDiagnostics: UsbDiscoveryDiagnostic[] = [];
 
   constructor(
     private readonly commandRunner: WindowsDiscoveryCommandRunner = systemCommandRunner,
     private readonly diagnosticLogger: (printers: WindowsPrinterDiagnostic[]) => void =
-      (printers) => console.info("Windows printer inventory", printers)
+      (printers) => {
+        if (!process.env.NODE_TEST_CONTEXT) {
+          console.info("Windows printer inventory", printers);
+        }
+      },
+    private readonly serialDiagnosticLogger: (source: WindowsSerialInventorySource | "RECONCILIATION", reason: string) => void =
+      (source, reason) => {
+        if (!process.env.NODE_TEST_CONTEXT) {
+          console.warn("Windows serial inventory issue", { source, reason });
+        }
+      },
   ) {}
 
   getLastUsbDiscoveryDiagnostics(): UsbDiscoveryDiagnostic[] {
@@ -190,14 +216,38 @@ export class WindowsPrinterDiscoveryProvider implements DeviceDiscoveryProvider 
   async listSerialDevices(): Promise<DiscoveredSerialDevice[]> {
     const startedAt = Date.now();
     try {
-      return parseWindowsSerialDiagnostics(
-        await this.commandRunner("powershell.exe", [
+      const query = async (source: WindowsSerialInventorySource, script: string): Promise<WindowsSerialInventoryResult> => {
+        try {
+          const output = await this.commandRunner("powershell.exe", [
           "-NoProfile",
           "-NonInteractive",
           "-Command",
-          "$d=@(Get-CimInstance Win32_SerialPort | ForEach-Object { [PSCustomObject]@{ DeviceID=[string]$_.DeviceID; Name=[string]$_.Name; PNPDeviceID=[string]$_.PNPDeviceID; Status=[string]$_.Status; Present=($null -ne $_.PNPDeviceID -and $_.Status -eq 'OK') } }); if($d.Count -eq 0){ $d=@(Get-PnpDevice -PresentOnly | Where-Object { $_.Class -eq 'Ports' } | ForEach-Object { $m=[regex]::Match([string]$_.FriendlyName,'\\((COM\\d+)\\)'); if($m.Success){ [PSCustomObject]@{ DeviceID=$m.Groups[1].Value; Name=[string]$_.FriendlyName; PNPDeviceID=[string]$_.InstanceId; Status=[string]$_.Status; Present=$true } } }) }; ConvertTo-Json -InputObject $d -Compress",
-        ])
-      ).map((device) => {
+          script,
+          ]);
+          return { ok: true, source, records: parseWindowsSerialDiagnostics(output) };
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "unknown error";
+          return { ok: false, source, error, reason };
+        }
+      };
+
+      const [cim, pnp] = await Promise.all([
+        query("Win32_SerialPort", windowsSerialInventoryScripts.cim),
+        query("Get-PnpDevice", windowsSerialInventoryScripts.pnp),
+      ]);
+      const failed = [cim, pnp].filter((result) => !result.ok);
+      for (const result of failed) this.serialDiagnosticLogger(result.source, result.reason);
+      if (failed.length === 2) {
+        throw new Error("both Win32_SerialPort and Get-PnpDevice serial inventories failed");
+      }
+
+      const cimRecords = cim.ok ? cim.records : [];
+      const pnpRecords = pnp.ok ? pnp.records : [];
+      const reconciled = reconcileWindowsSerialDiagnostics(cimRecords, pnpRecords);
+      if (reconciled.ambiguousCount > 0) {
+        this.serialDiagnosticLogger("RECONCILIATION", `excluded ${reconciled.ambiguousCount} ambiguous port/identity records`);
+      }
+      return reconciled.records.map((device) => {
         const identity = extractUsbVidPid(device.PNPDeviceID);
         return {
           port: device.DeviceID,
@@ -303,16 +353,24 @@ export const parseWindowsSerialDiagnostics = (
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    throw new WindowsPrinterDiscoveryParseError("invalid JSON from Win32_SerialPort");
+    throw new WindowsPrinterDiscoveryParseError("invalid JSON from serial inventory");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new WindowsPrinterDiscoveryParseError("invalid serial inventory shape");
   }
   const values = Array.isArray(parsed) ? parsed : [parsed];
   return values.flatMap((value): WindowsSerialDiagnostic[] => {
-    if (!value || typeof value !== "object") return [];
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new WindowsPrinterDiscoveryParseError("invalid serial inventory record");
+    }
     const item = value as Record<string, unknown>;
     const deviceId = typeof item.DeviceID === "string" ? item.DeviceID.trim() : "";
     const pnpDeviceId = typeof item.PNPDeviceID === "string" ? item.PNPDeviceID.trim() : "";
-    if (!/^COM\d+$/i.test(deviceId) || !pnpDeviceId) return [];
+    if (!/^COM\d+$/i.test(deviceId) || !pnpDeviceId || typeof item.Status !== "string" || typeof item.Present !== "boolean") {
+      throw new WindowsPrinterDiscoveryParseError("incomplete serial inventory record");
+    }
     const status = typeof item.Status === "string" ? item.Status.trim() : "";
+    if (item.Present !== true || status.toUpperCase() !== "OK") return [];
     return [{
       DeviceID: deviceId.toUpperCase(),
       Name: typeof item.Name === "string" ? item.Name.trim() : "",
@@ -321,6 +379,39 @@ export const parseWindowsSerialDiagnostics = (
       Present: item.Present === true,
     }];
   });
+};
+
+const reconcileWindowsSerialDiagnostics = (
+  cimRecords: WindowsSerialDiagnostic[],
+  pnpRecords: WindowsSerialDiagnostic[],
+): { records: WindowsSerialDiagnostic[]; ambiguousCount: number } => {
+  const byIdentityAndPort = new Map<string, WindowsSerialDiagnostic>();
+  for (const record of [...cimRecords, ...pnpRecords]) {
+    const identity = record.PNPDeviceID.trim().toUpperCase();
+    const port = record.DeviceID.trim().toUpperCase();
+    const key = `${identity}\0${port}`;
+    const previous = byIdentityAndPort.get(key);
+    if (!previous) {
+      byIdentityAndPort.set(key, { ...record, DeviceID: port, PNPDeviceID: identity });
+    } else if (record.Name.length > previous.Name.length) {
+      byIdentityAndPort.set(key, { ...previous, Name: record.Name });
+    }
+  }
+
+  const portsByIdentity = new Map<string, Set<string>>();
+  const identitiesByPort = new Map<string, Set<string>>();
+  for (const record of byIdentityAndPort.values()) {
+    const identity = record.PNPDeviceID.toUpperCase();
+    const port = record.DeviceID.toUpperCase();
+    portsByIdentity.set(identity, (portsByIdentity.get(identity) ?? new Set()).add(port));
+    identitiesByPort.set(port, (identitiesByPort.get(port) ?? new Set()).add(identity));
+  }
+
+  const records = [...byIdentityAndPort.values()].filter((record) =>
+    portsByIdentity.get(record.PNPDeviceID.toUpperCase())?.size === 1
+      && identitiesByPort.get(record.DeviceID.toUpperCase())?.size === 1
+  );
+  return { records, ambiguousCount: byIdentityAndPort.size - records.length };
 };
 
 const classifyWindowsPnpError = (error: unknown): { reasonCode: UsbDiscoveryDiagnostic["reasonCode"]; exitCode?: number } => {
