@@ -122,6 +122,21 @@ The operator UI SHALL NOT submit a pairing approval with a challenge that expire
 - **WHEN** approval returns `PAIRING_CHALLENGE_INVALID` or `PAIRING_CHALLENGE_ALREADY_USED`
 - **THEN** the UI clears the held challenge so it cannot be resubmitted, and no credential is delivered to the Agent.
 
+### Requirement: Treat a revoked binding as history
+The operator UI SHALL treat only a `PENDING` or `AUTHORIZED` binding as the current commercial association. A `REVOKED` binding SHALL NOT block creating a new association for the configured scale, and its recorded KG verification SHALL NOT count as current confirmation, authorization or REAL readiness.
+
+#### Scenario: Previous physical scale binding was revoked
+- **WHEN** the latest binding is `REVOKED` for a different logical scale, the configured scale is persisted and the Agent is authenticated
+- **THEN** the UI allows creating a new association for the configured scale and reports that a binding is required.
+
+#### Scenario: Revoked binding carries historical KG evidence
+- **WHEN** the latest binding is `REVOKED` with `KG_VERIFIED`
+- **THEN** the UI shows the unit as pending, does not allow KG confirmation, REAL testing or REAL readiness, and does not sync that verification to the Agent.
+
+#### Scenario: Active binding for another scale
+- **WHEN** the latest binding is `PENDING` or `AUTHORIZED` for a logical scale that differs from the configured scale
+- **THEN** creating a new association, KG confirmation, REAL testing and REAL readiness remain blocked with `SCALE_MISMATCH`.
+
 ### Requirement: Keep credential secret outside the renderer
 The API SHALL persist only credential verifier/hash and lifecycle metadata, and SHALL encrypt the one-time credential envelope to the Agent key bound by the signed challenge. The renderer MAY relay only the signed challenge and opaque ciphertext; only the Agent decrypts and persists the secret with DPAPI. Neither private key nor plaintext Agent credential may enter renderer state, localStorage, logs, URLs or installer command lines.
 

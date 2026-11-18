@@ -1107,7 +1107,7 @@ const PeripheralsAdminWorkspace = () => {
               {infoBox("Agent", authorizationUi.agentAuthenticated ? "Autenticado" : "No emparejado / no autenticado")}
               {infoBox("Instalación", agentPairing?.installationId ?? authorization?.agent.installationId ?? "- ")}
               {infoBox("Asociación", authorization?.binding ? `${authorization.binding.status} · ${authorization.binding.logicalScaleId ?? "sin identidad"}` : "Sin asociación comercial")}
-              {infoBox("Unidad confirmada", authorization?.binding?.unitState === "KG_VERIFIED" ? `kg · ${authorization.binding.verificationMethod ?? "operador"}` : "Pendiente de confirmación del operador")}
+              {infoBox("Unidad confirmada", authorizationUi.currentKgVerified ? `kg · ${authorization?.binding?.verificationMethod ?? "operador"}` : "Pendiente de confirmación del operador")}
               {infoBox("REAL_AVAILABLE", authorizationUi.realAvailable ? "YES" : authorizationUi.reason)}
               {agentPairing?.pairing ? (
                 <div className="rounded-lg border border-amber-300 bg-white p-3 text-sm dark:bg-slate-900">

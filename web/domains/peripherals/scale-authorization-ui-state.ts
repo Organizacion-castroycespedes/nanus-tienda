@@ -177,29 +177,35 @@ export const deriveScaleAuthorizationUiState = (input: {
 }) => {
   const snapshot = input.snapshot;
   const binding = snapshot?.binding ?? null;
+  // Only a PENDING or AUTHORIZED binding is current. A REVOKED (or other terminal) binding is history:
+  // it neither blocks a new association for the configured scale nor carries any authorization or KG evidence.
+  const activeBinding = isRevocableScaleBinding(binding) ? binding : null;
   const agentAuthenticated = Boolean(snapshot?.agent.authenticated && input.localAgent?.enrolled);
   const matchingScale = Boolean(snapshot?.scaleDeviceId && snapshot.scaleDeviceId === input.configuredScaleId
-    && (!binding || binding.logicalScaleId === snapshot.scaleDeviceId));
+    && (!activeBinding || activeBinding.logicalScaleId === snapshot.scaleDeviceId));
   const observedAt = Date.parse(input.testResult?.reading?.observedAt ?? "");
   const age = (input.now ?? new Date()).getTime() - observedAt;
   const freshRealKgRead = Boolean(input.testResult?.available && input.testResult.reading?.source === "REAL"
     && input.testResult.reading.unit === "kg" && input.testResult.reading.unitVerified
     && Number.isFinite(observedAt) && age >= 0 && age <= 15_000);
-  const authorized = binding?.status === "AUTHORIZED" && binding.unitState === "KG_VERIFIED";
+  const authorized = activeBinding?.status === "AUTHORIZED" && activeBinding.unitState === "KG_VERIFIED";
   return {
     agentAuthenticated,
     matchingScale,
     authorized,
+    hasActiveBinding: Boolean(activeBinding),
+    currentKgVerified: activeBinding?.unitState === "KG_VERIFIED",
     realAvailable: Boolean(snapshot && agentAuthenticated && matchingScale && authorized && freshRealKgRead),
     canCreateBinding: Boolean(snapshot?.posTerminalId && snapshot.scaleDeviceId && agentAuthenticated && matchingScale
-      && (!binding || !["PENDING", "AUTHORIZED"].includes(binding.status))),
-    canConfirmKg: Boolean(binding?.status === "PENDING" && agentAuthenticated && matchingScale
+      && !activeBinding),
+    canConfirmKg: Boolean(activeBinding?.status === "PENDING" && agentAuthenticated && matchingScale
       && input.hasCurrentKgConfirmationEvidence),
     canTestReal: Boolean(authorized && agentAuthenticated && matchingScale),
     reason: !snapshot ? "AUTHORIZATION_STATE_UNAVAILABLE"
       : !agentAuthenticated ? "AGENT_NOT_AUTHENTICATED"
         : !matchingScale ? "SCALE_MISMATCH"
-          : !authorized ? binding?.unitState !== "KG_VERIFIED" ? "UNIT_NOT_VERIFIED" : "BINDING_NOT_AUTHORIZED"
-            : freshRealKgRead ? "READY" : input.testResult?.reason ?? "FRESH_REAL_OBSERVATION_REQUIRED",
+          : !activeBinding ? "BINDING_REQUIRED"
+            : !authorized ? activeBinding.unitState !== "KG_VERIFIED" ? "UNIT_NOT_VERIFIED" : "BINDING_NOT_AUTHORIZED"
+              : freshRealKgRead ? "READY" : input.testResult?.reason ?? "FRESH_REAL_OBSERVATION_REQUIRED",
   };
 };
