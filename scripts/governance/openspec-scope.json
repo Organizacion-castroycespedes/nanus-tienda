@@ -891,6 +891,18 @@
         "backend-perifericos/windows-installer/qa-uac-observer/main_windows.go",
         "backend-perifericos/windows-installer/qa-uac-observer/main_windows_test.go"
       ]
+    },
+    {
+      "change_id": "versionar-candidato-qa-windows",
+      "paths": [
+        "openspec/changes/versionar-candidato-qa-windows/**",
+        "backend-perifericos/scripts/agent-version.mjs",
+        "backend-perifericos/scripts/agent-version.spec.mjs",
+        "backend-perifericos/scripts/build-windows-qa-static.mjs",
+        "backend-perifericos/scripts/validate-windows-qa-static.mjs",
+        "backend-perifericos/scripts/qa-static-build.spec.mjs"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
