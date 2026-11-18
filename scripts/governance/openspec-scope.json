@@ -759,13 +759,107 @@
         "api/src/modules/inventory/repositories/inventory-location.repository.ts"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "editar-borrador-compras",
+      "paths": [
+        "openspec/changes/editar-borrador-compras/**",
+        "scripts/governance/openspec-scope.json",
+        "api/src/modules/inventory/controllers/purchase.controller.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "web/modules/inventory/components/PurchaseForm.tsx",
+        "web/modules/inventory/components/PurchaseDetailPanel.tsx",
+        "web/modules/inventory/components/SettlePartialPurchaseForm.tsx",
+        "web/modules/inventory/services/purchase.service.ts",
+        "web/modules/finance/components/DocumentPaymentForm.tsx",
+        "web/modules/shared/payments/PaymentDialog.tsx"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "soportar-cantidades-decimales-unidades",
+      "paths": [
+        "openspec/changes/soportar-cantidades-decimales-unidades/**",
+        "scripts/governance/openspec-scope.json",
+        "api/src/modules/inventory/controllers/product.controller.ts",
+        "api/src/modules/inventory/entities/product.entity.ts",
+        "api/src/modules/inventory/entities/product-decimal-units.entity.spec.ts",
+        "api/src/modules/inventory/product-import/product-import.resolver.ts",
+        "api/src/modules/inventory/repositories/inventory.repository.ts",
+        "api/src/modules/inventory/repositories/product.repository.ts",
+        "api/src/modules/inventory/services/inventory.service.ts",
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/utils/quantity-policy.ts",
+        "api/src/modules/inventory/utils/quantity-policy.spec.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.mapper.ts",
+        "backend-facturacion-electronica/test/factucore.unit-code.mapper.spec.ts",
+        "backend-reporteria/src/modules/pdf/templates/tickets/purchase-ticket.template.ts",
+        "scripts/database/migrations/V118__product_decimal_quantity_and_units.sql",
+        "scripts/database/rollbacks/V118__product_decimal_quantity_and_units_rollback.sql",
+        "scripts/database/tests/fixtures/v118_minimal_schema.sql",
+        "scripts/database/tests/test_v118_product_decimal_quantity_migration.py",
+        "scripts/database/tests/v118_product_decimal_quantity_scenarios.sql",
+        "web/app/[tenant]/inventory/products/page.tsx",
+        "web/domains/products/dtos.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/product-form/ProductBasicSection.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.spec.ts",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/types.ts",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/services/product.service.ts",
+        "web/modules/inventory/utils/quantity-policy.ts",
+        "web/modules/inventory/utils/quantity-policy.spec.ts",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
+        "web/store/posCart.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "web/modules/inventory/components/PurchaseForm.tsx",
+        "web/modules/inventory/components/PurchaseDetailPanel.tsx",
+        "web/modules/inventory/components/SettlePartialPurchaseForm.tsx",
+        "web/modules/inventory/services/purchase.service.ts"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "entregar-servicios-en-pedidos",
+      "paths": [
+        "openspec/changes/entregar-servicios-en-pedidos/**",
+        "scripts/governance/openspec-scope.json",
+        "api/src/modules/inventory/services/order.service.ts",
+        "api/src/modules/inventory/services/order.service.spec.ts",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/components/order-deliver-stock-message.spec.ts"
+      ],
+      "exemptions": []
+    },
+    {
+      "change_id": "corregir-anulacion-ventas-pedido",
+      "paths": [
+        "openspec/changes/corregir-anulacion-ventas-pedido/**",
+        "scripts/governance/openspec-scope.json",
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "api/src/modules/operational-sales/operational-sales.order-void.spec.ts",
+        "api/src/modules/inventory/serials/product-serial.repository.ts",
+        "api/src/modules/inventory/serials/product-serial.service.ts",
+        "scripts/database/migrations/V119__order_sale_void_serials.sql",
+        "scripts/database/rollbacks/V119__order_sale_void_serials_rollback.sql",
+        "scripts/database/tests/test_v119_order_sale_void_serials_migration.py",
+        "scripts/database/tests/v119_order_sale_void_serials_scenarios.sql"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
     {
       "change_id": "hu-manus-fe-pending-reconciliation-001",
       "paths": [
-        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.mapper.ts",
         "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.provider.ts",
         "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.types.ts",
         "backend-facturacion-electronica/src/modules/electronic-billing/services/electronic-billing-processing.service.ts",
@@ -800,7 +894,6 @@
     {
       "change_id": "bloquear-tipo-producto-edicion",
       "paths": [
-        "web/modules/inventory/components/product-form/payload.spec.ts",
         "openspec/changes/bloquear-tipo-producto-edicion/**"
       ],
       "reason": "Follow-up frontend ownership for immutable product type during edit; creation and backend transition contracts remain owned by suportar-productos-no-inventariables."
@@ -832,7 +925,6 @@
         "api/src/modules/finance/payments/payments.service.spec.ts",
         "api/src/modules/finance/payments/payments.service.ts",
         "web/modules/finance/components/DocumentPaymentForm.financial-institutions.spec.ts",
-        "web/modules/finance/components/DocumentPaymentForm.tsx",
         "web/modules/finance/utils/active-financial-institutions.spec.ts",
         "web/modules/finance/utils/active-financial-institutions.ts",
         "web/modules/finance/types.ts",
@@ -930,7 +1022,6 @@
         "web/modules/inventory/order-capture/**",
         "web/modules/inventory/purchase-capture/**",
         "web/modules/inventory/components/OrderForm.tsx",
-        "web/modules/inventory/components/PurchaseForm.tsx",
         "docs/evidencia-hu-scan-001.md"
       ],
       "reason": "Owner-authorized (2026-11-11) current ownership for HU-SCAN-001: HID barcode capture in sales orders, purchase capture and purchase receipt. Reassigns current ownership of OrderForm.tsx, OrderDeliverForm.tsx, orders page, orders-responsive-layout.spec.ts (from homologar-pagos-compras-pedidos-pos), PurchaseReceiveForm.tsx (from soportar-productos-no-inventariables) purchase.service.ts and its spec (from soportar-productos-no-inventariables, only to expose the supplier invoice in getPurchaseById) and the scope manifest itself (from control-center-reportes); historical associations remain intact and no POS or database path is claimed."
@@ -941,7 +1032,6 @@
         "web/modules/inventory/list-filters/**",
         "web/app/[tenant]/orders/page.tsx",
         "web/app/[tenant]/orders/orders-responsive-layout.spec.ts",
-        "web/app/[tenant]/purchases/page.tsx",
         "web/modules/inventory/components/OrderInvoiceForm.tsx",
         "docs/evidencia-mejorar-filtros-alcance-cobro-orders-purchases.md"
       ],
@@ -991,39 +1081,17 @@
         "scripts/database/tests/test_v117_product_serials_migration.py",
         "scripts/database/tests/v117_product_serials_scenarios.sql",
         "scripts/database/tests/fixtures/v117_minimal_schema.sql",
-        "api/src/modules/inventory/controllers/product.controller.ts",
-        "api/src/modules/inventory/entities/product.entity.ts",
-        "api/src/modules/inventory/repositories/product.repository.ts",
-        "api/src/modules/inventory/services/product.service.ts",
         "api/src/modules/inventory/services/product.service.spec.ts",
-        "web/domains/products/dtos.ts",
-        "web/modules/inventory/components/ProductForm.tsx",
         "web/modules/inventory/components/ProductForm.spec.tsx",
-        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
-        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
-        "web/modules/inventory/components/product-form/payload.ts",
-        "web/modules/inventory/components/product-form/types.ts",
-        "web/modules/inventory/services/product.service.ts",
         "docs/evidencia-incorporar-trazabilidad-series-productos.md",
         "api/src/modules/inventory/serials/**",
         "api/src/modules/inventory/inventory.module.ts",
-        "api/src/modules/inventory/services/purchase.service.ts",
-        "api/src/modules/inventory/services/purchase.service.spec.ts",
-        "api/src/modules/inventory/controllers/purchase.controller.ts",
-        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
-        "web/modules/inventory/components/purchase-receive-lines.ts",
         "web/modules/inventory/components/purchase-receive-lines.spec.ts",
-        "web/modules/inventory/services/purchase.service.ts",
         "web/modules/inventory/serials/**",
         "web/modules/inventory/services/product-serial.service.ts",
-        "api/src/modules/inventory/services/sale.service.ts",
         "api/src/modules/inventory/services/sale.service.spec.ts",
         "api/src/modules/inventory/repositories/sale.repository.ts",
-        "api/src/modules/operational-sales/operational-sales.service.ts",
         "api/src/modules/operational-sales/operational-sales.service.spec.ts",
-        "web/modules/pos/components/PosScreen.tsx",
-        "web/modules/pos/components/cart/CartSaleModal.tsx",
-        "web/store/posCart.ts",
         "web/store/posCart.spec.ts",
         "web/modules/pos/utils/sale-recovery.ts",
         "web/modules/pos/utils/sale-recovery.spec.ts",
@@ -1032,11 +1100,8 @@
         "web/modules/pos/components/PosSerialPickerDialog.tsx",
         "web/modules/pos/utils/pos-serials.ts",
         "web/modules/pos/utils/pos-serials.spec.ts",
-        "api/src/modules/inventory/services/order.service.ts",
-        "api/src/modules/inventory/services/order.service.spec.ts",
         "api/src/modules/inventory/controllers/order.controller.ts",
         "api/src/modules/inventory/controllers/order.controller.spec.ts",
-        "web/modules/inventory/components/OrderDeliverForm.tsx",
         "web/modules/inventory/services/order.service.ts",
         "api/src/modules/inventory/services/stock-adjustment.service.ts",
         "api/src/modules/inventory/services/stock-adjustment.service.spec.ts",
@@ -1047,8 +1112,6 @@
         "web/modules/inventory/components/StockAdjustmentForm.tsx",
         "web/modules/inventory/services/stock-adjustment.service.ts",
         "web/app/[tenant]/inventory/serials/page.tsx",
-        "api/src/modules/inventory/repositories/inventory.repository.ts",
-        "api/src/modules/inventory/services/inventory.service.ts",
         "api/src/modules/inventory/services/inventory.service.spec.ts",
         "web/app/[tenant]/inventory/locations/page.tsx",
         "api/src/modules/inventory/services/inventory-location.service.ts",
@@ -1056,6 +1119,88 @@
         "api/src/modules/inventory/repositories/inventory-location.repository.ts"
       ],
       "reason": "Owner-requested (2026-11-14) current ownership for serial-number traceability, phase 1 (database V117 and structural product field requiresSerial). Reassigns current ownership of the product entity, repository, service and spec, the product controller, the product form files and DTOs, and the scope manifest; historical associations remain intact. Sales are not claimed: inventory_create_sale_v2, sale.service, sale.repository, consumeDeliveryLots and FEFO stay untouched in this phase. Phase 3 adds the read-only serials module (api/src/modules/inventory/serials/**) and registers it in inventory.module.ts. Fase 4: recepción de compras con series (purchase.service/controller y formulario de recepción web). Fase 5: venta POS con series (llamado a fnc_product_serials_assign_sale después de inventory_create_sale_v2, sin modificar esa función), anulaciones (cancelSale y applySaleVoid) y selector de series en el POS. Fase 6: entrega de pedidos con series (llamado a fnc_product_serials_assign_order_delivery después de los OUT de deliverOrder; consumeDeliveryLots y FEFO sin cambios) y selector de series en OrderDeliverForm. Fase 7: ajustes de inventario con series, rechazo de productos con serie en la carga de stock, inspección/bloqueo/baja y mover ubicación (endpoints de series) y página /inventory/serials."
+    },
+    {
+      "change_id": "editar-borrador-compras",
+      "paths": [
+        "api/src/modules/inventory/controllers/purchase.controller.ts",
+        "api/src/modules/inventory/services/purchase.service.ts",
+        "api/src/modules/inventory/services/purchase.service.spec.ts",
+        "web/app/[tenant]/purchases/page.tsx",
+        "web/modules/inventory/components/PurchaseForm.tsx",
+        "web/modules/inventory/components/PurchaseDetailPanel.tsx",
+        "web/modules/inventory/components/SettlePartialPurchaseForm.tsx",
+        "web/modules/inventory/services/purchase.service.ts",
+        "web/modules/finance/components/DocumentPaymentForm.tsx",
+        "web/modules/shared/payments/PaymentDialog.tsx"
+      ],
+      "reason": "Owner-requested (2026-11-16) current ownership for editable purchase drafts: DRAFT-only edit, explicit confirm DRAFT->PENDING, receive rejects DRAFT, supplier search, warning confirmations, supplier invoice column/search and responsive partial-settlement table. Reassigns current ownership of these files from earlier merged changes; inventory receipt logic unchanged."
+    },
+    {
+      "change_id": "soportar-cantidades-decimales-unidades",
+      "paths": [
+        "api/src/modules/inventory/controllers/product.controller.ts",
+        "api/src/modules/inventory/entities/product.entity.ts",
+        "api/src/modules/inventory/entities/product-decimal-units.entity.spec.ts",
+        "api/src/modules/inventory/product-import/product-import.resolver.ts",
+        "api/src/modules/inventory/repositories/inventory.repository.ts",
+        "api/src/modules/inventory/repositories/product.repository.ts",
+        "api/src/modules/inventory/services/inventory.service.ts",
+        "api/src/modules/inventory/services/product.service.ts",
+        "api/src/modules/inventory/services/sale.service.ts",
+        "api/src/modules/inventory/utils/quantity-policy.ts",
+        "api/src/modules/inventory/utils/quantity-policy.spec.ts",
+        "backend-facturacion-electronica/src/modules/electronic-billing/providers/factucore/factucore.mapper.ts",
+        "backend-facturacion-electronica/test/factucore.unit-code.mapper.spec.ts",
+        "backend-reporteria/src/modules/pdf/templates/tickets/purchase-ticket.template.ts",
+        "scripts/database/migrations/V118__product_decimal_quantity_and_units.sql",
+        "scripts/database/rollbacks/V118__product_decimal_quantity_and_units_rollback.sql",
+        "scripts/database/tests/fixtures/v118_minimal_schema.sql",
+        "scripts/database/tests/test_v118_product_decimal_quantity_migration.py",
+        "scripts/database/tests/v118_product_decimal_quantity_scenarios.sql",
+        "web/app/[tenant]/inventory/products/page.tsx",
+        "web/domains/products/dtos.ts",
+        "web/modules/inventory/components/ProductForm.tsx",
+        "web/modules/inventory/components/PurchaseReceiveForm.tsx",
+        "web/modules/inventory/components/product-form/ProductBasicSection.tsx",
+        "web/modules/inventory/components/product-form/ProductOperationalSection.tsx",
+        "web/modules/inventory/components/product-form/ProductStructuralSections.spec.tsx",
+        "web/modules/inventory/components/product-form/payload.spec.ts",
+        "web/modules/inventory/components/product-form/payload.ts",
+        "web/modules/inventory/components/product-form/types.ts",
+        "web/modules/inventory/components/purchase-receive-lines.ts",
+        "web/modules/inventory/services/product.service.ts",
+        "web/modules/inventory/utils/quantity-policy.ts",
+        "web/modules/inventory/utils/quantity-policy.spec.ts",
+        "web/modules/pos/components/PosScreen.tsx",
+        "web/modules/pos/components/cart/CartSaleModal.tsx",
+        "web/store/posCart.ts"
+      ],
+      "reason": "Owner-requested (2026-11-16) current ownership for decimal quantities per product and new measurement units (V118: allows_decimal_quantity, M/L/CM/M2), integer/decimal rule in purchases, receipt and POS sale (early check, inventory_create_sale_v2 untouched), DIAN unit-code mapping for FactuCore and purchase ticket labels. Purchase files shared with editar-borrador-compras stay owned by that change."
+    },
+    {
+      "change_id": "entregar-servicios-en-pedidos",
+      "paths": [
+        "api/src/modules/inventory/services/order.service.ts",
+        "api/src/modules/inventory/services/order.service.spec.ts",
+        "web/modules/inventory/components/OrderDeliverForm.tsx",
+        "web/modules/inventory/components/order-deliver-stock-message.spec.ts"
+      ],
+      "reason": "Owner-requested (2026-11-17) current ownership for delivering non-inventoryable order lines without stock or OUT movements and naming the physical products without stock; FEFO and consumeDeliveryLots unchanged."
+    },
+    {
+      "change_id": "corregir-anulacion-ventas-pedido",
+      "paths": [
+        "api/src/modules/operational-sales/operational-sales.service.ts",
+        "api/src/modules/operational-sales/operational-sales.order-void.spec.ts",
+        "api/src/modules/inventory/serials/product-serial.repository.ts",
+        "api/src/modules/inventory/serials/product-serial.service.ts",
+        "scripts/database/migrations/V119__order_sale_void_serials.sql",
+        "scripts/database/rollbacks/V119__order_sale_void_serials_rollback.sql",
+        "scripts/database/tests/test_v119_order_sale_void_serials_migration.py",
+        "scripts/database/tests/v119_order_sale_void_serials_scenarios.sql"
+      ],
+      "reason": "Owner-requested (2026-11-17) current ownership for returning inventory, lots and serials when voiding a sale created from an order (V119); POS sale void flow unchanged."
     }
   ]
 }
