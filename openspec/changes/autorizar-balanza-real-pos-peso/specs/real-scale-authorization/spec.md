@@ -216,3 +216,47 @@ Every PostgreSQL statement issued by WeightCapturePersistence.markReady SHALL ru
 #### Scenario: Rollback cannot clear the transaction-local setting
 - **WHEN** rollback fails after a READY statement error
 - **THEN** the API preserves the original statement error and destroys the client rather than returning an open transaction to the pool.
+
+### Requirement: Order commercial observations by exclusive acquisition, not by wall clocks
+The API SHALL accept a commercial observation declaring `captureProtocol=EXCLUSIVE_ACQUISITION_V1` only with `acquisition.requestToFrameMs` and `acquisition.frameAgeMs` as non-negative integers measured on the Agent's monotonic clock, each at most 15,000 ms inclusive. Order follows from the Agent reading a new frame after it receives the unpredictable server-issued `captureId`.
+
+#### Scenario: Stale V1 evidence
+- **WHEN** `frameAgeMs` or `requestToFrameMs` exceeds 15,000 ms
+- **THEN** the API returns `CAPTURE_OBSERVATION_STALE` and does not change the capture.
+
+#### Scenario: Malformed or unknown protocol evidence
+- **WHEN** the protocol is unknown, `acquisition` is missing, has other fields, or holds a negative, fractional or non-numeric value
+- **THEN** the API returns `CAPTURE_OBSERVATION_INVALID` before opening a transaction.
+
+### Requirement: Use the API clock for V1 expiry and keep observedAt for audit only
+For `EXCLUSIVE_ACQUISITION_V1` the API SHALL NOT compare the Agent wall-clock `observedAt` with `created_at` or with the API clock to prove order or freshness. `observedAt` SHALL be persisted unchanged for audit and SHALL be within 300,000 ms of the API clock. Expiry SHALL use only the API clock with `expires_at` exclusive.
+
+#### Scenario: Windows clock behind the API
+- **WHEN** a V1 observation arrives for a live `PENDING` capture and the Agent wall clock is 720 ms behind the API, so `observedAt` precedes `created_at`
+- **THEN** the capture becomes `READY` with the original `observedAt`.
+
+#### Scenario: observedAt outside the audit bound
+- **WHEN** a V1 `observedAt` is more than 300,000 ms from the API clock
+- **THEN** the API returns `CAPTURE_OBSERVATION_STALE` and does not change the capture.
+
+#### Scenario: Capture no longer pending
+- **WHEN** a V1 observation targets a capture that is `READY`, `CONSUMED`, `REJECTED` or `EXPIRED`, or whose `expires_at` is not after the API clock
+- **THEN** the API returns `CAPTURE_NOT_PENDING_OR_EXPIRED` and performs no update.
+
+### Requirement: Keep legacy observations strict and controllable
+An observation without `captureProtocol` and `acquisition` SHALL keep the original checks: `observedAt` not after the API clock, at most 15,000 ms old, and not before `created_at`. `SCALE_WEIGHT_CAPTURE_LEGACY_OBSERVATION` SHALL accept `ENABLED` (default when unset) or `DISABLED`; `DISABLED` or any other value SHALL reject legacy observations with `CAPTURE_PROTOCOL_UNSUPPORTED`.
+
+#### Scenario: Legacy Agent behind the API clock
+- **WHEN** a legacy observation's `observedAt` precedes `created_at`
+- **THEN** the API returns `CAPTURE_NOT_PENDING_OR_EXPIRED`, as before.
+
+#### Scenario: Legacy protocol disabled
+- **WHEN** the legacy policy is `DISABLED` or invalid and a legacy observation arrives
+- **THEN** the API returns `CAPTURE_PROTOCOL_UNSUPPORTED` without updating the capture.
+
+### Requirement: Record capture-state rejection reasons internally
+The API SHALL log a sanitized `rejectionReason` for each refused observation, such as `CAPTURE_STATUS_INVALID`, `CAPTURE_EXPIRED`, `OBSERVATION_BEFORE_CAPTURE`, `FRAME_AGE_EXCEEDED` or `LEGACY_PROTOCOL_DISABLED`, plus the protocol and V1 intervals on success. Public error codes SHALL stay unchanged, and logs SHALL NOT include weight, nonce, verifier or credential material.
+
+#### Scenario: Legacy observation before capture
+- **WHEN** a legacy observation is refused because `observedAt` precedes `created_at`
+- **THEN** the `observation.failed` event carries `rejectionReason=OBSERVATION_BEFORE_CAPTURE` and the client receives `CAPTURE_NOT_PENDING_OR_EXPIRED`.

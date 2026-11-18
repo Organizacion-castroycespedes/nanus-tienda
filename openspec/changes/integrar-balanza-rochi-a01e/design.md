@@ -43,3 +43,12 @@ La configuraci?n por defecto es `9600`, `8` bits, paridad `none`, `1` stop bit y
 `RochiA01eQaCapture` se conecta a los callbacks existentes del adapter. Guarda como m?ximo 8 errores, convierte la entrada a hexadecimal latin1 limitado a 32 bytes, limita el mensaje a 160 caracteres y mide tiempo relativo. Cuenta frames v?lidos, errores suprimidos, fragmento pendiente y snapshot del adapter. El runner `scripts/qa-rochi-diagnostic.mjs` exige `--port` y `--unit`, limita la duraci?n a 3 segundos y siempre intenta cerrar el puerto.
 
 La sincronizaci?n inicial vive en el transporte, no en el parser: espera el primer `CR LF`, conserva el candidato si el parser lo reconoce como frame v?lido y descarta solo ese primer candidato inv?lido. Luego activa el modo estricto normal; por eso un `bad` posterior genera `INVALID_FRAME`.
+
+## Adquisición comercial exclusiva
+
+`ScaleService` serializa las operaciones seriales de cada balanza:
+- Las lecturas no comerciales pueden compartir otra lectura no comercial pendiente.
+- `acquireForCapture` nunca comparte: registra la aceptación con el reloj monotónico, espera a que cierre cualquier sesión anterior y abre una sesión nueva.
+- Si ya hay una captura en curso, una segunda captura responde `SCALE_CAPTURE_BUSY`.
+
+El controlador serial y el parser no cambian.

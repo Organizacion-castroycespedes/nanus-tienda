@@ -73,3 +73,4 @@
 - [x] 10.6 Excluir migraciones, terminal auth/bindings, secure-secret future, enrollment y metrología.
 - [x] 10.8 Permitir asociar o desasociar explícitamente un SCALE descubierto en los settings existentes de la terminal, preservando el fail-closed comercial.
 - [x] Ensure REAL scale diagnostic metadata reflects the actual response unit-verification and stability fields without logging weight. Evidence: `scale-rochi-runtime.spec.ts` verifies metadata matches the REAL response; build and full Agent suite PASS.
+- [ ] Serve POS commercial captures with exclusive ROCHI acquisition (new session after acceptance, no sharing, `SCALE_CAPTURE_BUSY` for a concurrent capture) and monotonic acquisition evidence for `EXCLUSIVE_ACQUISITION_V1`; coordinated with HU-WEIGHT-CAPTURE-EXCLUSIVE-PROTOCOL in `autorizar-balanza-real-pos-peso`. Open until a new Agent build passes a physical capture on COM6.
