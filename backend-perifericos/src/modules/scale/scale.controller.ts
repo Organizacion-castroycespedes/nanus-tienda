@@ -1,9 +1,19 @@
-import { BadRequestException, Body, Controller, Get, Inject, Optional, Post, Query } from "@nestjs/common";
-import { ScaleService } from "./scale.service";
+import { BadRequestException, Body, ConflictException, Controller, Get, Inject, Optional, Post, Query } from "@nestjs/common";
+import { ScaleService, type ExclusiveScaleAcquisition } from "./scale.service";
 import type { ScaleWeightResponse } from "./scale.types";
 import { AgentPairingService } from "../agent-security/agent-pairing.service";
 import { LogsService } from "../logs/logs.service";
 import { LogLevel } from "../../shared/types/peripheral.types";
+
+/** Observation protocol declared to the API; see autorizar-balanza-real-pos-peso. */
+export const WEIGHT_CAPTURE_PROTOCOL = "EXCLUSIVE_ACQUISITION_V1";
+
+const exceptionCode = (error: ConflictException): string | undefined => {
+  const response = error.getResponse();
+  if (typeof response === "string") return response;
+  const message = response && typeof response === "object" ? (response as { message?: unknown }).message : undefined;
+  return typeof message === "string" ? message : undefined;
+};
 
 @Controller("scale")
 export class ScaleController {
@@ -47,20 +57,26 @@ export class ScaleController {
     this.logsService.append({ source: "scale", event: "capture.request_received",
       message: "Commercial scale capture request received", metadata: { captureId } });
     // No renderer-selected device: REAL mode requires one unambiguous configured scale.
-    let reading: ScaleWeightResponse;
+    // The read is exclusive to this capture: a new serial session opened after this
+    // request was accepted, never shared with another capture or administrative read.
+    let acquisition: ExclusiveScaleAcquisition;
     try {
-      reading = await this.scaleService.getCurrentWeight({ terminalId: "local-terminal" });
+      acquisition = await this.scaleService.acquireForCapture({ terminalId: "local-terminal" });
     } catch (error) {
+      const code = error instanceof ConflictException ? exceptionCode(error) : undefined;
       this.logsService.append({ level: LogLevel.ERROR, source: "scale", event: "capture.failed",
         message: "Commercial scale capture failed during physical read",
-        metadata: { captureId, stage: "real_read", errorCode: "REAL_SCALE_READ_FAILED" } });
+        metadata: { captureId, stage: "real_read",
+          errorCode: code === "SCALE_CAPTURE_BUSY" || code === "SCALE_ACQUISITION_ORDER_INVALID" ? code : "REAL_SCALE_READ_FAILED" } });
       throw error;
     }
+    const reading: ScaleWeightResponse = acquisition.reading;
     this.logsService.append({ source: "scale", event: "capture.real_read_completed",
       message: "Commercial capture received a physical scale reading", metadata: {
         captureId, source: reading.source, unit: reading.unit, unitVerified: reading.unitVerified,
         stabilityVerified: reading.stabilityVerified, deviceId: reading.deviceId,
         logicalScaleId: reading.deviceId, observedAt: reading.timestamp,
+        captureProtocol: WEIGHT_CAPTURE_PROTOCOL, requestToFrameMs: acquisition.requestToFrameMs,
       } });
     const rejectionCode = reading.source !== "REAL" ? "SCALE_SOURCE_NOT_REAL"
       : reading.unit !== "kg" ? "SCALE_UNIT_NOT_KG"
@@ -74,6 +90,12 @@ export class ScaleController {
         ? rejectionCode
         : "REAL_KG_VERIFIED_READING_REQUIRED");
     }
+    if (acquisition.frameMonoMs === undefined || acquisition.requestToFrameMs === undefined) {
+      this.logsService.append({ level: LogLevel.ERROR, source: "scale", event: "capture.failed",
+        message: "Commercial scale reading has no exclusive acquisition evidence",
+        metadata: { captureId, stage: "local_validation", errorCode: "SCALE_ACQUISITION_EVIDENCE_MISSING" } });
+      throw new ConflictException("SCALE_ACQUISITION_EVIDENCE_MISSING");
+    }
     this.logsService.append({ source: "scale", event: "capture.local_validation_passed",
       message: "Commercial scale reading passed local validation", metadata: { captureId, stage: "local_validation" } });
     let accepted: unknown;
@@ -81,6 +103,11 @@ export class ScaleController {
       accepted = await this.pairing.submitSaleCaptureObservation({
         captureId, deviceId: reading.deviceId, weight: reading.weight, unit: reading.unit,
         source: reading.source, unitVerified: reading.unitVerified, observedAt: reading.timestamp,
+        captureProtocol: WEIGHT_CAPTURE_PROTOCOL,
+        acquisition: {
+          requestToFrameMs: acquisition.requestToFrameMs,
+          frameAgeMs: this.scaleService.elapsedSince(acquisition.frameMonoMs),
+        },
       });
     } catch (error) {
       this.logsService.append({ level: LogLevel.ERROR, source: "scale", event: "capture.failed",
