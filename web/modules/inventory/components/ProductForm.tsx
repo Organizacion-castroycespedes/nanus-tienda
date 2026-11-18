@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
-import type { ProductResponse } from "../../../domains/products/dtos";
+import { isUnitMeasurementUnit, type ProductResponse } from "../../../domains/products/dtos";
 import { useAppSelector } from "../../../store/hooks";
 
 import {
@@ -112,6 +112,7 @@ const createInitialValues = (
     requiresLot: product?.requiresLot ?? false,
     requiresExpiration: product?.requiresExpiration ?? false,
     requiresSerial: product?.requiresSerial ?? false,
+    allowsDecimalQuantity: product?.allowsDecimalQuantity ?? false,
     operationalStatus: product?.operationalStatus ?? "ACTIVE",
     rotationClass: product?.rotationClass ?? "",
     saleType: product?.saleType ?? "UNIT",
@@ -490,6 +491,8 @@ export const ProductForm = ({
         next.requiresLot = false;
         next.requiresExpiration = false;
         next.isPerishable = false;
+        // Una serie es una unidad entera.
+        next.allowsDecimalQuantity = false;
       }
       if (
         (field === "requiresLot" || field === "requiresExpiration" || field === "isPerishable") &&
@@ -506,6 +509,7 @@ export const ProductForm = ({
       requiresLot: undefined,
       requiresExpiration: undefined,
       requiresSerial: undefined,
+      allowsDecimalQuantity: undefined,
       isPerishable: undefined,
       submit: undefined,
     }));
@@ -521,10 +525,13 @@ export const ProductForm = ({
       if (field === "saleType") {
         if (value === "UNIT") {
           next.measurementUnit = "UND";
+        } else {
+          // Peso ya es decimal por bascula; la marca aplica solo a venta por unidad.
+          next.allowsDecimalQuantity = false;
         }
         if (
           (value === "WEIGHT" || value === "BOTH") &&
-          next.measurementUnit === "UND"
+          isUnitMeasurementUnit(next.measurementUnit)
         ) {
           next.measurementUnit = "KG";
         }
@@ -664,6 +671,11 @@ export const ProductForm = ({
       nextErrors.isPerishable =
         "Marca lote o vencimiento para productos perecederos.";
     }
+    if (values.allowsDecimalQuantity && values.saleType !== "UNIT") {
+      nextErrors.allowsDecimalQuantity = "Los decimales aplican solo a productos que se venden por unidad.";
+    } else if (values.allowsDecimalQuantity && values.requiresSerial) {
+      nextErrors.allowsDecimalQuantity = "Un producto con serie se maneja por unidades enteras.";
+    }
     if (values.requiresSerial && !values.isInventoryable) {
       nextErrors.requiresSerial = "Solo los productos inventariables pueden requerir serie.";
     } else if (values.requiresSerial && values.saleType !== "UNIT") {
@@ -677,10 +689,10 @@ export const ProductForm = ({
     if (!values.measurementUnit) {
       nextErrors.measurementUnit = "Debes seleccionar la unidad comercial.";
     }
-    if (values.saleType === "UNIT" && values.measurementUnit !== "UND") {
-      nextErrors.measurementUnit = "Productos por unidad deben usar UND.";
+    if (values.saleType === "UNIT" && !isUnitMeasurementUnit(values.measurementUnit)) {
+      nextErrors.measurementUnit = "Productos por unidad deben usar UND, M, L, CM o M2.";
     }
-    if (values.saleType !== "UNIT" && values.measurementUnit === "UND") {
+    if (values.saleType !== "UNIT" && isUnitMeasurementUnit(values.measurementUnit)) {
       nextErrors.measurementUnit =
         "Productos por peso deben usar KG, LB, G u OZ.";
     }
@@ -836,6 +848,7 @@ export const ProductForm = ({
       requiresLot: values.requiresLot,
       requiresExpiration: values.requiresExpiration,
       requiresSerial: values.requiresSerial,
+      allowsDecimalQuantity: values.allowsDecimalQuantity,
       operationalStatus: values.operationalStatus,
       rotationClass: values.rotationClass || null,
       saleType: values.saleType,

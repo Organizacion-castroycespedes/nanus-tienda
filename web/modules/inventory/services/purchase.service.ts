@@ -56,6 +56,10 @@ export type PurchaseItemResponse = {
   requiresLot?: boolean;
   requiresExpiration?: boolean;
   requiresSerial?: boolean;
+  /** V118 */
+  allowsDecimalQuantity?: boolean;
+  saleType?: "UNIT" | "WEIGHT" | "BOTH";
+  measurementUnit?: string;
   orderedQuantity: number;
   receivedQuantity: number;
   pendingQuantity?: number | null;
@@ -92,6 +96,20 @@ export type CreatePurchasePayload = {
     subtotal: number;
   }>;
   total: number;
+};
+
+/** Edicion de un borrador: sucursal, terminal y estado no son editables. */
+export type UpdatePurchaseDraftPayload = {
+  supplierId: string;
+  type: "CASH" | "CREDIT";
+  items: CreatePurchasePayload["items"];
+  total: number;
+};
+
+export type ConfirmPurchaseResponse = {
+  statusCode: number;
+  message: string;
+  data: PurchaseResponse;
 };
 
 export type ReceivePurchasePayload = {
@@ -181,6 +199,23 @@ export const createPurchase = (
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+  });
+
+export const updatePurchaseDraft = (
+  id: string,
+  payload: UpdatePurchaseDraftPayload,
+  headers?: HeadersInit
+) =>
+  apiClient<PurchaseResponse>(`/purchases/${id}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+export const confirmPurchase = (id: string, headers?: HeadersInit) =>
+  apiClient<ConfirmPurchaseResponse>(`/purchases/${id}/confirm`, {
+    method: "PATCH",
+    headers,
   });
 
 export const getPurchaseById = (id: string, headers?: HeadersInit) =>
