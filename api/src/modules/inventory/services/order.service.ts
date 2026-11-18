@@ -1535,13 +1535,16 @@ export class OrderService {
     const uniqueProductIds = [...new Set(productIds)];
     const result = await client.query<{
       id: string;
+      name?: string | null;
       requires_lot: boolean | null;
       requires_expiration: boolean | null;
       requires_serial?: boolean | null;
+      is_inventoryable?: boolean | null;
     }>(
       `
-        SELECT id, requires_lot, requires_expiration,
-          COALESCE((to_jsonb(products) ->> 'requires_serial')::boolean, FALSE) AS requires_serial
+        SELECT id, name, requires_lot, requires_expiration,
+          COALESCE((to_jsonb(products) ->> 'requires_serial')::boolean, FALSE) AS requires_serial,
+          COALESCE((to_jsonb(products) ->> 'is_inventoryable')::boolean, TRUE) AS is_inventoryable
         FROM products
         WHERE tenant_id = $1
           AND id = ANY($2::uuid[])
@@ -1552,9 +1555,12 @@ export class OrderService {
       result.rows.map((row) => [
         row.id,
         {
+          name: row.name ?? null,
           requiresLot: Boolean(row.requires_lot),
           requiresExpiration: Boolean(row.requires_expiration),
           requiresSerial: Boolean(row.requires_serial),
+          // Servicios (is_inventoryable = FALSE) no tienen saldo ni movimientos fisicos.
+          isInventoryable: row.is_inventoryable !== false,
         },
       ])
     );
@@ -1968,6 +1974,46 @@ export class OrderService {
         deliveryProductIds,
         client
       );
+      // Verificacion previa de stock de todas las lineas fisicas, para informar en un solo
+      // mensaje cuales productos no alcanzan. Los servicios no se validan.
+      const requestedByProduct = new Map<string, number>();
+      for (const deliverItem of itemsToDeliver) {
+        const quantity = Number(deliverItem.quantity);
+        if (
+          !deliverItem.productId ||
+          !Number.isFinite(quantity) ||
+          quantity <= 0 ||
+          lotPolicies.get(deliverItem.productId)?.isInventoryable === false
+        ) {
+          continue;
+        }
+        requestedByProduct.set(
+          deliverItem.productId,
+          (requestedByProduct.get(deliverItem.productId) ?? 0) + quantity
+        );
+      }
+      const shortages: string[] = [];
+      for (const [productId, requested] of requestedByProduct) {
+        const stockResult = await this.stockMovementService.getStockByProduct(
+          productId,
+          tenantId,
+          deliveryBranchId
+        );
+        if (stockResult.stock < requested) {
+          shortages.push(
+            `${lotPolicies.get(productId)?.name ?? productId} (disponible ${Math.max(
+              Number(stockResult.stock) || 0,
+              0
+            )}, a entregar ${requested})`
+          );
+        }
+      }
+      if (shortages.length > 0) {
+        throw new BadRequestException(
+          `insufficient stock for delivery: ${shortages.join("; ")}`
+        );
+      }
+
       // Solo productos con serie (o líneas que enviaron series); el resto no agrega llamadas.
       const serialLines: Array<{
         productId: string;
@@ -2002,13 +2048,45 @@ export class OrderService {
           );
         }
 
+        const lotPolicy = lotPolicies.get(productId);
+        if (lotPolicy?.isInventoryable === false) {
+          // Servicio: se registra la cantidad entregada sin stock ni movimiento OUT.
+          let remainingServiceQuantity = quantity;
+          for (const item of productItems) {
+            if (remainingServiceQuantity <= 0) {
+              break;
+            }
+            const itemPendingQuantity = pendingByItemId.get(item.id) ?? 0;
+            if (itemPendingQuantity <= 0) {
+              continue;
+            }
+            const deliveredDelta = Math.min(remainingServiceQuantity, itemPendingQuantity);
+            pendingByItemId.set(item.id, itemPendingQuantity - deliveredDelta);
+            remainingServiceQuantity -= deliveredDelta;
+            await client.query(
+              `
+                UPDATE order_items
+                SET delivered_quantity = delivered_quantity + $2
+                WHERE id = $1
+              `,
+              [item.id, deliveredDelta]
+            );
+          }
+          continue;
+        }
+
         const stockResult = await this.stockMovementService.getStockByProduct(
           productId,
           tenantId,
           orderAuditContext.branch_id ?? context?.branchId ?? null
         );
         if (stockResult.stock < quantity) {
-          throw new BadRequestException("insufficient stock for delivery");
+          throw new BadRequestException(
+            `insufficient stock for delivery: ${lotPolicy?.name ?? productId} (disponible ${Math.max(
+              Number(stockResult.stock) || 0,
+              0
+            )}, a entregar ${quantity})`
+          );
         }
 
         const movement = await this.stockMovementService.createMovement(
@@ -2041,7 +2119,6 @@ export class OrderService {
         );
         createdMovements.push(movement);
 
-        const lotPolicy = lotPolicies.get(productId);
         if (lotPolicy?.requiresLot) {
           if (!deliveryBranchId) {
             throw new BadRequestException("branch is required to deliver lot-controlled products");
