@@ -15,6 +15,7 @@ import {
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { QA_AGENT_VERSION, resolveAgentVersion } from "./agent-version.mjs";
+import { assertPackagedPosVersions, readPosVersion } from "./pos-version.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDirectory, "..");
@@ -166,6 +167,7 @@ export const validatePackagedClosePolicy = (appAsarPath, asar = electronAsar) =>
 export const validateStaticQaPackage = async ({
   root = projectRoot,
   outputName = installerName,
+  posVersion = readPosVersion(rootDirectory),
 } = {}) => {
   const buildRoot = resolve(root);
   const agentRoot = join(buildRoot, "dist-terminal", "windows-x64", `ManusPeripheralAgent-win-x64-${QA_AGENT_VERSION}`);
@@ -198,7 +200,6 @@ export const validateStaticQaPackage = async ({
   assert.equal(installerManifest.bundleRoot, `assets/bundle/ManusPeripheralAgent-win-x64-${expectedVersion}`);
   assert.equal(installerManifest.serviceName, "ManusPeripheralAgent");
   assert.equal(installerManifest.serviceAccount, "NT AUTHORITY\\LocalService");
-  assert.equal(installerManifest.posVersion, "0.1.0");
 
   const embeddedAgentConfig = readFileSync(join(assetsRoot, "bundle", installerManifest.bundleDirName, "config", "agent.config.local.json"));
   assert.deepEqual(embeddedAgentConfig, configData, "installer must embed the same QA Agent config");
@@ -212,7 +213,7 @@ export const validateStaticQaPackage = async ({
 
   const posManifestData = readFileSync(join(assetsRoot, "pos-manifest.json"));
   const posManifest = JSON.parse(posManifestData.toString("utf8"));
-  assert.equal(posManifest.posVersion, "0.1.0");
+  assertPackagedPosVersions({ expected: posVersion, installerManifest, posManifest });
   assert.equal(posManifest.executable, "Manus POS.exe");
   const pos = await verifyPosPayload(assetsRoot, posManifest);
   const closePolicy = validatePackagedClosePolicy(join(assetsRoot, "pos", "resources", "app.asar"));
