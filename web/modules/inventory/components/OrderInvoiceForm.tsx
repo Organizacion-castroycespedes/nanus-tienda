@@ -21,13 +21,14 @@ import {
   getOrderById,
   invoiceOrder,
   type OrderDetailResponse,
+  type OrderInvoiceSale,
 } from "../services/order.service";
 import { buildConfirmFromApiError } from "../../../lib/api-messages";
 
 type OrderInvoiceFormProps = {
   orderId: string;
   onCancel: () => void;
-  onSuccess: () => void;
+  onSuccess: (sale: OrderInvoiceSale) => void;
 };
 
 const formatCurrency = (value: number) =>
@@ -227,11 +228,11 @@ export const OrderInvoiceForm = ({
 
       // El saldo se cobra antes con el modal de abonos; la función de facturación
       // hereda esos abonos, por lo que no se envían pagos nuevos.
-      await invoiceOrder(orderId, {
+      const sale = await invoiceOrder(orderId, {
         type,
         payments: [],
       });
-      onSuccess();
+      onSuccess(sale);
     } catch (error) {
       if (isConfirmCancelledError(error)) {
         return;
@@ -295,7 +296,7 @@ export const OrderInvoiceForm = ({
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Cliente</p>
                 <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-                  {order.customerName || order.customerId}
+                  {order.customerName || "Cliente sin nombre"}{order.customerDocument ? ` · ${order.customerDocument}` : ""}
                 </p>
               </div>
               <div>
@@ -587,7 +588,7 @@ export const OrderInvoiceForm = ({
           referenceId={order.id}
           direction="IN"
           partyLabel="Cliente del pedido"
-          partyName={order.customerName ?? order.customerId}
+          partyName={[order.customerName || "Cliente sin nombre", order.customerDocument].filter(Boolean).join(" · ")}
           documentLabel={`Pedido ${order.id.slice(0, 8)}`}
           total={Number(order.total)}
           effectiveTotal={total}

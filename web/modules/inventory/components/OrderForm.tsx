@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Select } from "../../../components/design-system/Select";
+import { SearchableSelect } from "../../../components/design-system/SearchableSelect";
 import { listBranches } from "../../../domains/branches/api";
 import type { BranchResponse } from "../../../domains/branches/dtos";
 import { getAuthContext } from "../../../domains/pos/api";
@@ -127,6 +128,7 @@ export const OrderForm = ({
   const [errors, setErrors] = useState<OrderFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
+  const [searchFocused, setSearchFocused] = useState(false);
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [branches, setBranches] = useState<BranchResponse[]>([]);
   const [contextBranches, setContextBranches] = useState<PosBranch[]>([]);
@@ -447,7 +449,7 @@ export const OrderForm = ({
 
   const capture = useInventoryBarcodeCapture({
     enabled: !captureLocked && !catalogLoading && !isSubmitting,
-    focusReleased: pendingDialog !== null,
+    focusReleased: pendingDialog !== null || searchFocused,
     onScan: handleScan,
     onDuplicateIgnored: (code) => notify("info", inventoryScanMessages.duplicateIgnored(code)),
     // Un código leído con el foco en cantidad u otro campo se procesa como escaneo.
@@ -683,47 +685,33 @@ export const OrderForm = ({
 
       <form ref={formRef} className="grid gap-5" onSubmit={handleSubmit}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-1">
-            <Select
+          <div className="space-y-1" onFocusCapture={() => setSearchFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchFocused(false); }}>
+            <SearchableSelect
               label="Cliente"
-              required
               value={values.customerId}
               disabled={catalogLoading || customers.length === 0}
-              onChange={(event) => {
-                setValues((prev) => ({ ...prev, customerId: event.target.value }));
+              options={customers.map((customer) => ({ value: customer.id, label: customer.name, description: customer.documentNumber ? `Documento ${customer.documentNumber}` : null, keywords: [customer.legalName, customer.tradeName, customer.documentNumber, customer.identificationNumber, customer.phone, customer.email].filter((value): value is string => Boolean(value)) }))}
+              placeholder="Selecciona un cliente"
+              searchPlaceholder="Buscar por nombre, documento, teléfono o correo"
+              onChange={(value) => {
+                setValues((prev) => ({ ...prev, customerId: value }));
                 setErrors((prev) => ({ ...prev, customerId: undefined, submit: undefined }));
+                requestAnimationFrame(() => capture.focusScanInput());
               }}
-            >
-              <option value="">
-                {catalogLoading ? "Cargando..." : "Selecciona un cliente"}
-              </option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </Select>
+            />
             {errors.customerId ? <p className="text-xs text-rose-600">{errors.customerId}</p> : null}
           </div>
 
           {canSelectBranch ? (
-            <div className="space-y-1">
-              <Select
+            <div className="space-y-1" onFocusCapture={() => setSearchFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setSearchFocused(false); }}>
+              <SearchableSelect
                 label="Sucursal"
-                required
                 value={values.branchId}
                 disabled={catalogLoading || branches.length === 0 || mode === "edit"}
-                onChange={(event) => void changeBranch(event.target.value)}
-              >
-                <option value="">
-                  {catalogLoading ? "Cargando..." : "Selecciona una sucursal"}
-                </option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.nombre}
-                  </option>
-                ))}
-              </Select>
+                options={branches.map((branch) => ({ value: branch.id, label: branch.nombre }))}
+                placeholder="Selecciona una sucursal"
+                onChange={(value) => void changeBranch(value).finally(() => capture.focusScanInput())}
+              />
               {errors.branchId ? <p className="text-xs text-rose-600">{errors.branchId}</p> : null}
             </div>
           ) : (

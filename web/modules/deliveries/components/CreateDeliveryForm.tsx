@@ -107,10 +107,12 @@ const paymentMethodLabel = (method: PaymentMethod) =>
 const orderLabel = (order: OrderResponse) =>
   [
     `Pedido ${shortId(order.id)}`,
+    order.customerName || "Cliente sin nombre",
+    order.customerDocument,
     order.status,
     formatDate(order.createdAt),
     formatCurrency(order.total),
-  ].join(" - ");
+  ].filter(Boolean).join(" - ");
 
 const saleLabel = (sale: SaleResponse) =>
   [
@@ -696,7 +698,7 @@ export const CreateDeliveryForm = ({
           orderId: order.id,
           saleId: linkedSaleId,
           customerId: order.customerId || prev.customerId,
-          customerName: order.customerName ?? prev.customerName,
+          customerName: order.customerName || "",
           branchId: order.branchId ?? prev.branchId,
         },
         {
