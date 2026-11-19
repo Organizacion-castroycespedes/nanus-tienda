@@ -10,6 +10,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
+	"net/http"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -1410,4 +1413,429 @@ func TestHUWIN144bExecutorSourceIsSeamOnlyAndNotWired(t *testing.T) {
 		}
 		return true
 	})
+}
+
+// ---- 14.4b stage 2: durable journal, native primitives (TEMP only) and routing ----
+
+func txTempJournal(t *testing.T) (*fileInstallTransitionJournalStore, string) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "journal")
+	store, err := newFileInstallTransitionJournalStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store, dir
+}
+
+func txJournalFixture(state installTransitionJournalState) installTransitionJournal {
+	return installTransitionJournal{Schema: installTransitionJournalSchema, ApprovalID: "fixture-1-to-2", State: state,
+		SourceAgentVersion: "9.0.0-fixture.1", TargetAgentVersion: "9.0.0-fixture.2", ProtectedState: txFixtureProtected()}
+}
+
+func TestHUWIN144bFileJournalRoundTripAndAtomicReplace(t *testing.T) {
+	store, dir := txTempJournal(t)
+	if _, exists, err := store.Load(); err != nil || exists {
+		t.Fatalf("empty journal: exists=%v err=%v", exists, err)
+	}
+	first := txJournalFixture(txJournalInProgress)
+	first.Completed = []installTransitionStepKind{txStepRecordPlan}
+	if err := store.Save(first); err != nil {
+		t.Fatal(err)
+	}
+	got, exists, err := store.Load()
+	if err != nil || !exists || !reflect.DeepEqual(got, first) {
+		t.Fatalf("round trip: %+v %v %v", got, exists, err)
+	}
+	// A crash after the temporary file is durable but before the replace keeps the previous record.
+	second := txJournalFixture(txJournalCommitted)
+	store.beforeReplace = func() error { return errors.New("simulated power loss before replace") }
+	if err := store.Save(second); err == nil {
+		t.Fatal("interrupted save must fail")
+	}
+	if got, _, err := store.Load(); err != nil || got.State != txJournalInProgress {
+		t.Fatalf("previous record must survive an interrupted save: %+v %v", got, err)
+	}
+	store.beforeReplace = nil
+	if err := store.Save(second); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := store.Load(); got.State != txJournalCommitted {
+		t.Fatalf("replace not applied: %+v", got)
+	}
+	if strings.Contains(string(txMustRead(t, filepath.Join(dir, installTransitionJournalFile))), "plaintext") {
+		t.Fatal("journal must hold digests only")
+	}
+}
+
+func txMustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestHUWIN144bFileJournalRejectsCorruptOrInvalidRecords(t *testing.T) {
+	store, dir := txTempJournal(t)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, installTransitionJournalFile)
+	for name, content := range map[string]string{
+		"truncated": `{"Schema":1,"ApprovalID":"fixture`,
+		"schema":    `{"Schema":99,"ApprovalID":"fixture-1-to-2","State":"IN_PROGRESS"}`,
+		"no state":  `{"Schema":1,"ApprovalID":"fixture-1-to-2"}`,
+	} {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, exists, err := store.Load(); err == nil || exists {
+			t.Fatalf("%s: corrupt journal accepted", name)
+		}
+	}
+	if err := store.Save(installTransitionJournal{Schema: installTransitionJournalSchema}); err == nil {
+		t.Fatal("invalid journal must not be saved")
+	}
+	if _, err := newFileInstallTransitionJournalStore("relative\\dir"); err == nil {
+		t.Fatal("relative journal directory must be refused")
+	}
+}
+
+func TestHUWIN144bFileJournalLockIsExclusiveAndReleased(t *testing.T) {
+	store, dir := txTempJournal(t)
+	other, err := newFileInstallTransitionJournalStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := store.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Lock(); err == nil {
+		t.Fatal("second lock must fail while the first is held")
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlock(); err != nil {
+		t.Fatal("unlock must be idempotent")
+	}
+	again, err := other.Lock()
+	if err != nil {
+		t.Fatalf("lock must be available after release: %v", err)
+	}
+	_ = again()
+}
+
+func TestHUWIN144bExecutorWithFileJournalCommitsAndRecoversAfterCrash(t *testing.T) {
+	c := txExecFixture(t)
+	store, dir := txTempJournal(t)
+	r, err := executeInstallTransition(c.d, c.p, c.t, c.sys, store, txExecPermissiveGate)
+	if err != nil || r.State != txJournalCommitted {
+		t.Fatalf("commit: %+v %v", r, err)
+	}
+	reopened, _ := newFileInstallTransitionJournalStore(dir)
+	if j, exists, err := reopened.Load(); err != nil || !exists || j.State != txJournalCommitted || len(j.Completed) != len(c.p.Forward) {
+		t.Fatalf("durable journal: %+v %v %v", j, exists, err)
+	}
+	if r, err := executeInstallTransition(c.d, c.p, c.t, c.sys, reopened, txExecPermissiveGate); err == nil || r.Reason != "journal_present_requires_recovery_or_review" {
+		t.Fatalf("existing journal must block a new run: %+v %v", r, err)
+	}
+	// Power loss during activation: the journal on disk drives recovery to the source.
+	crash := txExecFixture(t)
+	crashStore, crashDir := txTempJournal(t)
+	crash.sys.crashAt = "set_service_binary"
+	func() {
+		defer func() { _ = recover() }()
+		_, _ = executeInstallTransition(crash.d, crash.p, crash.t, crash.sys, crashStore, txExecPermissiveGate)
+	}()
+	crash.sys.crashAt = ""
+	fresh, _ := newFileInstallTransitionJournalStore(crashDir)
+	r, err = recoverInstallTransition(crash.p, crash.t, crash.sys, fresh)
+	if err == nil || r.State != txJournalRolledBack {
+		t.Fatalf("recovery: %+v %v", r, err)
+	}
+	txExecAssertSource(t, crash)
+	if j, _, _ := fresh.Load(); j.State != txJournalRolledBack {
+		t.Fatalf("recovered journal state %s", j.State)
+	}
+}
+
+func txMakeDirWithFile(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHUWIN144bJunctionSwitchNeverRecursesIntoPayloads(t *testing.T) {
+	root := t.TempDir()
+	source, target, link := filepath.Join(root, "versions", "1"), filepath.Join(root, "versions", "2"), filepath.Join(root, "current")
+	txMakeDirWithFile(t, source, "source.txt")
+	txMakeDirWithFile(t, target, "target.txt")
+	if err := switchInstallTransitionJunction(link, source, createInstallTransitionJunction); err != nil {
+		t.Fatalf("initial junction: %v", err)
+	}
+	if err := switchInstallTransitionJunction(link, target, createInstallTransitionJunction); err != nil {
+		t.Fatalf("switch: %v", err)
+	}
+	if current, err := os.Readlink(link); err != nil || !installTransitionSamePath(current, target) {
+		t.Fatalf("link target = %q %v", current, err)
+	}
+	if _, err := os.Stat(filepath.Join(source, "source.txt")); err != nil {
+		t.Fatal("switching must not delete the previous payload")
+	}
+	if err := switchInstallTransitionJunction(link, target, createInstallTransitionJunction); err != nil {
+		t.Fatal("re-applying the same target must be idempotent")
+	}
+	// A real directory at the link path is refused and left untouched.
+	plain := filepath.Join(root, "plain")
+	txMakeDirWithFile(t, plain, "keep.txt")
+	if err := switchInstallTransitionJunction(plain, target, createInstallTransitionJunction); err == nil {
+		t.Fatal("a real directory must not be replaced")
+	}
+	if _, err := os.Stat(filepath.Join(plain, "keep.txt")); err != nil {
+		t.Fatal("refused switch must not touch the directory")
+	}
+	// A missing target is refused before the existing link is removed.
+	if err := switchInstallTransitionJunction(link, filepath.Join(root, "missing"), createInstallTransitionJunction); err == nil {
+		t.Fatal("missing target must be refused")
+	}
+	if current, _ := os.Readlink(link); !installTransitionSamePath(current, target) {
+		t.Fatal("refused switch must keep the existing link")
+	}
+}
+
+func txNativeFixture(t *testing.T) (*nativeInstallTransitionSystem, string) {
+	t.Helper()
+	root := t.TempDir()
+	m := txFixtureManifest()
+	m.BundleRoot, m.PosRoot = "assets/bundle/fixture", "assets/pos"
+	l := runtimeLayout{VersionsRoot: filepath.Join(root, "Agent", "versions"), POSVersionsRoot: filepath.Join(root, "POS", "versions")}
+	n := &nativeInstallTransitionSystem{
+		manifest:    m,
+		layout:      l,
+		sourceRoots: []string{filepath.Join(l.VersionsRoot, "1"), filepath.Join(l.POSVersionsRoot, "1")},
+		copyTree: func(source, destination string) error {
+			if source == m.PosRoot {
+				txMakeDirWithFile(t, filepath.Join(destination, "resources"), "app.asar")
+				txMakeDirWithFile(t, filepath.Join(destination, "resources"), "manus-shell.config.json")
+				txMakeDirWithFile(t, destination, "Manus POS.exe")
+				return nil
+			}
+			txMakeDirWithFile(t, destination, m.VersionFileName)
+			return nil
+		},
+		copySelf: func(destination string) error { return os.WriteFile(destination, []byte("exe"), 0o644) },
+	}
+	return n, root
+}
+
+func TestHUWIN144bNativeStagingIsExclusiveAndCleansOnlyItsOwnDirectory(t *testing.T) {
+	n, _ := txNativeFixture(t)
+	agentTarget, posTarget := filepath.Join(n.layout.VersionsRoot, "2"), filepath.Join(n.layout.POSVersionsRoot, "2")
+	if err := n.StagePayload("agent", agentTarget); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.StagePayload("pos", posTarget); err != nil {
+		t.Fatal(err)
+	}
+	if n.ValidateStaged("agent", agentTarget) != nil || n.ValidateStaged("pos", posTarget) != nil || n.PayloadIntact(posTarget) != nil {
+		t.Fatal("staged payloads must validate")
+	}
+	if err := n.StagePayload("agent", agentTarget); err == nil {
+		t.Fatal("an existing target must be refused")
+	}
+	if _, err := os.Stat(filepath.Join(agentTarget, "ManusTerminalSetup.exe")); err != nil {
+		t.Fatal("refused staging must not touch the existing directory")
+	}
+	failing := filepath.Join(n.layout.VersionsRoot, "3")
+	n.copySelf = func(string) error { return errors.New("locked payload") }
+	if err := n.StagePayload("agent", failing); err == nil {
+		t.Fatal("copy failure must fail staging")
+	}
+	if absent, _ := n.PathAbsent(failing); !absent {
+		t.Fatal("failed staging must remove only the directory it created")
+	}
+	source := n.sourceRoots[0]
+	txMakeDirWithFile(t, source, "ManusTerminalSetup.exe")
+	if err := n.StagePayload("agent", source); err == nil {
+		t.Fatal("staging into a source payload must be refused")
+	}
+	if _, err := os.Stat(filepath.Join(source, "ManusTerminalSetup.exe")); err != nil {
+		t.Fatal("source payload must be untouched")
+	}
+	if err := n.StagePayload("agent", filepath.Join(t.TempDir(), "elsewhere")); err == nil {
+		t.Fatal("staging outside the version root must be refused")
+	}
+	if err := n.StagePayload("other", filepath.Join(n.layout.VersionsRoot, "4")); err == nil {
+		t.Fatal("unknown kind must be refused")
+	}
+}
+
+func TestHUWIN144bNativeProtectedStateUsesDigestsOnly(t *testing.T) {
+	n, root := txNativeFixture(t)
+	n.agentStateDir = filepath.Join(root, "LocalService", "state")
+	n.configPath = filepath.Join(root, "ProgramData", "config", "agent.config.local.json")
+	n.aclRoots = []string{filepath.Join(root, "ProgramData"), filepath.Join(root, "LocalService")}
+	secret := "plaintext-must-not-leak"
+	txMakeDirWithFile(t, n.agentStateDir, "agent-installation-id")
+	txMakeDirWithFile(t, n.agentStateDir, "device-registry.state.json")
+	if err := os.WriteFile(filepath.Join(n.agentStateDir, "secret-enrollment.dpapi.json"), []byte(secret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	txMakeDirWithFile(t, filepath.Dir(n.configPath), "agent.config.local.json")
+	first, err := n.ProtectedState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateInstallTransitionProtectedState(first); err != nil {
+		t.Fatalf("protected state must be complete: %v", err)
+	}
+	for _, item := range first {
+		if strings.Contains(item.SHA256, secret) || len(item.SHA256) != 64 {
+			t.Fatalf("protected item must be a digest only: %+v", item)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(n.agentStateDir, "device-registry.state.json"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := n.ProtectedState()
+	for index := range first {
+		changed := first[index].SHA256 != second[index].SHA256
+		if changed != (first[index].Kind == installTransitionProtectedDeviceRegistry) {
+			t.Fatalf("only the device registry digest may change: %s changed=%v", first[index].Kind, changed)
+		}
+	}
+	if err := os.Remove(filepath.Join(n.agentStateDir, "secret-enrollment.dpapi.json")); err != nil {
+		t.Fatal(err)
+	}
+	third, _ := n.ProtectedState()
+	if validateInstallTransitionProtectedState(third) == nil {
+		t.Fatal("a missing DPAPI secret set must make protected state unproven")
+	}
+	if id, err := n.InstallationID(); err != nil || id != "agent-installation-id" {
+		t.Fatalf("installation id = %q %v", id, err)
+	}
+}
+
+func TestHUWIN144bNativeServiceBinaryParsingIsStrict(t *testing.T) {
+	good := buildServiceBinaryPath(`C:\Program Files\Manus\PeripheralAgent\versions\0.1.1-qa.19\ManusTerminalSetup.exe`, "service")
+	if exe, err := parseInstallTransitionServiceExecutable(good); err != nil || !strings.HasSuffix(exe, `0.1.1-qa.19\ManusTerminalSetup.exe`) {
+		t.Fatalf("parse %q: %q %v", good, exe, err)
+	}
+	for _, bad := range []string{`C:\x\ManusTerminalSetup.exe service`, `"C:\x\ManusTerminalSetup.exe service`, `"relative\ManusTerminalSetup.exe" service`, `"C:\x\other.exe" service`} {
+		if _, err := parseInstallTransitionServiceExecutable(bad); err == nil {
+			t.Fatalf("parse %q must fail", bad)
+		}
+	}
+}
+
+func TestHUWIN144bNativeHealthParsesVersionAndIdentity(t *testing.T) {
+	respond := func(status int, body string) func(string) (*http.Response, error) {
+		return func(string) (*http.Response, error) {
+			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body))}, nil
+		}
+	}
+	ok := `{"status":"ok","version":"0.1.1-qa.19","platform":"win32","architecture":"x64","agentInstallationId":"id-1"}`
+	if v, id, err := readInstallTransitionHealth(respond(200, ok), "http://127.0.0.1:4050/health"); err != nil || v != "0.1.1-qa.19" || id != "id-1" {
+		t.Fatalf("health: %q %q %v", v, id, err)
+	}
+	for _, bad := range []struct {
+		status int
+		body   string
+	}{{503, ok}, {200, `not json`}, {200, `{"status":"down"}`}, {200, `{"status":"ok","platform":"linux","architecture":"x64"}`}} {
+		if _, _, err := readInstallTransitionHealth(respond(bad.status, bad.body), "u"); err == nil {
+			t.Fatalf("health %d %s must fail", bad.status, bad.body)
+		}
+	}
+	n := &nativeInstallTransitionSystem{manifest: installerManifest{HealthURL: "u"}, httpGet: respond(503, ""), healthTimeout: 0, healthPoll: 0}
+	if _, _, err := n.Health(); err == nil || !strings.Contains(err.Error(), "health_timeout") {
+		t.Fatalf("unhealthy agent must time out: %v", err)
+	}
+}
+
+func TestHUWIN144bRouteKeepsP0BRejectionWhileUpdateIsDisabled(t *testing.T) {
+	m, l := txFixtureManifest(), txFixtureLayout()
+	original := &installAdmissionError{State: installAdmissionUnknown, Reason: "transition_unproven"}
+	decision := installAdmissionDecision{State: installAdmissionUnknown, Reason: "transition_unproven"}
+	if err := routeInstallTransition(m, l, decision, original); err != error(original) {
+		t.Fatalf("disabled UPDATE must return the original rejection unchanged: %v", err)
+	}
+	other := &installAdmissionError{State: installAdmissionPartial, Reason: "incomplete_footprints"}
+	if err := routeInstallTransition(m, l, installAdmissionDecision{State: installAdmissionPartial, Reason: "incomplete_footprints"}, other); err != error(other) {
+		t.Fatal("other rejections must pass through unchanged")
+	}
+	if err := routeInstallTransition(m, l, installAdmissionDecision{State: installAdmissionRepair}, nil); err != nil {
+		t.Fatal("an admitted install must not be blocked")
+	}
+	if installTransitionExecutionEnabled || len(approvedInstallTransitions) != 0 {
+		t.Fatal("UPDATE must stay disabled with an empty allowlist")
+	}
+}
+
+func TestHUWIN144bMainCallsOnlyTheRouteAndAdapterAvoidsDestructiveHelpers(t *testing.T) {
+	main, err := parser.ParseFile(token.NewFileSet(), "main_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routeCalls := 0
+	ast.Inspect(main, func(node ast.Node) bool {
+		if call, ok := node.(*ast.CallExpr); ok {
+			if ident, ok := call.Fun.(*ast.Ident); ok {
+				switch ident.Name {
+				case "routeInstallTransition":
+					routeCalls++
+				case "executeInstallTransition", "recoverInstallTransition", "newNativeInstallTransitionSystem", "newFileInstallTransitionJournalStore":
+					t.Errorf("main_windows.go must reach UPDATE only through the route: %s", ident.Name)
+				}
+			}
+		}
+		return true
+	})
+	if routeCalls != 1 {
+		t.Fatalf("routeInstallTransition calls in main_windows.go = %d, want 1", routeCalls)
+	}
+	adapter, err := parser.ParseFile(token.NewFileSet(), "install_transition_native_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := map[string]bool{
+		"configureService": true, "deleteService": true, "copyBundleToVersion": true, "installPOSPayload": true,
+		"ensureCurrentJunction": true, "removeCurrentJunction": true, "restorePreviousVersion": true, "uninstall": true,
+		"removeRequestedAgentData": true, "rollbackPOSPayload": true, "emitRollback": true, "applyManagedAcl": true,
+		"setManagedPathACL": true, "withTemporaryAdministratorOwnership": true, "ensureLocalConfig": true,
+	}
+	removeAll := 0
+	ast.Inspect(adapter, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		switch fun := call.Fun.(type) {
+		case *ast.Ident:
+			if forbidden[fun.Name] {
+				t.Errorf("native adapter calls destructive helper %s", fun.Name)
+			}
+		case *ast.SelectorExpr:
+			if pkg, ok := fun.X.(*ast.Ident); ok && pkg.Name == "os" && fun.Sel.Name == "RemoveAll" {
+				removeAll++
+			}
+			if fun.Sel.Name == "SetNamedSecurityInfo" || fun.Sel.Name == "SetSecurityInfo" || fun.Sel.Name == "Delete" {
+				t.Errorf("native adapter must not change ACLs or delete services: %s", fun.Sel.Name)
+			}
+		}
+		return true
+	})
+	if removeAll != 1 {
+		t.Fatalf("os.RemoveAll calls = %d; only the exclusive staging cleanup is allowed", removeAll)
+	}
+	source := string(txMustRead(t, "install_transition_native_windows.go"))
+	if strings.Contains(source, "--remove-data") {
+		t.Fatal("native adapter must never use --remove-data")
+	}
 }
