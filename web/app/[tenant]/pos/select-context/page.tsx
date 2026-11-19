@@ -1,11 +1,13 @@
 import { PosContextSelector } from "../../../../domains/pos/components/PosContextSelector";
 
-const PosSelectContextPage = ({
+const PosSelectContextPage = async ({
   params,
 }: {
-  params: { tenant: string };
+  params: Promise<{ tenant: string }>;
 }) => {
-  return <PosContextSelector tenantSlug={params.tenant} />;
+  const { tenant } = await params;
+
+  return <PosContextSelector tenantSlug={tenant} />;
 };
 
 export default PosSelectContextPage;

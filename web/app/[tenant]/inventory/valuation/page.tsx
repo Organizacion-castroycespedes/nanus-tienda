@@ -14,8 +14,14 @@ const InventoryValuationShell = dynamic(
   }
 );
 
-const InventoryValuationPage = ({ params }: { params: { tenant: string } }) => (
-  <InventoryValuationShell tenantSegment={params.tenant} />
-);
+const InventoryValuationPage = async ({
+  params,
+}: {
+  params: Promise<{ tenant: string }>;
+}) => {
+  const { tenant } = await params;
+
+  return <InventoryValuationShell tenantSegment={tenant} />;
+};
 
 export default InventoryValuationPage;

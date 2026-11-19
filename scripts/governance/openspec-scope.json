@@ -928,6 +928,31 @@
         "web/app/[tenant]/orders/orders-responsive-layout.spec.ts"
       ],
       "exemptions": []
+    },
+    {
+      "change_id": "hu-contabo-dep-001-manus-pos-frontend-deploy",
+      "paths": [
+        ".github/workflows/deploy-manus-pos-prod-web.yml",
+        "docs/deployment/manus-pos-production-web.md",
+        "openspec/config.yaml",
+        "openspec/changes/hu-contabo-dep-001-manus-pos-frontend-deploy/**",
+        "scripts/deploy/manus-pos-prod-web-deploy.sh",
+        "scripts/deploy/manus-pos-prod-web-fs-helper.sh",
+        "scripts/deploy/test-manus-pos-prod-web-deploy.sh",
+        "scripts/governance/openspec-scope.json",
+        "web/app/[tenant]/deliveries/page.tsx",
+        "web/app/[tenant]/inventory/valuation/page.tsx",
+        "web/app/[tenant]/pos/page.tsx",
+        "web/app/[tenant]/pos/select-context/page.tsx",
+        "web/app/[tenant]/terminales/page.tsx",
+        "web/app/[tenant]/unauthorized/page.tsx",
+        "web/lib/login-branding.spec.mjs",
+        "web/public/login-bg.png.sha256",
+        "web/next-env.d.ts",
+        "web/package-lock.json",
+        "web/package.json"
+      ],
+      "exemptions": []
     }
   ],
   "current_ownership": [
@@ -1290,6 +1315,30 @@
         "web/app/[tenant]/orders/orders-responsive-layout.spec.ts"
       ],
       "reason": "Owner-authorized 2026-11-18 transfer for order billing workflow from entregar-servicios-en-pedidos, modernizar-captura-barcode-orders-purchases, mejorar-filtros-alcance-cobro-orders-purchases and incorporar-trazabilidad-series-productos; historical associations remain unchanged. Delivery and operational sale detail are included for customer prefill and contextual return. Existing previously unowned order and purchase peripheral warning messages are included for governance coverage."
+    },
+    {
+      "change_id": "hu-contabo-dep-001-manus-pos-frontend-deploy",
+      "paths": [
+        ".github/workflows/deploy-manus-pos-prod-web.yml",
+        "docs/deployment/manus-pos-production-web.md",
+        "openspec/config.yaml",
+        "openspec/changes/hu-contabo-dep-001-manus-pos-frontend-deploy/**",
+        "scripts/deploy/manus-pos-prod-web-deploy.sh",
+        "scripts/deploy/manus-pos-prod-web-fs-helper.sh",
+        "scripts/deploy/test-manus-pos-prod-web-deploy.sh",
+        "web/app/[tenant]/deliveries/page.tsx",
+        "web/app/[tenant]/inventory/valuation/page.tsx",
+        "web/app/[tenant]/pos/page.tsx",
+        "web/app/[tenant]/pos/select-context/page.tsx",
+        "web/app/[tenant]/terminales/page.tsx",
+        "web/app/[tenant]/unauthorized/page.tsx",
+        "web/lib/login-branding.spec.mjs",
+        "web/public/login-bg.png.sha256",
+        "web/next-env.d.ts",
+        "web/package-lock.json",
+        "web/package.json"
+      ],
+      "reason": "HU-CONTABO-DEP-001 owns the independent, manual, frontend-only MANUS POS Contabo production pipeline, its guarded rollback tooling and documentation, plus the minimal strict TypeScript bridge correction; Emaus and all backend/database/runtime services remain unchanged."
     }
   ]
 }

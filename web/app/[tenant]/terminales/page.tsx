@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 
-const LegacyTerminalesRedirectPage = ({
+const LegacyTerminalesRedirectPage = async ({
   params,
 }: {
-  params: { tenant: string };
+  params: Promise<{ tenant: string }>;
 }) => {
-  redirect(`/${params.tenant}/config/terminals`);
+  const { tenant } = await params;
+
+  redirect(`/${tenant}/config/terminals`);
 };
 
 export default LegacyTerminalesRedirectPage;
