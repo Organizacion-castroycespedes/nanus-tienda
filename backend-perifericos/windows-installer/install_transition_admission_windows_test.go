@@ -801,3 +801,613 @@ func TestHUWIN144aPayloadDigestCanonicalAndStrict(t *testing.T) {
 		}
 	}
 }
+
+// ---- 14.4b executor (stage 1): injected seams and TEMP-free in-memory fakes only ----
+
+type txExecStore struct {
+	journal   *installTransitionJournal
+	locked    bool
+	saves     int
+	failSave  map[int]bool
+	loadError error
+}
+
+func (s *txExecStore) Lock() (func() error, error) {
+	if s.locked {
+		return nil, errors.New("lock held")
+	}
+	s.locked = true
+	return func() error { s.locked = false; return nil }, nil
+}
+
+func (s *txExecStore) Load() (installTransitionJournal, bool, error) {
+	if s.loadError != nil {
+		return installTransitionJournal{}, false, s.loadError
+	}
+	if s.journal == nil {
+		return installTransitionJournal{}, false, nil
+	}
+	return txCopyJournal(*s.journal), true, nil
+}
+
+func (s *txExecStore) Save(j installTransitionJournal) error {
+	s.saves++
+	if s.failSave[s.saves] {
+		return errors.New("disk full")
+	}
+	copy := txCopyJournal(j)
+	s.journal = &copy
+	return nil
+}
+
+func txCopyJournal(j installTransitionJournal) installTransitionJournal {
+	j.Completed = append([]installTransitionStepKind(nil), j.Completed...)
+	j.RollbackCompleted = append([]installTransitionStepKind(nil), j.RollbackCompleted...)
+	j.ProtectedState = append([]installTransitionProtectedItem(nil), j.ProtectedState...)
+	return j
+}
+
+// txExecSystem models one Windows host: service, junctions, payload roots and
+// protected state. Faults: failOnce/failAlways by operation name, crashAt
+// panics to simulate power loss, and hooks that drift state after a target start.
+type txExecSystem struct {
+	binary           string
+	junctions        map[string]string
+	running          bool
+	portBusy         bool
+	posRunning       bool
+	posScopeErr      bool
+	present          map[string]bool
+	versions         map[string]string
+	protected        []installTransitionProtectedItem
+	installID        string
+	failOnce         map[string]int
+	failAlways       map[string]bool
+	crashAt          string
+	failAfter        map[string]int
+	successes        map[string]int
+	afterTargetStart func(*txExecSystem)
+	afterSourceStart func(*txExecSystem)
+	targetRoot       string
+	sourceRoots      []string
+	calls            []string
+	mutatedSource    bool
+}
+
+func (f *txExecSystem) op(name string) error {
+	f.calls = append(f.calls, name)
+	if f.crashAt == name {
+		panic("simulated power loss at " + name)
+	}
+	if f.failAlways[name] {
+		return errors.New("injected " + name)
+	}
+	if f.failOnce[name] > 0 {
+		f.failOnce[name]--
+		return errors.New("injected " + name)
+	}
+	if limit, ok := f.failAfter[name]; ok && f.successes[name] >= limit {
+		return errors.New("injected " + name + " after success")
+	}
+	f.successes[name]++
+	return nil
+}
+
+func (f *txExecSystem) touchesSource(path string) {
+	for _, root := range f.sourceRoots {
+		if installTransitionSamePath(path, root) || pathWithinRoot(path, root) {
+			f.mutatedSource = true
+		}
+	}
+}
+
+func (f *txExecSystem) POSProcessRunning() (bool, error) {
+	if err := f.op("pos_running"); err != nil || f.posScopeErr {
+		return false, errors.New("scope unknown")
+	}
+	return f.posRunning, nil
+}
+func (f *txExecSystem) ProtectedState() ([]installTransitionProtectedItem, error) {
+	if err := f.op("protected_state"); err != nil {
+		return nil, err
+	}
+	return append([]installTransitionProtectedItem(nil), f.protected...), nil
+}
+func (f *txExecSystem) InstallationID() (string, error) { return f.installID, f.op("installation_id") }
+func (f *txExecSystem) ServiceBinary() (string, error)  { return f.binary, f.op("service_binary") }
+func (f *txExecSystem) JunctionTarget(link string) (string, error) {
+	return f.junctions[strings.ToLower(link)], f.op("junction_target")
+}
+func (f *txExecSystem) PathAbsent(path string) (bool, error) {
+	return !f.present[strings.ToLower(path)], f.op("path_absent")
+}
+func (f *txExecSystem) StagePayload(kind, target string) error {
+	if err := f.op("stage_" + kind); err != nil {
+		return err
+	}
+	f.touchesSource(target)
+	f.present[strings.ToLower(target)] = true
+	return nil
+}
+func (f *txExecSystem) ValidateStaged(kind, target string) error {
+	if err := f.op("validate_" + kind); err != nil {
+		return err
+	}
+	if !f.present[strings.ToLower(target)] {
+		return errors.New("staged payload missing")
+	}
+	return nil
+}
+func (f *txExecSystem) StopService() error {
+	if err := f.op("stop_service"); err != nil {
+		return err
+	}
+	f.running = false
+	return nil
+}
+func (f *txExecSystem) ServiceStopped() (bool, error) { return !f.running, f.op("service_stopped") }
+func (f *txExecSystem) PortReleased() (bool, error) {
+	return !f.running && !f.portBusy, f.op("port_released")
+}
+func (f *txExecSystem) SetJunction(link, target string) error {
+	if err := f.op("set_junction"); err != nil {
+		return err
+	}
+	f.junctions[strings.ToLower(link)] = target
+	return nil
+}
+func (f *txExecSystem) SetServiceBinary(path string) error {
+	if err := f.op("set_service_binary"); err != nil {
+		return err
+	}
+	f.binary = path
+	return nil
+}
+func (f *txExecSystem) StartService() error {
+	if err := f.op("start_service"); err != nil {
+		return err
+	}
+	f.running = true
+	if installTransitionSamePath(filepath.Dir(f.binary), f.targetRoot) {
+		if f.afterTargetStart != nil {
+			f.afterTargetStart(f)
+		}
+	} else if f.afterSourceStart != nil {
+		f.afterSourceStart(f)
+	}
+	return nil
+}
+func (f *txExecSystem) Health() (string, string, error) {
+	if err := f.op("health"); err != nil || !f.running {
+		return "", "", errors.New("unhealthy")
+	}
+	return f.versions[strings.ToLower(filepath.Dir(f.binary))], f.installID, nil
+}
+func (f *txExecSystem) WriteUninstallMetadata(version string) error {
+	return f.op("write_uninstall_metadata")
+}
+func (f *txExecSystem) PayloadIntact(root string) error {
+	if err := f.op("payload_intact"); err != nil || !f.present[strings.ToLower(root)] {
+		return errors.New("payload missing")
+	}
+	return nil
+}
+
+func txExecPermissiveGate(d installTransitionDecision) error {
+	if d.State != installAdmissionUpdate || !d.Eligible {
+		return errors.New("not eligible")
+	}
+	return nil
+}
+
+type txExecCase struct {
+	d     installTransitionDecision
+	p     installTransitionPlan
+	t     installTransitionTarget
+	sys   *txExecSystem
+	store *txExecStore
+}
+
+func txExecFixture(t *testing.T) txExecCase {
+	t.Helper()
+	m, l, approvals, ev := txFixture()
+	d, err := classifyInstallTransition(approvals, m, l, ev)
+	if err != nil || !d.Eligible {
+		t.Fatalf("fixture decision: %+v %v", d, err)
+	}
+	p, err := buildInstallTransitionPlan(d, approvals, l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := approvals[0]
+	sys := &txExecSystem{
+		binary:      txServiceBinary(p.SourceAgentRoot),
+		junctions:   map[string]string{strings.ToLower(l.CurrentRoot): p.SourceAgentRoot, strings.ToLower(l.POSCurrentRoot): p.SourcePOSRoot},
+		running:     true,
+		present:     map[string]bool{strings.ToLower(p.SourceAgentRoot): true, strings.ToLower(p.SourcePOSRoot): true},
+		versions:    map[string]string{strings.ToLower(p.SourceAgentRoot): a.SourceAgent.Version, strings.ToLower(p.TargetAgentRoot): a.TargetAgent.Version},
+		protected:   txFixtureProtected(),
+		installID:   "fixture-installation-id",
+		failOnce:    map[string]int{},
+		failAlways:  map[string]bool{},
+		failAfter:   map[string]int{},
+		successes:   map[string]int{},
+		targetRoot:  p.TargetAgentRoot,
+		sourceRoots: []string{p.SourceAgentRoot, p.SourcePOSRoot},
+	}
+	target := installTransitionTarget{AgentCurrent: l.CurrentRoot, POSCurrent: l.POSCurrentRoot,
+		SourceAgentVersion: a.SourceAgent.Version, TargetAgentVersion: a.TargetAgent.Version}
+	return txExecCase{d: d, p: p, t: target, sys: sys, store: &txExecStore{failSave: map[int]bool{}}}
+}
+
+func (c txExecCase) run() (installTransitionResult, error) {
+	return executeInstallTransition(c.d, c.p, c.t, c.sys, c.store, txExecPermissiveGate)
+}
+
+// txExecAssertSource requires the exact recorded source activation, a healthy
+// source service, unchanged identity/protected state and intact source payloads.
+func txExecAssertSource(t *testing.T, c txExecCase) {
+	t.Helper()
+	f := c.sys
+	if !installTransitionSamePath(f.binary, txServiceBinary(c.p.SourceAgentRoot)) ||
+		!installTransitionSamePath(f.junctions[strings.ToLower(c.t.AgentCurrent)], c.p.SourceAgentRoot) ||
+		!installTransitionSamePath(f.junctions[strings.ToLower(c.t.POSCurrent)], c.p.SourcePOSRoot) {
+		t.Fatalf("source activation not restored: binary=%s junctions=%v", f.binary, f.junctions)
+	}
+	if !f.running || f.installID != "fixture-installation-id" {
+		t.Fatalf("source service not healthy: running=%v id=%s", f.running, f.installID)
+	}
+	if !f.present[strings.ToLower(c.p.SourceAgentRoot)] || !f.present[strings.ToLower(c.p.SourcePOSRoot)] || f.mutatedSource {
+		t.Fatal("source payload lost or mutated")
+	}
+}
+
+func TestHUWIN144bProductionGateRefusesWithoutAnyEffect(t *testing.T) {
+	c := txExecFixture(t)
+	r, err := executeInstallTransition(c.d, c.p, c.t, c.sys, c.store, requireInstallTransitionExecution)
+	if err == nil || r.State != "REFUSED" || !strings.Contains(r.Reason, "update_execution_disabled") {
+		t.Fatalf("production gate: %+v %v", r, err)
+	}
+	if len(c.sys.calls) != 0 || c.store.journal != nil || c.store.locked {
+		t.Fatalf("refusal had effects: calls=%v journal=%v", c.sys.calls, c.store.journal)
+	}
+	if r, err := executeInstallTransition(c.d, c.p, c.t, c.sys, c.store, nil); err == nil || r.Reason != "execution_gate_missing" {
+		t.Fatalf("nil gate: %+v %v", r, err)
+	}
+}
+
+func TestHUWIN144bCommitsAdmittedUpdatePreservingIdentityAndSource(t *testing.T) {
+	c := txExecFixture(t)
+	r, err := c.run()
+	if err != nil || r.State != txJournalCommitted {
+		t.Fatalf("commit: %+v %v", r, err)
+	}
+	f := c.sys
+	if !installTransitionSamePath(f.binary, txServiceBinary(c.p.TargetAgentRoot)) ||
+		!installTransitionSamePath(f.junctions[strings.ToLower(c.t.AgentCurrent)], c.p.TargetAgentRoot) ||
+		!installTransitionSamePath(f.junctions[strings.ToLower(c.t.POSCurrent)], c.p.TargetPOSRoot) || !f.running {
+		t.Fatalf("target not active: %s %v running=%v", f.binary, f.junctions, f.running)
+	}
+	if f.mutatedSource || !f.present[strings.ToLower(c.p.SourceAgentRoot)] || !f.present[strings.ToLower(c.p.SourcePOSRoot)] {
+		t.Fatal("source payload must be retained")
+	}
+	j := c.store.journal
+	if j == nil || j.State != txJournalCommitted || len(j.Completed) != len(c.p.Forward) || j.InstallationID != "fixture-installation-id" ||
+		!txProtectedEqual(j.ProtectedState, txFixtureProtected()) {
+		t.Fatalf("journal: %+v", j)
+	}
+	for index, step := range c.p.Forward {
+		if j.Completed[index] != step.Kind {
+			t.Fatalf("checkpoint %d = %s, want %s", index, j.Completed[index], step.Kind)
+		}
+	}
+	if c.store.locked {
+		t.Fatal("lock must be released")
+	}
+}
+
+func TestHUWIN144bDurableRecordIsWrittenAndReReadBeforeServiceStop(t *testing.T) {
+	c := txExecFixture(t)
+	if r, err := c.run(); err != nil || r.State != txJournalCommitted {
+		t.Fatalf("%+v %v", r, err)
+	}
+	stop, verify := -1, -1
+	for index, step := range c.store.journal.Completed {
+		switch step {
+		case txStepVerifyRecord:
+			verify = index
+		case txStepStopService:
+			stop = index
+		}
+	}
+	if verify < 0 || stop < 0 || verify > stop {
+		t.Fatalf("record verification must precede stop: verify=%d stop=%d", verify, stop)
+	}
+	// A record that does not survive the re-read aborts before any live change.
+	c2 := txExecFixture(t)
+	tampered := &txTamperStore{txExecStore: c2.store, tamperAfter: 2}
+	r, err := executeInstallTransition(c2.d, c2.p, c2.t, c2.sys, tampered, txExecPermissiveGate)
+	if err == nil || r.State != txJournalAborted || r.Step != txStepVerifyRecord || !c2.sys.running {
+		t.Fatalf("tampered record: %+v %v running=%v", r, err, c2.sys.running)
+	}
+}
+
+type txTamperStore struct {
+	*txExecStore
+	tamperAfter int
+}
+
+func (s *txTamperStore) Load() (installTransitionJournal, bool, error) {
+	j, ok, err := s.txExecStore.Load()
+	if s.saves >= s.tamperAfter {
+		j.InstallationID = "tampered"
+	}
+	return j, ok, err
+}
+
+func TestHUWIN144bFailuresBeforeStopAbortWithoutLiveChange(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(*txExecCase)
+		step  installTransitionStepKind
+	}{
+		{"pos running", func(c *txExecCase) { c.sys.posRunning = true }, txStepPreflightPOSClosed},
+		{"pos scope unknown", func(c *txExecCase) { c.sys.posScopeErr = true }, txStepPreflightPOSClosed},
+		{"agent target not absent", func(c *txExecCase) { c.sys.present[strings.ToLower(c.p.TargetAgentRoot)] = true }, txStepStageAgent},
+		{"locked agent payload", func(c *txExecCase) { c.sys.failAlways["stage_agent"] = true }, txStepStageAgent},
+		{"locked pos payload", func(c *txExecCase) { c.sys.failAlways["stage_pos"] = true }, txStepStagePOS},
+		{"staging validation", func(c *txExecCase) { c.sys.failAlways["validate_pos"] = true }, txStepValidateStaging},
+		{"protected state incomplete", func(c *txExecCase) { c.sys.protected = c.sys.protected[:2] }, txStepRecordProtectedDigests},
+		{"source activation mismatch", func(c *txExecCase) { c.sys.binary = `C:\Elsewhere\ManusTerminalSetup.exe` }, txStepRecordPlan},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := txExecFixture(t)
+			tc.setup(&c)
+			binary := c.sys.binary
+			r, err := c.run()
+			if err == nil || r.State != txJournalAborted || r.Step != tc.step {
+				t.Fatalf("result %+v %v", r, err)
+			}
+			for _, call := range c.sys.calls {
+				if call == "stop_service" || call == "set_junction" || call == "set_service_binary" {
+					t.Fatalf("live change attempted before stop gate: %v", c.sys.calls)
+				}
+			}
+			if !c.sys.running || c.sys.binary != binary || c.sys.mutatedSource {
+				t.Fatal("source service or payload changed")
+			}
+			if c.store.journal != nil && c.store.journal.State != txJournalAborted {
+				t.Fatalf("journal state %s", c.store.journal.State)
+			}
+		})
+	}
+}
+
+func TestHUWIN144bActivationFaultsRollBackToVerifiedSource(t *testing.T) {
+	restoreOnSource := func(f *txExecSystem) {
+		f.installID = "fixture-installation-id"
+		f.protected = txFixtureProtected()
+	}
+	cases := []struct {
+		name  string
+		setup func(*txExecCase)
+	}{
+		{"stop timeout", func(c *txExecCase) { c.sys.failOnce["stop_service"] = 1 }},
+		{"port not released", func(c *txExecCase) { c.sys.failOnce["port_released"] = 1 }},
+		{"pos junction switch", func(c *txExecCase) { c.sys.failOnce["set_junction"] = 1 }},
+		{"service binary switch", func(c *txExecCase) { c.sys.failOnce["set_service_binary"] = 1 }},
+		{"target start failure", func(c *txExecCase) { c.sys.failOnce["start_service"] = 1 }},
+		{"health version mismatch", func(c *txExecCase) { c.sys.versions[strings.ToLower(c.p.TargetAgentRoot)] = "wrong" }},
+		{"installation id changed", func(c *txExecCase) {
+			c.sys.afterTargetStart = func(f *txExecSystem) { f.installID = "new-id" }
+			c.sys.afterSourceStart = restoreOnSource
+		}},
+		{"protected digest changed", func(c *txExecCase) {
+			c.sys.afterTargetStart = func(f *txExecSystem) { f.protected[1].SHA256 = txDigest("drift") }
+			c.sys.afterSourceStart = restoreOnSource
+		}},
+		{"acl drift", func(c *txExecCase) {
+			c.sys.afterTargetStart = func(f *txExecSystem) { f.protected[4].SHA256 = txDigest("acl-drift") }
+			c.sys.afterSourceStart = restoreOnSource
+		}},
+		{"uninstall metadata", func(c *txExecCase) { c.sys.failOnce["write_uninstall_metadata"] = 1 }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := txExecFixture(t)
+			tc.setup(&c)
+			r, err := c.run()
+			if err == nil || r.State != txJournalRolledBack {
+				t.Fatalf("result %+v %v calls=%v", r, err, c.sys.calls)
+			}
+			txExecAssertSource(t, c)
+			if j := c.store.journal; j == nil || j.State != txJournalRolledBack || len(j.RollbackCompleted) != len(c.p.Rollback) {
+				t.Fatalf("journal %+v", j)
+			}
+		})
+	}
+}
+
+func TestHUWIN144bRollbackFailureRecordsPartialNeverSuccess(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(*txExecCase)
+	}{
+		{"binary restore fails", func(c *txExecCase) {
+			c.sys.failOnce["start_service"] = 1
+			c.sys.failAfter["set_service_binary"] = 1
+		}},
+		{"persistent protected drift", func(c *txExecCase) {
+			c.sys.afterTargetStart = func(f *txExecSystem) { f.protected[2].SHA256 = txDigest("persistent-drift") }
+		}},
+		{"source restart fails", func(c *txExecCase) {
+			c.sys.failOnce["set_junction"] = 1
+			c.sys.failAlways["start_service"] = true
+		}},
+		{"retained payload damaged", func(c *txExecCase) {
+			c.sys.failOnce["write_uninstall_metadata"] = 1
+			c.sys.failAlways["payload_intact"] = true
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := txExecFixture(t)
+			tc.setup(&c)
+			r, err := c.run()
+			if err == nil || r.State != txJournalPartial {
+				t.Fatalf("result %+v %v", r, err)
+			}
+			if c.store.journal == nil || c.store.journal.State != txJournalPartial || c.store.journal.Failure == "" {
+				t.Fatalf("journal %+v", c.store.journal)
+			}
+			if c.sys.mutatedSource || !c.sys.present[strings.ToLower(c.p.SourceAgentRoot)] {
+				t.Fatal("source payload must never be lost")
+			}
+		})
+	}
+}
+
+func TestHUWIN144bInterruptionAtEveryStepRecoversToSourceOrAbort(t *testing.T) {
+	probe := txExecFixture(t)
+	if _, err := probe.run(); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	var ops []string
+	for _, call := range probe.sys.calls {
+		if !seen[call] {
+			seen[call] = true
+			ops = append(ops, call)
+		}
+	}
+	for _, crash := range ops {
+		t.Run(crash, func(t *testing.T) {
+			c := txExecFixture(t)
+			c.sys.crashAt = crash
+			func() {
+				defer func() { _ = recover() }()
+				_, _ = c.run()
+			}()
+			c.store.locked = false // the process died; the OS releases its lock
+			c.sys.crashAt = ""
+			if c.store.journal == nil {
+				if !c.sys.running || c.sys.mutatedSource {
+					t.Fatal("crash before the first record must leave the source untouched")
+				}
+				return
+			}
+			before := c.store.journal.State
+			r, err := recoverInstallTransition(c.p, c.t, c.sys, c.store)
+			switch {
+			case before != txJournalInProgress:
+				if err != nil || r.Reason != "journal_terminal" {
+					t.Fatalf("terminal journal must be left for review: %+v %v", r, err)
+				}
+			case r.State == txJournalAborted:
+				if !c.sys.running || c.sys.mutatedSource {
+					t.Fatal("abort must leave the source service untouched")
+				}
+			case r.State == txJournalRolledBack:
+				txExecAssertSource(t, c)
+			default:
+				t.Fatalf("recovery result %+v %v", r, err)
+			}
+			// Recovery is idempotent: a second run sees a terminal journal.
+			if again, err := recoverInstallTransition(c.p, c.t, c.sys, c.store); err != nil || again.Reason != "journal_terminal" {
+				t.Fatalf("second recovery: %+v %v", again, err)
+			}
+		})
+	}
+}
+
+func TestHUWIN144bConcurrencyAndExistingJournalAreRefused(t *testing.T) {
+	c := txExecFixture(t)
+	c.store.locked = true
+	if r, err := c.run(); err == nil || r.Reason != "transition_lock_held" || len(c.sys.calls) != 0 {
+		t.Fatalf("held lock: %+v %v calls=%v", r, err, c.sys.calls)
+	}
+	c.store.locked = false
+	c.store.journal = &installTransitionJournal{Schema: installTransitionJournalSchema, ApprovalID: c.p.ApprovalID, State: txJournalInProgress}
+	if r, err := c.run(); err == nil || r.Reason != "journal_present_requires_recovery_or_review" || len(c.sys.calls) != 0 {
+		t.Fatalf("existing journal: %+v %v", r, err)
+	}
+	c.store.journal = nil
+	c.store.loadError = errors.New("corrupt")
+	if r, err := c.run(); err == nil || r.Reason != "journal_unreadable" {
+		t.Fatalf("unreadable journal: %+v %v", r, err)
+	}
+	if r, err := recoverInstallTransition(c.p, c.t, c.sys, &txExecStore{}); err == nil || r.Reason != "journal_absent" {
+		t.Fatalf("recover without journal: %+v %v", r, err)
+	}
+	mismatch := &txExecStore{journal: &installTransitionJournal{Schema: installTransitionJournalSchema, ApprovalID: "other", State: txJournalInProgress}}
+	if r, err := recoverInstallTransition(c.p, c.t, c.sys, mismatch); err == nil || r.Reason != "journal_does_not_match_plan" {
+		t.Fatalf("mismatched journal: %+v %v", r, err)
+	}
+}
+
+func TestHUWIN144bJournalSaveFailureNeverReportsSuccess(t *testing.T) {
+	probe := txExecFixture(t)
+	if _, err := probe.run(); err != nil {
+		t.Fatal(err)
+	}
+	for save := 1; save <= probe.store.saves; save++ {
+		c := txExecFixture(t)
+		c.store.failSave[save] = true
+		r, _ := c.run()
+		if r.State == txJournalCommitted {
+			// A failure on a save after commit-critical steps must not be hidden.
+			if c.store.journal == nil || c.store.journal.State != txJournalCommitted {
+				t.Fatalf("save %d: committed result without a committed journal", save)
+			}
+			continue
+		}
+		if r.State != txJournalAborted && r.State != txJournalRolledBack && r.State != txJournalPartial {
+			t.Fatalf("save %d: unexpected %+v", save, r)
+		}
+		if r.State == txJournalRolledBack {
+			txExecAssertSource(t, c)
+		}
+		if c.sys.mutatedSource {
+			t.Fatalf("save %d: source payload mutated", save)
+		}
+	}
+}
+
+func TestHUWIN144bExecutorSourceIsSeamOnlyAndNotWired(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "install_transition_executor_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{"errors": true, "fmt": true, "path/filepath": true}
+	for _, spec := range file.Imports {
+		path, _ := strconv.Unquote(spec.Path.Value)
+		if !allowed[path] {
+			t.Fatalf("executor imports effect-capable package %q", path)
+		}
+	}
+	forbidden := map[string]bool{
+		"installPOSPayload": true, "copyBundleToVersion": true, "ensureCurrentJunction": true, "configureService": true,
+		"startService": true, "stopService": true, "stopServiceIfRunning": true, "writeUninstallMetadata": true,
+		"emitRollback": true, "rollbackPOSPayload": true, "rollbackToPreviousVersion": true, "applyManagedAcl": true,
+		"setManagedPathACL": true, "ensureLocalConfig": true, "uninstall": true, "removeRequestedAgentData": true,
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		if call, ok := node.(*ast.CallExpr); ok {
+			if ident, ok := call.Fun.(*ast.Ident); ok && forbidden[ident.Name] {
+				t.Errorf("executor calls %s", ident.Name)
+			}
+		}
+		return true
+	})
+	main, err := parser.ParseFile(token.NewFileSet(), "main_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(main, func(node ast.Node) bool {
+		if ident, ok := node.(*ast.Ident); ok && (ident.Name == "executeInstallTransition" || ident.Name == "recoverInstallTransition") {
+			t.Errorf("main_windows.go references 14.4b executor %s", ident.Name)
+		}
+		return true
+	})
+}
