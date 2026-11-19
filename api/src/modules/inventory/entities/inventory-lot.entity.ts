@@ -44,6 +44,10 @@ export type InventoryLotProps = {
   isLegacy?: boolean;
   createdAt: Date;
   updatedAt: Date;
+  /** Solo en listados (`findMany`): nombre del producto del mismo tenant. */
+  productName?: string | null;
+  /** Solo en listados (`findMany`): SKU del producto del mismo tenant. */
+  productSku?: string | null;
 };
 
 export class InventoryLotEntity {
@@ -62,6 +66,8 @@ export class InventoryLotEntity {
   readonly isLegacy: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  declare readonly productName?: string | null;
+  declare readonly productSku?: string | null;
 
   constructor(props: InventoryLotProps) {
     if (!isUuid(props.id)) {
@@ -116,6 +122,12 @@ export class InventoryLotEntity {
     this.isLegacy = props.isLegacy ?? false;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
+    if (props.productName !== undefined) {
+      this.productName = props.productName;
+    }
+    if (props.productSku !== undefined) {
+      this.productSku = props.productSku;
+    }
   }
 
   static create(props: InventoryLotProps) {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import {
   ArrowLeft,
@@ -22,7 +22,10 @@ import { printElectronicInvoiceTicket } from "../../reporteria/electronic-invoic
 import { printReporteriaSaleTicket } from "../../reporteria/direct-print";
 import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
 import { PdfPreviewModal } from "../../reporteria/components/PdfPreviewModal";
+import { getApiErrorMessage } from "../../reporteria/utils";
 import { hasPermission } from "../../../lib/permissions";
+import { apiBlobClientWithBaseUrl } from "../../../lib/http";
+import { ApiError } from "../../../lib/request";
 import { useAppSelector } from "../../../store/hooks";
 import { useOperationalSaleDetail } from "../hooks/use-operational-sale-detail";
 import {
@@ -134,7 +137,7 @@ const BillingCard = ({ sale }: { sale: OperationalSaleDetail }) => {
   );
 };
 
-const ActionCard = ({
+export const ActionCard = ({
   sale,
   tenantContext,
   onReload,
@@ -167,11 +170,13 @@ const ActionCard = ({
 }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
+  const [cancelPreviewOpen, setCancelPreviewOpen] = useState(false);
   const [recoveryConfirmOpen, setRecoveryConfirmOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [localActionMessage, setLocalActionMessage] = useState<string | null>(null);
   const billing = sale.electronicBilling;
+  const cancelled = ["CANCELLED", "REFUNDED"].includes(sale.status.toUpperCase());
   const accepted = billing?.status === "ACCEPTED";
   const voidAvailability = resolveOperationalSaleVoidAvailability(sale);
   const showElectronicBilling = sale.electronicBillingEnabled;
@@ -183,6 +188,7 @@ const ActionCard = ({
     hasPermission("POS", "write"),
   );
   const canRequestBilling =
+    !cancelled &&
     showElectronicBilling &&
     (hasPermission("POS", "write") || role.toUpperCase() === "USER") &&
     isEligibleForElectronicBillingRequest(sale);
@@ -190,6 +196,23 @@ const ActionCard = ({
     () => getElectronicInvoice(sale.id),
     [sale.id]
   );
+  const getCancelPdf = useCallback(async () => {
+    try {
+      const blob = await apiBlobClientWithBaseUrl(
+        process.env.NEXT_PUBLIC_REPORTS_API_BASE_URL,
+        `/reports/pos-sales/${encodeURIComponent(sale.id)}/cancel-ticket`,
+      );
+      if (blob.size === 0 || !blob.type.toLowerCase().startsWith("application/pdf")) {
+        throw new Error("El comprobante recibido no es un PDF válido.");
+      }
+      return blob;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        throw new Error("No hay comprobante de anulación disponible.");
+      }
+      throw error;
+    }
+  }, [sale.id]);
   const confirmProviderCreateIntentRecovery = useCallback(async () => {
     const succeeded = await onRecoverProviderCreateIntent();
     if (succeeded) {
@@ -217,6 +240,8 @@ const ActionCard = ({
           </Button>
         </div>
 
+        {cancelled ? <p id="cancelled-sale-message" className="text-sm text-amber-800" role="status">Venta anulada. Esta operación no está disponible.</p> : null}
+
         <div className="flex flex-wrap items-center gap-3">
           {canRequestBilling ? (
             <Button
@@ -238,6 +263,8 @@ const ActionCard = ({
               <Button
                 type="button"
                 onClick={() => setPreviewOpen(true)}
+                disabled={cancelled}
+                aria-describedby={cancelled ? "cancelled-sale-message" : undefined}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 text-sm shadow-sm min-h-[44px] rounded-xl"
               >
                 <FileText className="h-5 w-5 shrink-0" />
@@ -247,7 +274,8 @@ const ActionCard = ({
                 type="button"
                 variant="outline"
                 onClick={() => void onPrintInvoice()}
-                disabled={printLoading}
+                disabled={cancelled || printLoading}
+                aria-describedby={cancelled ? "cancelled-sale-message" : undefined}
                 className="flex items-center gap-2 border-slate-300 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-slate-50"
               >
                 <Printer className="h-4 w-4 text-slate-600 shrink-0" />
@@ -260,6 +288,8 @@ const ActionCard = ({
             type="button"
             variant="outline"
             onClick={() => setTicketPreviewOpen(true)}
+            disabled={cancelled}
+            aria-describedby={cancelled ? "cancelled-sale-message" : undefined}
             className="flex items-center gap-2 border-slate-300 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-slate-50"
           >
             <Eye className="h-4 w-4 text-slate-600 shrink-0" />
@@ -270,12 +300,15 @@ const ActionCard = ({
             type="button"
             variant="outline"
             onClick={() => void onPrintTicket()}
-            disabled={ticketLoading}
+            disabled={cancelled || ticketLoading}
+            aria-describedby={cancelled ? "cancelled-sale-message" : undefined}
             className="flex items-center gap-2 border-slate-300 font-semibold px-4 py-2 text-sm min-h-[44px] rounded-xl hover:bg-slate-50"
           >
             <Printer className="h-4 w-4 text-slate-600 shrink-0" />
             {ticketLoading ? "Imprimiendo ticket..." : "Imprimir ticket"}
           </Button>
+
+          {cancelled ? <Button type="button" variant="outline" onClick={() => setCancelPreviewOpen(true)}>Consultar comprobante de anulación</Button> : null}
 
           {voidAvailability.kind === "LOCAL" || voidAvailability.kind === "CREDIT_NOTE" ? (
             <Button
@@ -332,7 +365,7 @@ const ActionCard = ({
                   void onRetry();
                 }
               }}
-              disabled={refreshLoading}
+              disabled={cancelled || refreshLoading}
               className="flex items-center gap-1.5 border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-semibold min-h-[44px] rounded-xl"
             >
               Reintentar procesamiento
@@ -344,7 +377,7 @@ const ActionCard = ({
               type="button"
               variant="outline"
               onClick={() => setRecoveryConfirmOpen(true)}
-              disabled={refreshLoading}
+              disabled={cancelled || refreshLoading}
               className="flex items-center gap-1.5 border-purple-300 text-purple-800 bg-purple-50 hover:bg-purple-100 text-xs font-semibold min-h-[44px] rounded-xl"
             >
               Recuperar procesamiento
@@ -359,7 +392,7 @@ const ActionCard = ({
                 setLocalActionMessage(null);
                 setWizardOpen(true);
               }}
-              disabled={refreshLoading}
+              disabled={cancelled || refreshLoading}
               className="flex items-center gap-1.5 border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-semibold min-h-[44px] rounded-xl"
             >
               <RotateCcw className="h-3.5 w-3.5" />
@@ -376,7 +409,7 @@ const ActionCard = ({
         ) : null}
       </div>
       <ConfirmDialog
-        open={recoveryConfirmOpen}
+        open={recoveryConfirmOpen && !cancelled}
         onOpenChange={setRecoveryConfirmOpen}
         title="Recuperar procesamiento de factura electrónica"
         description={`Venta: ${sale.id}. Tenant: ${tenantContext}. ${PROVIDER_CREATE_INTENT_RECOVERY_CONFIRMATION}`}
@@ -387,7 +420,7 @@ const ActionCard = ({
         loading={refreshLoading}
       />
       <PdfPreviewModal
-        isOpen={previewOpen}
+        isOpen={previewOpen && !cancelled}
         title={`Factura electrónica ${sale.id.slice(0, 8)}`}
         fileName={`factura-electronica-${sale.id}.pdf`}
         onClose={() => setPreviewOpen(false)}
@@ -395,15 +428,24 @@ const ActionCard = ({
         variant="ticket"
       />
       <PdfPreviewModal
-        isOpen={ticketPreviewOpen}
+        isOpen={ticketPreviewOpen && !cancelled}
         title={`Ticket de venta ${sale.id.slice(0, 8)}`}
         fileName={`ticket-venta-${sale.id}.pdf`}
         onClose={() => setTicketPreviewOpen(false)}
         getPdf={() => getPosSaleTicket(sale.id)}
         variant="ticket"
       />
+      <PdfPreviewModal
+        isOpen={cancelPreviewOpen && cancelled}
+        title={`Comprobante de anulación ${sale.id.slice(0, 8)}`}
+        fileName={`comprobante-anulacion-${sale.id}.pdf`}
+        onClose={() => setCancelPreviewOpen(false)}
+        getPdf={getCancelPdf}
+        allowPrint
+        variant="ticket"
+      />
       <PreInvoiceWizardModal
-        open={wizardOpen}
+        open={wizardOpen && !cancelled}
         saleId={sale.id}
         onClose={() => setWizardOpen(false)}
         onSuccess={(msg) => {
@@ -413,7 +455,7 @@ const ActionCard = ({
       />
       <VoidSaleModal
         sale={sale}
-        isOpen={voidModalOpen}
+        isOpen={voidModalOpen && !cancelled}
         onClose={() => setVoidModalOpen(false)}
         onSuccess={(_updated, message) => {
           setLocalActionMessage(message);
@@ -426,10 +468,12 @@ const ActionCard = ({
 
 export const OperationalSaleDetailPage = () => {
   const params = useParams<{ tenant: string; saleId: string }>();
+  const searchParams = useSearchParams();
   const tenant = params.tenant;
   const posContext = usePosContext();
   const [printLoading, setPrintLoading] = useState(false);
   const [ticketLoading, setTicketLoading] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const {
     data: sale,
@@ -443,8 +487,10 @@ export const OperationalSaleDetailPage = () => {
     actionLoading,
     actionMessage,
   } = useOperationalSaleDetail(params.saleId);
-  const backHref = `/${tenant}/operations/sales`;
+  const backHref = searchParams.get("from") === "orders" ? `/${tenant}/orders` : `/${tenant}/operations/sales`;
   const printInvoice = useCallback(async () => {
+    if (!sale || ["CANCELLED", "REFUNDED"].includes(sale.status.toUpperCase())) return;
+    setPrintError(null);
     setPrintLoading(true);
     try {
       const [invoice, saleTicket] = await Promise.all([
@@ -456,11 +502,15 @@ export const OperationalSaleDetailPage = () => {
         branchId: posContext.branchId,
         terminalId: posContext.terminalId,
       });
+    } catch (error) {
+      setPrintError(getApiErrorMessage(error, "No se pudo imprimir la factura electrónica."));
     } finally {
       setPrintLoading(false);
     }
-  }, [params.saleId, posContext.branchId, posContext.terminalId, posContext.tenantId]);
+  }, [sale, params.saleId, posContext.branchId, posContext.terminalId, posContext.tenantId]);
   const printTicket = useCallback(async () => {
+    if (!sale || ["CANCELLED", "REFUNDED"].includes(sale.status.toUpperCase())) return;
+    setPrintError(null);
     setTicketLoading(true);
     try {
       const ticket = await getPosSaleTicketPrintData(params.saleId);
@@ -469,10 +519,12 @@ export const OperationalSaleDetailPage = () => {
         branchId: posContext.branchId,
         terminalId: posContext.terminalId,
       });
+    } catch (error) {
+      setPrintError(getApiErrorMessage(error, "No se pudo imprimir el ticket de venta."));
     } finally {
       setTicketLoading(false);
     }
-  }, [params.saleId, posContext.branchId, posContext.terminalId, posContext.tenantId]);
+  }, [sale, params.saleId, posContext.branchId, posContext.terminalId, posContext.tenantId]);
 
   if (loading) {
     return <main className="mx-auto max-w-6xl p-6"><p className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Cargando detalle de venta...</p></main>;
@@ -486,7 +538,7 @@ export const OperationalSaleDetailPage = () => {
           href={backHref}
         >
           <ArrowLeft className="h-4 w-4 shrink-0 text-slate-600" />
-          Volver a ventas
+          {searchParams.get("from") === "orders" ? "Volver a pedidos" : "Volver a ventas"}
         </Link>
         <p className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800">
           {error ?? "No se encontró la venta."}
@@ -504,7 +556,7 @@ export const OperationalSaleDetailPage = () => {
             href={backHref}
           >
             <ArrowLeft className="h-4 w-4 shrink-0 text-slate-600" />
-            Volver a ventas
+            {searchParams.get("from") === "orders" ? "Volver a pedidos" : "Volver a ventas"}
           </Link>
           <p className="mt-3 text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Gestión Operativa · Venta POS</p>
           <div className="mt-1 flex flex-wrap items-center gap-3">
@@ -526,6 +578,7 @@ export const OperationalSaleDetailPage = () => {
       </div>
 
       {/* Action Toolbar placed at the TOP for maximum operator UX */}
+      {printError ? <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{printError}</p> : null}
       <ActionCard
         sale={sale}
         tenantContext={tenant}

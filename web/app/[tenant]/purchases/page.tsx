@@ -1,6 +1,6 @@
 "use client";
 
-import { Banknote, Download, Eye, FileCheck, PackageCheck, Plus, Receipt, RefreshCw, Search, X, XCircle } from "lucide-react";
+import { Banknote, CheckCircle2, Download, Eye, FileCheck, PackageCheck, Pencil, Plus, Receipt, RefreshCw, Search, X, XCircle } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "../../../components/design-system/Button";
@@ -11,7 +11,7 @@ import { Select } from "../../../components/design-system/Select";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { hasPermission } from "../../../lib/permissions";
 import { buildConfirmFromApiError } from "../../../lib/api-messages";
-import { useConfirm } from "../../../hooks/use-confirm";
+import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { useNoticeDialog } from "../../../hooks/useNoticeDialog";
 import { useAppSelector } from "../../../store/hooks";
 import {
@@ -33,8 +33,13 @@ import {
 } from "../../../modules/inventory/components/SettlePartialPurchaseForm";
 import { PurchaseDetailPanel } from "../../../modules/inventory/components/PurchaseDetailPanel";
 import { PurchaseReceiveForm } from "../../../modules/inventory/components/PurchaseReceiveForm";
+import { CollapsibleFilterPanel } from "../../../modules/inventory/list-filters/CollapsibleFilterPanel";
+import { countActiveListFilters } from "../../../modules/inventory/list-filters/list-filters";
 import { usePurchases } from "../../../modules/inventory/hooks/use-purchases";
-import type { PurchaseResponse } from "../../../modules/inventory/services/purchase.service";
+import {
+  confirmPurchase,
+  type PurchaseResponse,
+} from "../../../modules/inventory/services/purchase.service";
 import { isPurchaseCancelable } from "../../../modules/inventory/utils/purchase-cancellation";
 import { getPurchaseTicket } from "../../../modules/reporteria/services/reporting.service";
 import { downloadBlob, getApiErrorMessage } from "../../../modules/reporteria/utils";
@@ -55,6 +60,7 @@ type PurchaseFilters = {
 
 type PurchasePanelAction =
   | "detail"
+  | "edit"
   | "receive"
   | "pay"
   | "cancel"
@@ -169,12 +175,15 @@ const isPurchaseCancellationConflict = (message: string) =>
 
 const purchasePanelActions = new Set<PurchasePanelAction>([
   "detail",
+  "edit",
   "receive",
   "pay",
   "cancel",
   "settle-partial",
   "ticket",
 ]);
+
+const isDraft = (purchase: Pick<PurchaseResponse, "status">) => purchase.status === "DRAFT";
 
 const isPurchasePanelAction = (value: string | null): value is PurchasePanelAction =>
   value !== null && purchasePanelActions.has(value as PurchasePanelAction);
@@ -241,6 +250,14 @@ const PurchasesPage = () => {
   const canCancel = canManagePurchases && hasPermission("inventory.cancel");
   const canSettlePartial =
     canManagePurchases && hasPermission("inventory.settle_partial");
+  const canEditDraft = canManagePurchases && hasPermission("inventory.update");
+  // Un borrador se confirma antes de recibir: Recibir solo aplica a compras confirmadas.
+  const canReceivePurchase = (purchase: Pick<PurchaseResponse, "status">) =>
+    canReceive &&
+    purchase.status !== "DRAFT" &&
+    purchase.status !== "CANCELLED" &&
+    purchase.status !== "RECEIVED" &&
+    purchase.status !== "CERRADA_PARCIAL";
   const hasOpenCashSession = Boolean(currentCashSession);
   const canUseAllCashScope = true;
 
@@ -306,7 +323,7 @@ const PurchasesPage = () => {
   }, [pathname, router, searchParams]);
 
   const requestBackToList = useCallback(() => {
-    if (activeViewMode === "create" && createHasUnsavedChanges) {
+    if ((activeViewMode === "create" || activeViewMode === "edit") && createHasUnsavedChanges) {
       setNoticeConfirmAction("discard-create");
       notice.showWarning("Cambios sin guardar", "Tienes cambios sin guardar. ¿Deseas salir?");
       return;
@@ -346,6 +363,10 @@ const PurchasesPage = () => {
     },
     [canViewAllTenants, cashScope, currentCashSession?.id, currentTenant]
   );
+
+  const activeFilterCount = countActiveListFilters(appliedFilters, defaultFilters, [
+    Boolean(currentCashSession) && cashScope === "current",
+  ]);
 
   const loadPurchases = useCallback(async (filters?: PurchaseFilters) => {
     const activeFilters = filters ?? appliedFilters;
@@ -416,6 +437,7 @@ const PurchasesPage = () => {
     }
     if (
       activeAction === "detail" ||
+      activeAction === "edit" ||
       activeAction === "receive" ||
       activeAction === "pay" ||
       activeAction === "cancel" ||
@@ -532,12 +554,14 @@ const PurchasesPage = () => {
       }
 
       const supplierName = (purchase.supplierName ?? "").toLowerCase();
+      const invoiceNumber = (purchase.supplierInvoiceNumber ?? "").toLowerCase();
       const type = purchase.type.toLowerCase();
       const status = purchase.status.toLowerCase();
       const branchName = (purchase.branchName ?? "").toLowerCase();
       const terminalName = (purchase.terminalName ?? "").toLowerCase();
       return (
         supplierName.includes(query) ||
+        invoiceNumber.includes(query) ||
         type.includes(query) ||
         status.includes(query) ||
         branchName.includes(query) ||
@@ -563,6 +587,7 @@ const PurchasesPage = () => {
   const resetFilters = () => {
     setDraftFilters(defaultFilters);
     setAppliedFilters(defaultFilters);
+    setCashScope("all");
     setPage(0);
     pushListQuery(defaultFilters, 0, pageSize);
   };
@@ -578,10 +603,55 @@ const PurchasesPage = () => {
     peripheralContext?: PurchasePeripheralContext
   ) => {
     handleBackToList();
-    notice.showFromApiResponse(response, "Compra creada correctamente.", "Operacion exitosa");
+    notice.showFromApiResponse(
+      response,
+      "Compra guardada como borrador. Puedes editarla o confirmarla desde el listado.",
+      "Operacion exitosa"
+    );
     if (peripheralContext) {
       void showPurchasePeripheralFeedback(peripheralContext);
     }
+    if (hasSearched) {
+      await loadPurchases();
+    }
+  };
+
+  const handleEditSuccess = async () => {
+    handleBackToList();
+    notice.showSuccess("Operacion exitosa", "Cambios del borrador guardados correctamente.");
+    if (hasSearched) {
+      await loadPurchases();
+    }
+  };
+
+  const handleConfirmPurchase = async (purchase: PurchaseResponse) => {
+    const supplier = purchase.supplierName || "el proveedor";
+    try {
+      await confirm({
+        title: "Confirmar compra",
+        description: `Vas a confirmar la compra de ${supplier} por ${formatCurrency(Number(purchase.total))}.\n\nDespués de confirmarla ya no podrás editar proveedor, tipo ni productos, y quedará lista para recibir la mercancía. Confirmar no mueve inventario.`,
+        confirmText: "Confirmar compra",
+        cancelText: "Volver",
+        variant: "warning",
+        onConfirm: async () => {
+          await confirmPurchase(purchase.id);
+        },
+      });
+    } catch (error) {
+      if (isConfirmCancelledError(error)) {
+        return;
+      }
+      await showApiConfirmError(error, "No se pudo confirmar la compra.");
+      return;
+    }
+
+    if (activeViewMode) {
+      handleBackToList();
+    }
+    notice.showSuccess(
+      "Compra confirmada",
+      "La compra quedó confirmada (PENDING) y ya puede recibirse."
+    );
     if (hasSearched) {
       await loadPurchases();
     }
@@ -757,6 +827,11 @@ const PurchasesPage = () => {
           title: "Crear compra",
           subtitle: "Registra una nueva compra y sus productos asociados.",
         };
+      case "edit":
+        return {
+          title: "Editar borrador",
+          subtitle: "Modifica proveedor, tipo, productos, cantidades y costos antes de confirmar.",
+        };
       case "detail":
         return {
           title: "Detalle de compra",
@@ -800,8 +875,13 @@ const PurchasesPage = () => {
       return false;
     }
 
+    if (activeAction === "edit") {
+      return !isDraft(purchase);
+    }
+
     if (activeAction === "receive") {
       return (
+        purchase.status === "DRAFT" ||
         purchase.status === "CANCELLED" ||
         purchase.status === "RECEIVED" ||
         purchase.status === "CERRADA_PARCIAL"
@@ -853,9 +933,30 @@ const PurchasesPage = () => {
     <>
       {isInvalidAction ? actionUnavailablePanel : null}
 
+      {!isInvalidAction && activeAction === "edit" ? (
+        !loadingDetail && purchaseDetail?.id === activePurchaseId ? (
+          <PurchaseForm
+            key={purchaseDetail.id}
+            purchase={purchaseDetail}
+            onCancel={requestBackToList}
+            onSuccess={() => void handleEditSuccess()}
+            onError={(error) =>
+              void showApiConfirmError(error, "No se pudieron guardar los cambios del borrador.")
+            }
+            onDirtyChange={setCreateHasUnsavedChanges}
+          />
+        ) : (
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            Cargando borrador...
+          </section>
+        )
+      ) : null}
+
       {!isInvalidAction && activeAction === "receive" && activePurchaseId ? (
         <PurchaseReceiveForm
           purchaseId={activePurchaseId}
+          initialSupplierInvoiceNumber={activePurchase?.supplierInvoiceNumber ?? null}
+          initialSupplierInvoiceDate={activePurchase?.supplierInvoiceDate ?? null}
           onCancel={handleBackToList}
           onSuccess={(response) => void handleReceiveSuccess(response)}
           onError={(error) =>
@@ -892,6 +993,12 @@ const PurchasesPage = () => {
           }
           confirmLabel="Confirmar pago"
           cancelLabel="Volver"
+          submitConfirmation={{
+            title: "Registrar pago de la compra",
+            description: `Se registrará un pago (salida de caja) a ${
+              activePurchase.supplierName ?? "el proveedor"
+            }. Verifica el monto y el medio de pago: para revertirlo tendrás que anular el pago.`,
+          }}
           onCancel={handleBackToList}
           onSuccess={async (paymentContext?: DocumentPaymentSuccessContext) => {
             handleBackToList();
@@ -1050,13 +1157,15 @@ const PurchasesPage = () => {
         <PurchaseDetailPanel
           purchase={purchaseDetail}
           loading={loadingDetail}
-          canReceive={Boolean(
-            purchaseDetail &&
-              canReceive &&
-              purchaseDetail.status !== "CANCELLED" &&
-              purchaseDetail.status !== "RECEIVED" &&
-              purchaseDetail.status !== "CERRADA_PARCIAL"
-          )}
+          canReceive={Boolean(purchaseDetail && canReceivePurchase(purchaseDetail))}
+          canEdit={Boolean(purchaseDetail && canEditDraft && isDraft(purchaseDetail))}
+          canConfirm={Boolean(purchaseDetail && canEditDraft && isDraft(purchaseDetail))}
+          onEdit={
+            purchaseDetail ? () => openPurchasePanel("edit", purchaseDetail.id) : undefined
+          }
+          onConfirmPurchase={
+            purchaseDetail ? () => void handleConfirmPurchase(purchaseDetail) : undefined
+          }
           canLiquidate={canSettlePartial}
           canPay={Boolean(
             purchaseDetail &&
@@ -1145,42 +1254,6 @@ const PurchasesPage = () => {
         </div>
       </section>
 
-      {!isActionMode ? (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="font-semibold">
-                Alcance: {cashScope === "all" ? "Todas" : "Caja actual"}
-              </p>
-              <p className="mt-1 text-emerald-800">
-                {cashScope === "all"
-                  ? "Mostrando todas las compras registradas."
-                  : currentCashSession
-                    ? `Mostrando operacion de caja actual: ${
-                        currentCashSession.cashRegisterNombre ??
-                        currentCashSession.cashRegisterCodigo ??
-                        "Caja"
-                      }.`
-                    : "Mostrando operacion de compras."}
-              </p>
-            </div>
-            {currentCashSession ? (
-              <Select
-                label="Alcance"
-                value={cashScope}
-                onChange={(event) =>
-                  setCashScope(event.target.value === "all" ? "all" : "current")
-                }
-                className="min-w-[180px]"
-              >
-                <option value="all">Todas</option>
-                <option value="current">Caja actual</option>
-              </Select>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
       {isActionMode && actionHeaderCopy ? (
         <PurchaseActionHeader
           title={actionHeaderCopy.title}
@@ -1205,13 +1278,17 @@ const PurchasesPage = () => {
       ) : null}
 
       {!isActionMode ? (
-        <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
+        <CollapsibleFilterPanel
+          id="purchases-filters"
+          storageKey="purchases"
+          activeCount={activeFilterCount}
+        >
           <div
             className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
           >
             <Input
               label="Buscar"
-              placeholder="Proveedor, sucursal, terminal, tipo o estado"
+              placeholder="Proveedor, N° factura, sucursal, terminal, tipo o estado"
               value={draftFilters.query}
               onChange={(event) =>
                 setDraftFilters((prev) => ({ ...prev, query: event.target.value }))
@@ -1284,6 +1361,24 @@ const PurchasesPage = () => {
                 </option>
               ))}
             </Select>
+            {currentCashSession ? (
+              <Select
+                label="Alcance"
+                value={cashScope}
+                onChange={(event) =>
+                  setCashScope(event.target.value === "all" ? "all" : "current")
+                }
+              >
+                <option value="all">Todas</option>
+                <option value="current">
+                  {`Caja actual (${
+                    currentCashSession.cashRegisterNombre ??
+                    currentCashSession.cashRegisterCodigo ??
+                    "Caja"
+                  })`}
+                </option>
+              </Select>
+            ) : null}
             <Select
               label="Filas por pagina"
               value={String(pageSize)}
@@ -1310,7 +1405,7 @@ const PurchasesPage = () => {
               Limpiar
             </Button>
           </div>
-        </section>
+        </CollapsibleFilterPanel>
       ) : null}
 
       {errorMessage ? (
@@ -1359,10 +1454,11 @@ const PurchasesPage = () => {
       {!isActionMode ? (
         <section className="w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
           <div className="w-full max-w-full overflow-x-auto">
-            <table className="w-full min-w-[1120px] divide-y divide-slate-200 text-sm">
+            <table className="w-full min-w-[1240px] divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-slate-600 dark:text-slate-300">
                 <tr>
                   <th className="px-4 py-3 font-medium">Proveedor</th>
+                  <th className="px-4 py-3 font-medium">N° factura</th>
                   <th className="px-4 py-3 font-medium">Sucursal</th>
                   <th className="px-4 py-3 font-medium">Terminal</th>
                   <th className="px-4 py-3 font-medium">Total</th>
@@ -1378,19 +1474,19 @@ const PurchasesPage = () => {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    <td colSpan={12} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                       Cargando compras...
                     </td>
                   </tr>
                 ) : !hasSearched ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    <td colSpan={12} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                       Usa el boton Buscar para consultar compras.
                     </td>
                   </tr>
                 ) : paginatedPurchases.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    <td colSpan={12} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                       No hay compras para mostrar.
                     </td>
                   </tr>
@@ -1399,6 +1495,9 @@ const PurchasesPage = () => {
                     <tr key={purchase.id}>
                       <td className="px-4 py-3 text-slate-900 dark:text-white">
                         {purchase.supplierName || purchase.supplierId}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                        {purchase.supplierInvoiceNumber ?? ""}
                       </td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{purchase.branchName ?? "-"}</td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{purchase.terminalName ?? "-"}</td>
@@ -1426,10 +1525,21 @@ const PurchasesPage = () => {
                                 icon: <Eye className="h-4 w-4 text-slate-500" />,
                                 onSelect: () => openPurchasePanel("detail", purchase.id),
                               },
-                              ...(canReceive &&
-                              purchase.status !== "CANCELLED" &&
-                              purchase.status !== "RECEIVED" &&
-                              purchase.status !== "CERRADA_PARCIAL"
+                              ...(canEditDraft && isDraft(purchase)
+                                ? [
+                                    {
+                                      label: "Editar",
+                                      icon: <Pencil className="h-4 w-4 text-slate-500" />,
+                                      onSelect: () => openPurchasePanel("edit", purchase.id),
+                                    },
+                                    {
+                                      label: "Confirmar compra",
+                                      icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
+                                      onSelect: () => void handleConfirmPurchase(purchase),
+                                    },
+                                  ]
+                                : []),
+                              ...(canReceivePurchase(purchase)
                                 ? [
                                     {
                                       label: "Recibir",

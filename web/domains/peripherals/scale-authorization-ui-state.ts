@@ -100,6 +100,56 @@ export const buildAgentMetadataAfterBackendKgConfirmation = (
   return unitVerification ? { ...(metadata ?? {}), unitVerification } : null;
 };
 
+// The API revokes only PENDING or AUTHORIZED bindings and only ACTIVE credentials;
+// any other state answers SCALE_BINDING_NOT_ACTIVE / ACTIVE_CREDENTIAL_NOT_FOUND.
+export const isRevocableScaleBinding = (binding: ScaleAuthorizationSnapshot["binding"] | null | undefined) =>
+  Boolean(binding?.id && (binding.status === "PENDING" || binding.status === "AUTHORIZED"));
+
+export const shouldRevokeBindingForScaleChange = (
+  binding: ScaleAuthorizationSnapshot["binding"] | null | undefined,
+  nextScaleDeviceId: string | null,
+) => isRevocableScaleBinding(binding) && binding?.logicalScaleId !== nextScaleDeviceId;
+
+export const isRevocableAgentCredential = (snapshot: ScaleAuthorizationSnapshot | null | undefined) =>
+  Boolean(snapshot?.agent.credentialId && snapshot.agent.authenticated);
+
+export type ScaleSaveRevocation = "NOT_REQUIRED" | "REVOKED" | "FAILED";
+
+export const describeScaleSaveOutcome = (input: {
+  scaleAssociated: boolean;
+  revocation: ScaleSaveRevocation;
+  revocationError?: string | null;
+  refreshError?: string | null;
+}): { kind: "success" | "warning"; message: string } => {
+  const saved = input.scaleAssociated ? "Balanza asociada." : "Balanza desasociada.";
+  if (input.revocation === "FAILED") {
+    return { kind: "warning", message: `${saved} No se pudo revocar la autorización comercial anterior: ${input.revocationError ?? "error desconocido"}. Revócala antes de crear una nueva.` };
+  }
+  if (input.refreshError) {
+    return { kind: "warning", message: `${saved} No se pudo actualizar el estado mostrado: ${input.refreshError}. Usa "Actualizar estado".` };
+  }
+  return { kind: "success", message: saved };
+};
+
+// A held challenge must outlive the approval round trip; API verification remains authoritative.
+export const PAIRING_APPROVAL_EXPIRY_MARGIN_MS = 5_000;
+
+export const isAgentPairingChallengeUsable = (
+  pairing: AgentPairingStatus["pairing"] | null | undefined,
+  now: Date = new Date(),
+) => {
+  const expiresAt = Date.parse(pairing?.expiresAt ?? "");
+  return Number.isFinite(expiresAt) && expiresAt - now.getTime() > PAIRING_APPROVAL_EXPIRY_MARGIN_MS;
+};
+
+const STALE_PAIRING_CHALLENGE_CODES = new Set(["PAIRING_CHALLENGE_INVALID", "PAIRING_CHALLENGE_ALREADY_USED"]);
+
+export const isStalePairingChallengeError = (error: unknown) => {
+  const candidate = error as { message?: unknown; code?: unknown } | null;
+  return Boolean(candidate && ((typeof candidate.message === "string" && STALE_PAIRING_CHALLENGE_CODES.has(candidate.message))
+    || (typeof candidate.code === "string" && STALE_PAIRING_CHALLENGE_CODES.has(candidate.code))));
+};
+
 export const loadScaleAuthorizationRefresh = async <TAgent, TSnapshot, TDevices>(loaders: {
   agent: () => Promise<TAgent>;
   snapshot: () => Promise<TSnapshot>;
@@ -127,29 +177,35 @@ export const deriveScaleAuthorizationUiState = (input: {
 }) => {
   const snapshot = input.snapshot;
   const binding = snapshot?.binding ?? null;
+  // Only a PENDING or AUTHORIZED binding is current. A REVOKED (or other terminal) binding is history:
+  // it neither blocks a new association for the configured scale nor carries any authorization or KG evidence.
+  const activeBinding = isRevocableScaleBinding(binding) ? binding : null;
   const agentAuthenticated = Boolean(snapshot?.agent.authenticated && input.localAgent?.enrolled);
   const matchingScale = Boolean(snapshot?.scaleDeviceId && snapshot.scaleDeviceId === input.configuredScaleId
-    && (!binding || binding.logicalScaleId === snapshot.scaleDeviceId));
+    && (!activeBinding || activeBinding.logicalScaleId === snapshot.scaleDeviceId));
   const observedAt = Date.parse(input.testResult?.reading?.observedAt ?? "");
   const age = (input.now ?? new Date()).getTime() - observedAt;
   const freshRealKgRead = Boolean(input.testResult?.available && input.testResult.reading?.source === "REAL"
     && input.testResult.reading.unit === "kg" && input.testResult.reading.unitVerified
     && Number.isFinite(observedAt) && age >= 0 && age <= 15_000);
-  const authorized = binding?.status === "AUTHORIZED" && binding.unitState === "KG_VERIFIED";
+  const authorized = activeBinding?.status === "AUTHORIZED" && activeBinding.unitState === "KG_VERIFIED";
   return {
     agentAuthenticated,
     matchingScale,
     authorized,
+    hasActiveBinding: Boolean(activeBinding),
+    currentKgVerified: activeBinding?.unitState === "KG_VERIFIED",
     realAvailable: Boolean(snapshot && agentAuthenticated && matchingScale && authorized && freshRealKgRead),
     canCreateBinding: Boolean(snapshot?.posTerminalId && snapshot.scaleDeviceId && agentAuthenticated && matchingScale
-      && (!binding || !["PENDING", "AUTHORIZED"].includes(binding.status))),
-    canConfirmKg: Boolean(binding?.status === "PENDING" && agentAuthenticated && matchingScale
+      && !activeBinding),
+    canConfirmKg: Boolean(activeBinding?.status === "PENDING" && agentAuthenticated && matchingScale
       && input.hasCurrentKgConfirmationEvidence),
     canTestReal: Boolean(authorized && agentAuthenticated && matchingScale),
     reason: !snapshot ? "AUTHORIZATION_STATE_UNAVAILABLE"
       : !agentAuthenticated ? "AGENT_NOT_AUTHENTICATED"
         : !matchingScale ? "SCALE_MISMATCH"
-          : !authorized ? binding?.unitState !== "KG_VERIFIED" ? "UNIT_NOT_VERIFIED" : "BINDING_NOT_AUTHORIZED"
-            : freshRealKgRead ? "READY" : input.testResult?.reason ?? "FRESH_REAL_OBSERVATION_REQUIRED",
+          : !activeBinding ? "BINDING_REQUIRED"
+            : !authorized ? activeBinding.unitState !== "KG_VERIFIED" ? "UNIT_NOT_VERIFIED" : "BINDING_NOT_AUTHORIZED"
+              : freshRealKgRead ? "READY" : input.testResult?.reason ?? "FRESH_REAL_OBSERVATION_REQUIRED",
   };
 };

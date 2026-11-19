@@ -271,6 +271,7 @@ const defaultSaleItemTaxRows = [
 
 class FakeCreateSaleClient {
   readonly queries: RecordedQuery[] = [];
+  recordedPaymentAllocations: Array<Record<string, unknown>> = [];
 
   constructor(
     private readonly includeTaxSnapshot = false,
@@ -409,6 +410,14 @@ class FakeCreateSaleClient {
 
     if (sql.includes("SELECT config FROM tenants")) {
       return { rows: [{ config: {} }] as T[] };
+    }
+
+    if (sql.includes("FROM payment_allocations")) {
+      return { rows: this.recordedPaymentAllocations as T[] };
+    }
+
+    if (sql.startsWith("SELECT payment_method_id, amount, reference_number, notes, cash_session_id FROM payments")) {
+      return { rows: [] as T[] };
     }
 
     throw new Error(`Unexpected SQL in create sale test: ${sql}`);
@@ -1625,6 +1634,159 @@ test("SaleService.createSaleFromOrderDelivery creates an electronic invoice inte
   assert.deepEqual(result, { id: ids.sale, status: "CONFIRMED" });
 });
 
+test("SaleService.createSaleFromOrderDelivery bills the recorded order payments when the request has none", async () => {
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({
+        id: ids.tax,
+        name: "IVA",
+        rate: 19,
+      }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service, outboxEvents, client } = buildCreateSaleService([], billing, true) as any;
+  client.recordedPaymentAllocations = [{
+    payment_method_id: ids.paymentMethod,
+    amount: "3000.00",
+    reference_number: null,
+    notes: null,
+    cash_session_id: null,
+  }];
+
+  await service.createSaleFromOrderDelivery(
+    { orderId: ids.order, type: "CASH", payments: [] },
+    posContext
+  );
+
+  const event = outboxEvents[0] as { payments: Array<{ amount: string }> };
+  assert.equal(event.payments.length, 1, "Order paid beforehand still sends its payment to billing");
+  assert.equal(Number(event.payments[0].amount), 3000);
+  assert.ok(
+    client.queries.some((query: { text: string }) => query.text.includes("FROM payment_allocations")),
+    "Recorded allocations are read when the request carries no payments",
+  );
+});
+
+test("SaleService.createSaleFromOrderDelivery keeps the request payments when they settle the sale", async () => {
+  const billing = {
+    outboxService: {},
+    customerRepository: {
+      findById: async () => ({
+        id: ids.customer,
+        tenantId: ids.tenant,
+        name: "Cliente prueba",
+        documentNumber: "900123456",
+        phone: "3001234567",
+        email: "cliente@example.com",
+        address: "Calle 1",
+        municipioId: null,
+        ciudad: "Medellin",
+        departamento: "Antioquia",
+        isFinalConsumer: false,
+      }),
+    },
+    productRepository: {
+      findById: async () => ({
+        id: ids.product,
+        sku: "SKU-1",
+        name: "Producto factura",
+        description: "Producto factura",
+        measurementUnit: "UND",
+      }),
+    },
+    taxRepository: {
+      findById: async () => ({
+        id: ids.tax,
+        name: "IVA",
+        rate: 19,
+      }),
+    },
+    invoicingCustomersRepository: {
+      findByNormalizedDocument: async () => ({
+        dianIdentificationType: "31",
+        documentTypeCode: "31",
+        identificationNumber: "900123456",
+        documentNumberNormalized: "900123456",
+        verificationDigit: "1",
+        legalName: "Cliente factura SA",
+        tradeName: "Cliente factura SA",
+        invoiceEmail: "cliente@example.com",
+        fiscalEmail: "cliente@example.com",
+        phone: "3001234567",
+        address: "Calle 1",
+        municipalityCode: "11001",
+        personType: "JURIDICA" as const,
+        taxResponsibilities: ["O-13"],
+        taxRegime: "IVA",
+        departmentCode: "05",
+      }),
+      findActiveFinalConsumer: async () => null,
+    },
+  };
+
+  const { service, outboxEvents, client } = buildCreateSaleService([], billing, true) as any;
+
+  await service.createSaleFromOrderDelivery(
+    { orderId: ids.order, type: "CASH", payments: [{ paymentMethodId: ids.paymentMethod, amount: 3000 }] },
+    posContext
+  );
+
+  const event = outboxEvents[0] as { payments: Array<{ amount: string }> };
+  assert.equal(event.payments.length, 1);
+  assert.equal(Number(event.payments[0].amount), 3000);
+  assert.ok(
+    !client.queries.some((query: { text: string }) => query.text.includes("FROM payment_allocations")),
+    "Request payments that cover the total are used as before",
+  );
+});
+
 test("SaleService.createSale rejects CASH mismatch using backend lineTotal and skips repository", async () => {
   const { service, repository } = buildCreateSaleService([
     makePreview({
@@ -2211,4 +2373,166 @@ test("SaleService starts PENDING capture from trusted POS context and returns th
   assert.equal(statements[0], "BEGIN");
   assert.match(statements[1], /FROM pos_terminals p/);
   assert.equal(statements[statements.length - 1], "COMMIT");
+});
+
+// --- Series (fase 5): asignación después de inventory_create_sale_v2 y anulación ---
+
+const serialIds = {
+  first: "20000000-0000-4000-8000-000000000001",
+  second: "20000000-0000-4000-8000-000000000002",
+};
+
+class FakeSaleSerialService {
+  assignCalls: Array<Record<string, unknown>> = [];
+  returnedCalls: Array<Record<string, unknown>> = [];
+  constructor(private readonly assignError?: Error) {}
+  async assignForSale(_client: unknown, input: Record<string, unknown>) {
+    this.assignCalls.push(input);
+    if (this.assignError) {
+      throw this.assignError;
+    }
+    return 2;
+  }
+  async markReturnedForSale(_client: unknown, input: Record<string, unknown>) {
+    this.returnedCalls.push(input);
+    return 0;
+  }
+}
+
+const attachSerialHarness = (
+  service: SaleService,
+  serialService: FakeSaleSerialService,
+  requiresSerial: boolean
+) => {
+  const target = service as unknown as Record<string, unknown>;
+  target.productSerialService = serialService;
+  target.productRepository = {
+    findById: async (id: string) => ({
+      id,
+      isActive: true,
+      saleType: "UNIT",
+      measurementUnit: "UND",
+      requiresSerial,
+    }),
+  };
+};
+
+const serialSalePayload = (serials: string[] = [serialIds.first, serialIds.second]) =>
+  createSalePayload({
+    items: [{ productId: ids.product, quantity: 2, price: 0.01, serialIds: serials }],
+  } as Partial<CreateSaleInput>);
+
+test("SaleService.createSale asigna las series a la línea creada por inventory_create_sale_v2", async () => {
+  const { service, repository, client } = buildCreateSaleService([makePreview()]);
+  const serialService = new FakeSaleSerialService();
+  attachSerialHarness(service, serialService, true);
+
+  await service.createSale(serialSalePayload(), posContext);
+
+  assert.equal(serialService.assignCalls.length, 1);
+  const call = serialService.assignCalls[0] as {
+    tenantId: string;
+    branchId: string;
+    saleId: string;
+    userId: string;
+    lines: Array<{ saleItemId: string; productId: string; serialIds: string[] }>;
+  };
+  const pricedItem = repository.createSaleCalls[0].data.items[0] as { saleItemId: string };
+  assert.equal(call.tenantId, ids.tenant);
+  assert.equal(call.branchId, ids.branch);
+  assert.equal(call.saleId, ids.sale);
+  assert.equal(call.userId, ids.user);
+  assert.deepEqual(call.lines, [
+    { saleItemId: pricedItem.saleItemId, productId: ids.product, serialIds: [serialIds.first, serialIds.second] },
+  ]);
+  // El payload de la función de venta no cambia: no lleva series.
+  assert.equal("serialIds" in (repository.createSaleCalls[0].data.items[0] as object), false);
+  assert(client.queries.some((query) => query.text.trim() === "COMMIT"));
+});
+
+test("SaleService.createSale revierte toda la venta si una serie ya no está disponible", async () => {
+  const { service, client } = buildCreateSaleService([makePreview()]);
+  const serialService = new FakeSaleSerialService(
+    new ConflictException({ code: "SERIAL_NOT_AVAILABLE", message: "Serie no disponible", productId: ids.product })
+  );
+  attachSerialHarness(service, serialService, true);
+
+  await assert.rejects(service.createSale(serialSalePayload(), posContext), ConflictException);
+
+  const statements = client.queries.map((query) => query.text.replace(/\s+/g, " ").trim());
+  assert(statements.includes("ROLLBACK"));
+  assert.equal(statements.includes("COMMIT"), false);
+});
+
+test("SaleService.createSale de producto con serie sin series delega el rechazo a la función de series", async () => {
+  const { service } = buildCreateSaleService([makePreview()]);
+  const serialService = new FakeSaleSerialService(
+    new BadRequestException({ code: "SERIAL_COUNT_MISMATCH", message: "Cantidad distinta" })
+  );
+  attachSerialHarness(service, serialService, true);
+
+  await assert.rejects(service.createSale(createSalePayload(), posContext), BadRequestException);
+  assert.deepEqual((serialService.assignCalls[0] as { lines: Array<{ serialIds: string[] }> }).lines[0].serialIds, []);
+});
+
+test("SaleService.createSale de producto sin serie no llama al servicio de series", async () => {
+  const { service } = buildCreateSaleService([makePreview()]);
+  const serialService = new FakeSaleSerialService();
+  attachSerialHarness(service, serialService, false);
+
+  await service.createSale(createSalePayload(), posContext);
+
+  assert.equal(serialService.assignCalls.length, 0);
+});
+
+test("SaleService.createSale valida serialIds antes de abrir la transacción", async () => {
+  const { service, client } = buildCreateSaleService([makePreview()]);
+  attachSerialHarness(service, new FakeSaleSerialService(), true);
+
+  await assert.rejects(service.createSale(serialSalePayload(["no-es-uuid"]), posContext), BadRequestException);
+  await assert.rejects(
+    service.createSale(
+      createSalePayload({
+        items: [
+          {
+            productId: ids.product,
+            saleMode: "WEIGHT",
+            weightCapture: { captureId: "30000000-0000-4000-8000-000000000001", nonce: "a".repeat(43) },
+            serialIds: [serialIds.first],
+          },
+        ],
+      } as unknown as Partial<CreateSaleInput>),
+      posContext
+    ),
+    BadRequestException
+  );
+  assert.equal(client.queries.length, 0);
+});
+
+test("SaleService.cancelSale marca las series vendidas como RETURNED dentro de la transacción", async () => {
+  const { service, client } = buildService({ requiresLot: false, links: [] });
+  const serialService = new FakeSaleSerialService();
+  (service as unknown as Record<string, unknown>).productSerialService = serialService;
+
+  await service.cancelSale(ids.sale, actor);
+
+  assert.equal(serialService.returnedCalls.length, 1);
+  assert.deepEqual(serialService.returnedCalls[0], {
+    tenantId: ids.tenant,
+    saleId: ids.sale,
+    returnInventory: true,
+    userId: ids.user,
+    reason: "Cancelación de venta",
+  });
+  assert(client.queries.some((query) => query.text.replace(/\s+/g, " ").trim() === "COMMIT"));
+});
+
+test("SaleService.cancelSale de una venta ya cancelada no vuelve a marcar series", async () => {
+  const { service } = buildService({ saleStatus: "CANCELLED" });
+  const serialService = new FakeSaleSerialService();
+  (service as unknown as Record<string, unknown>).productSerialService = serialService;
+
+  await service.cancelSale(ids.sale, actor);
+
+  assert.equal(serialService.returnedCalls.length, 0);
 });

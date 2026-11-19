@@ -89,6 +89,8 @@ import {
 } from "../../integration-outbox/contracts/electronic-billing-mode";
 import { ParametersService } from "../../parameters/parameters.service";
 import { StockMovementService } from "./stock-movement.service";
+import { ProductSerialService } from "../serials/product-serial.service";
+import { getQuantityPolicyViolation } from "../utils/quantity-policy";
 import {
   normalizeVatResponsibility,
   type VatResponsibility,
@@ -487,6 +489,9 @@ export class SaleService {
     @Optional()
     @Inject(WeightCapturePersistence)
     private readonly weightCapturePersistence?: WeightCapturePersistence,
+    @Optional()
+    @Inject(ProductSerialService)
+    private readonly productSerialService?: ProductSerialService,
   ) {}
 
   private toNumber(value: string | number) {
@@ -731,7 +736,7 @@ export class SaleService {
       }
       const line = item as unknown as Record<string, unknown>;
       if (item.saleMode === "WEIGHT") {
-        if (["quantity", "weight", "unit", "source", "price"].some((key) =>
+        if (["quantity", "weight", "unit", "source", "price", "serialIds"].some((key) =>
           Object.prototype.hasOwnProperty.call(line, key)
         )) {
           throw new BadRequestException("WEIGHT sale line cannot provide measurement or price authority");
@@ -753,6 +758,19 @@ export class SaleService {
         }
         if (typeof item.quantity !== "number" || typeof item.price !== "number") {
           throw new BadRequestException("UNIT sale line quantity and price are required");
+        }
+        if (item.serialIds !== undefined) {
+          if (
+            !Array.isArray(item.serialIds) ||
+            item.serialIds.length > 2000 ||
+            item.serialIds.some(
+              (serialId) =>
+                typeof serialId !== "string" ||
+                !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serialId)
+            )
+          ) {
+            throw new BadRequestException("serialIds must be a list of serial UUIDs");
+          }
         }
       }
     }
@@ -826,6 +844,8 @@ export class SaleService {
 
     const preparedItems: CreateSaleInput["items"] = [];
     const captures: PreparedWeightCapture[] = [];
+    // Solo líneas de productos con serie (o que enviaron series): el resto no agrega llamadas.
+    const serialLines: Array<{ saleItemId: string; productId: string; serialIds: string[] }> = [];
     let posTerminalId: string | null = null;
 
     for (const item of items) {
@@ -848,6 +868,15 @@ export class SaleService {
       const saleItemId = crypto.randomUUID();
       if (saleMode === "UNIT") {
         const unitItem = item as Extract<SaleLineRequest, { saleMode?: "UNIT" }>;
+        // V118: verificacion temprana entero/decimal; no cambia inventory_create_sale_v2.
+        const quantityViolation = getQuantityPolicyViolation(
+          Number(unitItem.quantity),
+          { saleType: product.saleType, allowsDecimalQuantity: product.allowsDecimalQuantity },
+          `El producto ${product.name}`
+        );
+        if (quantityViolation) {
+          throw new BadRequestException(quantityViolation);
+        }
         preparedItems.push({
           saleItemId,
           saleMode,
@@ -856,6 +885,9 @@ export class SaleService {
           price: unitItem.price,
           orderItemId: unitItem.orderItemId ?? null,
         });
+        if (product.requiresSerial || (unitItem.serialIds?.length ?? 0) > 0) {
+          serialLines.push({ saleItemId, productId: item.productId, serialIds: unitItem.serialIds ?? [] });
+        }
         continue;
       }
 
@@ -926,7 +958,7 @@ export class SaleService {
       });
     }
 
-    return { items: preparedItems, captures };
+    return { items: preparedItems, captures, serialLines };
   }
 
   private normalizePayments(payments: CreateSalePaymentInput[] | undefined) {
@@ -949,6 +981,74 @@ export class SaleService {
         notes: payment.notes ?? null,
       };
     });
+  }
+
+  /**
+   * Payments allocated to the sale or to its sales order, as recorded in the
+   * database. Used to build the electronic billing payment snapshot when the
+   * request itself does not carry the payments (e.g. order paid beforehand).
+   */
+  private async loadElectronicBillingPaymentsForSale(
+    tenantId: string,
+    saleId: string,
+    orderId: string | null,
+    client: PoolClient,
+  ) {
+    let paymentRows = (
+      await client.query<{
+        payment_method_id: string;
+        amount: string | number;
+        reference_number: string | null;
+        notes: string | null;
+        cash_session_id: string | null;
+      }>(
+        `SELECT payment.payment_method_id, allocation.allocated_amount AS amount,
+                payment.reference_number, payment.notes, payment.cash_session_id
+         FROM payment_allocations allocation
+         INNER JOIN payments payment ON payment.id = allocation.payment_id
+         WHERE (
+           (allocation.reference_type = 'SALE' AND allocation.reference_id = $1)
+           OR ($3::uuid IS NOT NULL AND allocation.reference_type = 'SALES_ORDER' AND allocation.reference_id = $3)
+         )
+           AND payment.tenant_id = $2
+           AND payment.status IN ('PENDING', 'COMPLETED')
+         ORDER BY allocation.created_at ASC, allocation.id ASC`,
+        [saleId, tenantId, orderId],
+      )
+    ).rows;
+
+    if (paymentRows.length === 0) {
+      paymentRows = (
+        await client.query<{
+          payment_method_id: string;
+          amount: string | number;
+          reference_number: string | null;
+          notes: string | null;
+          cash_session_id: string | null;
+        }>(
+          `SELECT payment_method_id, amount, reference_number, notes, cash_session_id
+           FROM payments
+           WHERE tenant_id = $1
+             AND (
+               (reference_type = 'SALE' AND reference_id = $2)
+               OR ($3::uuid IS NOT NULL AND reference_type = 'SALES_ORDER' AND reference_id = $3)
+             )
+             AND status IN ('PENDING', 'COMPLETED')
+           ORDER BY created_at ASC, id ASC`,
+          [tenantId, saleId, orderId],
+        )
+      ).rows;
+    }
+
+    return this.normalizePayments(
+      paymentRows.map((row) => ({
+        paymentMethodId: row.payment_method_id,
+        amount: this.toNumber(row.amount),
+        cashSessionId: row.cash_session_id,
+        referenceNumber: row.reference_number,
+        notes: row.notes,
+      })),
+    );
   }
 
   private async buildLegacySalePaymentMethods(
@@ -2176,60 +2276,11 @@ export class SaleService {
       throw new BadRequestException("electronic billing outbox is unavailable");
     }
 
-    let paymentRows = (
-      await client.query<{
-        payment_method_id: string;
-        amount: string | number;
-        reference_number: string | null;
-        notes: string | null;
-        cash_session_id: string | null;
-      }>(
-        `SELECT payment.payment_method_id, allocation.allocated_amount AS amount,
-                payment.reference_number, payment.notes, payment.cash_session_id
-         FROM payment_allocations allocation
-         INNER JOIN payments payment ON payment.id = allocation.payment_id
-         WHERE (
-           (allocation.reference_type = 'SALE' AND allocation.reference_id = $1)
-           OR ($3::uuid IS NOT NULL AND allocation.reference_type = 'SALES_ORDER' AND allocation.reference_id = $3)
-         )
-           AND payment.tenant_id = $2
-           AND payment.status IN ('PENDING', 'COMPLETED')
-         ORDER BY allocation.created_at ASC, allocation.id ASC`,
-        [saleId, saleContext.tenantId, saleRow.order_id ?? null],
-      )
-    ).rows;
-
-    if (paymentRows.length === 0) {
-      paymentRows = (
-        await client.query<{
-          payment_method_id: string;
-          amount: string | number;
-          reference_number: string | null;
-          notes: string | null;
-          cash_session_id: string | null;
-        }>(
-          `SELECT payment_method_id, amount, reference_number, notes, cash_session_id
-           FROM payments
-           WHERE tenant_id = $1
-             AND (
-               (reference_type = 'SALE' AND reference_id = $2)
-               OR ($3::uuid IS NOT NULL AND reference_type = 'SALES_ORDER' AND reference_id = $3)
-             )
-             AND status IN ('PENDING', 'COMPLETED')
-           ORDER BY created_at ASC, id ASC`,
-          [saleContext.tenantId, saleId, saleRow.order_id ?? null],
-        )
-      ).rows;
-    }
-
-    const payments = this.normalizePayments(
-      paymentRows.map((row) => ({
-        paymentMethodId: row.payment_method_id,
-        amount: this.toNumber(row.amount),
-        cashSessionId: row.cash_session_id,
-        referenceNumber: row.reference_number,
-        notes: row.notes,
-      })),
+    const payments = await this.loadElectronicBillingPaymentsForSale(
+      saleContext.tenantId!,
+      saleId,
+      saleRow.order_id ?? null,
+      client,
     );
     const legacyPaymentMethods = await this.buildLegacySalePaymentMethods(
       saleContext.tenantId!,
@@ -3258,6 +3309,19 @@ export class SaleService {
         throw new BadRequestException("sale could not be created");
       }
 
+      if (preparedSaleItems.serialLines.length > 0) {
+        if (!this.productSerialService) {
+          throw new BadRequestException("serial assignment is unavailable");
+        }
+        await this.productSerialService.assignForSale(client, {
+          tenantId: saleContext.tenantId,
+          branchId: saleContext.branchId,
+          saleId: saleRow.id,
+          lines: preparedSaleItems.serialLines,
+          userId: saleContext.userId ?? null,
+        });
+      }
+
       for (const capture of preparedSaleItems.captures) {
         const saleItem = pricedItems.find((item) => item.saleItemId === capture.saleItemId);
         if (!saleItem || !this.weightCapturePersistence) {
@@ -3520,12 +3584,27 @@ export class SaleService {
       );
       let enqueuedBillingEvent: Awaited<ReturnType<SaleService["enqueueSaleCompletedForElectronicBilling"]>> = null;
       if (billingPolicy.enabled && billingPolicy.mode === "AUTOMATIC") {
+        // The invoice request may not carry payments (order paid beforehand or
+        // partially). Billing needs the payments that settle this sale, so fall
+        // back to the recorded allocations, exactly like the manual re-drive.
+        const requestPaymentsTotal = this.roundCurrency(
+          payments.reduce((sum, payment) => sum + payment.amount, 0),
+        );
+        const billingPayments = requestPaymentsTotal > 0
+          && requestPaymentsTotal === this.roundCurrency(this.toNumber(saleRow.total))
+          ? payments
+          : await this.loadElectronicBillingPaymentsForSale(
+              saleContext.tenantId!,
+              saleRow.id,
+              saleRow.order_id ?? data.orderId ?? null,
+              client,
+            );
         enqueuedBillingEvent = await this.enqueueSaleCompletedForElectronicBilling(
           saleContext,
           saleRow,
           null,
           null,
-          payments,
+          billingPayments,
           client,
           {
             customerId: saleRow.customer_id,
@@ -3908,6 +3987,17 @@ export class SaleService {
             [item.order_item_id, this.toNumber(item.quantity), Boolean(originalMovement)]
           );
         }
+      }
+
+      // Series vendidas: el inventario vuelve, así que pasan a RETURNED (inspección posterior).
+      if (this.productSerialService) {
+        await this.productSerialService.markReturnedForSale(client, {
+          tenantId: sale.tenant_id,
+          saleId: id,
+          returnInventory: true,
+          userId: actor.userId ?? sale.user_id ?? null,
+          reason: "Cancelación de venta",
+        });
       }
 
       const allocatedPayments = await this.paymentsRepository.listAllocatedPayments(

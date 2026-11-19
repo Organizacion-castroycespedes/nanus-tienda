@@ -48,9 +48,16 @@ import { ApiError } from "../../../lib/request";
 import {
   acquireSaleSubmission,
   isSaleIdempotencyConflict,
+  readDefinitiveSerialRejection,
   readDefinitiveStockRejection,
   releaseSaleSubmission,
 } from "../utils/sale-recovery";
+import {
+  buildSaleLineSerialIds,
+  collectSerialsInOtherAccounts,
+  findSerialCartIssue,
+} from "../utils/pos-serials";
+import { PosSerialPickerDialog } from "./PosSerialPickerDialog";
 import { runConfirmedSalePostProcessing } from "../utils/sale-postprocessing";
 import { hasMenuAccess } from "../../../lib/permissions";
 import { fetchSystemVersion } from "../../../domains/system/api";
@@ -91,6 +98,7 @@ import {
   type PaymentDraft,
   type PosCartAppliedTax,
   type PosCartItem,
+  type PosCartSerial,
 } from "../../../store/posCart";
 import type { ProductResponse } from "../../../domains/products/dtos";
 import type { CustomerResponse } from "../../inventory/services/customer.service";
@@ -557,6 +565,7 @@ export const PosScreen = () => {
     beginSaleSubmission,
     markUnknownForAccount,
     applyDefinitiveStockRejection,
+    applyDefinitiveSerialRejection,
     confirmSaleForAccount,
     resetPosCartSale,
     addAccount,
@@ -607,6 +616,8 @@ export const PosScreen = () => {
   );
   const [productToolsOpen, setProductToolsOpen] = useState(false);
   const [bothSelectionProduct, setBothSelectionProduct] = useState<ProductResponse | null>(null);
+  // Selector de series (productos con requires_serial): se abre al agregar o al cambiar cantidad.
+  const [serialPicker, setSerialPicker] = useState<{ productId: string; notice?: string | null } | null>(null);
   const [quickFiscalCustomerOpen, setQuickFiscalCustomerOpen] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
@@ -1845,6 +1856,7 @@ export const PosScreen = () => {
         price: Number(product.priceWithTax ?? product.price),
         stock,
         isInventoryable,
+        allowsDecimalQuantity: Boolean(product.allowsDecimalQuantity),
         taxId: product.taxId ?? null,
         priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
         baseUnitPrice: Number(product.priceWithTax ?? product.price),
@@ -1858,9 +1870,31 @@ export const PosScreen = () => {
 
   const addToCart = useCallback(
     (product: ProductResponse) => {
+      if (product.requiresSerial) {
+        if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+          setSubmitError("Verifica la venta pendiente antes de modificar este carrito.");
+          return false;
+        }
+        if (isInventoryableProduct(product) && Number(product.stock ?? 0) <= 0) {
+          showToast("El producto no tiene stock disponible.", "warning");
+          return false;
+        }
+        setSerialPicker({ productId: product.id });
+        return true;
+      }
       const currentCart = cartRef.current;
       const existing = currentCart.find((item) => item.productId === product.id);
-      const nextQuantity = existing ? existing.quantity + 1 : 1;
+      let nextQuantity = existing ? existing.quantity + 1 : 1;
+      // V118: en productos fraccionables, "+" completa hasta el stock (ej. 10 -> 10.85 m).
+      const availableStock = Number(product.stock ?? 0);
+      if (
+        product.allowsDecimalQuantity &&
+        isInventoryableProduct(product) &&
+        nextQuantity > availableStock &&
+        availableStock > (existing?.quantity ?? 0)
+      ) {
+        nextQuantity = Math.floor(availableStock * 100 + 1e-6) / 100;
+      }
       const added = setProductQuantityInCart(product, nextQuantity);
       if (added) {
         focusProductSearch();
@@ -1868,7 +1902,53 @@ export const PosScreen = () => {
       }
       return added;
     },
-    [focusProductSearch, playProductAddedSound, setProductQuantityInCart]
+    [focusProductSearch, playProductAddedSound, saleStatus, setProductQuantityInCart, showToast]
+  );
+
+  /** Agrega o reemplaza la línea de un producto con serie: cantidad = series elegidas. */
+  const setSerializedProductInCart = useCallback(
+    (product: ProductResponse, serials: PosCartSerial[]) => {
+      if (saleStatus === POS_SALE_STATUSES.UNKNOWN || saleStatus === POS_SALE_STATUSES.SUBMITTING) {
+        setSubmitError("Verifica la venta pendiente antes de modificar este carrito.");
+        return;
+      }
+      setSubmitError(null);
+      const currentCart = cartRef.current;
+      const quantity = serials.length;
+      if (quantity <= 0) {
+        setCartItemsAndRef(currentCart.filter((item) => item.productId !== product.id));
+        return;
+      }
+      const existing = currentCart.find((item) => item.productId === product.id);
+      const nextCart = existing
+        ? currentCart.map((item) =>
+            item.productId === product.id
+              ? { ...item, saleMode: "UNIT" as const, quantity, requiresSerial: true, serials }
+              : item
+          )
+        : [
+            ...currentCart,
+            {
+              productId: product.id,
+              saleMode: "UNIT" as const,
+              name: product.name,
+              sku: product.sku,
+              quantity,
+              price: Number(product.priceWithTax ?? product.price),
+              stock: Number(product.stock ?? 0),
+              isInventoryable: isInventoryableProduct(product),
+              requiresSerial: true,
+              serials,
+              taxId: product.taxId ?? null,
+              priceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+              baseUnitPrice: Number(product.priceWithTax ?? product.price),
+              basePriceWithoutTax: Number(product.priceWithoutTax ?? product.price),
+            } satisfies PosCartItem,
+          ];
+      queueCartItemPricing(nextCart, product.id, quantity, "UNIT");
+      void playProductAddedSound();
+    },
+    [playProductAddedSound, queueCartItemPricing, saleStatus, setCartItemsAndRef]
   );
 
   const handleScannerCodeRead = useCallback(
@@ -2211,9 +2291,31 @@ export const PosScreen = () => {
       return;
     }
 
-    const safeQuantity = target.isInventoryable === false
+    if (target.requiresSerial) {
+      // La cantidad de un producto con serie se cambia eligiendo series.
+      setSerialPicker({ productId });
+      return;
+    }
+
+    // V118: enteros salvo productos que admiten decimales (hasta 2). El tope sigue siendo el stock.
+    const allowsDecimal =
+      target.allowsDecimalQuantity ??
+      Boolean(productsRef.current.find((product) => product.id === productId)?.allowsDecimalQuantity);
+    const normalizeQuantity = (value: number) =>
+      allowsDecimal ? Math.floor(value * 100 + 1e-6) / 100 : Math.floor(value + 1e-6);
+    const cappedQuantity = target.isInventoryable === false
       ? nextQuantity
       : Math.min(nextQuantity, target.stock);
+    const safeQuantity = normalizeQuantity(cappedQuantity);
+    if (safeQuantity <= 0) {
+      showToast(
+        allowsDecimal
+          ? "La cantidad debe ser mayor a cero."
+          : "Este producto se vende por unidades enteras y no hay una unidad completa disponible.",
+        "warning"
+      );
+      return;
+    }
     if (safeQuantity === target.quantity && target.pricingStatus !== POS_CART_PRICING_STATUSES.ERROR) {
       return;
     }
@@ -2902,6 +3004,15 @@ export const PosScreen = () => {
       return;
     }
 
+    const serialIssue = findSerialCartIssue(cartWithDerivedValues);
+    if (serialIssue) {
+      setSubmitError(
+        `${serialIssue.name}: selecciona ${serialIssue.quantity} ${serialIssue.quantity === 1 ? "serie" : "series"} antes de cobrar.`
+      );
+      setSerialPicker({ productId: serialIssue.productId });
+      return;
+    }
+
     const effectivePayments = buildEffectivePayments(localParsed, derived.overpayment);
     const paymentTotal = round(
       effectivePayments.reduce((sum, payment) => sum + payment.amount, 0)
@@ -2948,6 +3059,7 @@ export const PosScreen = () => {
             saleMode: "UNIT" as const,
             quantity: item.quantity,
             price: item.finalUnitPrice ?? item.price,
+            ...(item.requiresSerial ? { serialIds: buildSaleLineSerialIds(item) } : {}),
             taxes: item.taxes.map((tax) => ({
               taxId: tax.taxId,
               taxName: tax.taxName,
@@ -2973,6 +3085,31 @@ export const PosScreen = () => {
       );
     } catch (error) {
       if (!isSaleTargetCurrent(target)) {
+        releaseSaleSubmission(saleGate);
+        setAccountProcessing(target.accountId, false);
+        return;
+      }
+      const definitiveSerialRejection = readDefinitiveSerialRejection(error);
+      if (definitiveSerialRejection) {
+        const shouldNotifyOrigin = isSaleTargetActive(target);
+        applyDefinitiveSerialRejection({ ...target, productId: definitiveSerialRejection.productId });
+        setRetryableUnknownAttemptIds((current) => {
+          const next = { ...current };
+          delete next[target.accountId];
+          return next;
+        });
+        if (shouldNotifyOrigin && isSaleOriginActive(target)) {
+          const failedItem = definitiveSerialRejection.productId
+            ? cartWithDerivedValues.find((item) => item.productId === definitiveSerialRejection.productId)
+            : cartWithDerivedValues.find((item) => item.requiresSerial);
+          const message = `${failedItem ? `${failedItem.name}: ` : ""}${definitiveSerialRejection.message} La venta no se registró.`;
+          setSubmitError(message);
+          notifyOrigin(message, "warning");
+          if (failedItem) {
+            setPaymentModalOpen(false);
+            setSerialPicker({ productId: failedItem.productId, notice: message });
+          }
+        }
         releaseSaleSubmission(saleGate);
         setAccountProcessing(target.accountId, false);
         return;
@@ -3590,6 +3727,7 @@ export const PosScreen = () => {
         onCancelSale={cancelCurrentSale}
         onCharge={openChargeModal}
         onUpdateQuantity={updateQuantity}
+        onEditSerials={(productId) => setSerialPicker({ productId })}
         onRemoveItem={removeCartItem}
         onToggleTaxBreakdown={toggleTaxBreakdown}
         onToggleSummaryTaxes={() => setSummaryTaxesExpanded((current) => !current)}
@@ -3601,6 +3739,31 @@ export const PosScreen = () => {
           }
         }}
       />
+
+      {serialPicker && activeBranchId && productById[serialPicker.productId] ? (
+        <PosSerialPickerDialog
+          key={`${serialPicker.productId}-${serialPicker.notice ?? ""}`}
+          productId={serialPicker.productId}
+          productName={productById[serialPicker.productId].name}
+          branchId={activeBranchId}
+          max={Number(productById[serialPicker.productId].stock ?? 0)}
+          initialSerials={
+            cart.find((item) => item.productId === serialPicker.productId)?.serials ?? []
+          }
+          reservedElsewhere={collectSerialsInOtherAccounts(accounts, activeAccountId, serialPicker.productId)}
+          notice={serialPicker.notice}
+          onCancel={() => {
+            setSerialPicker(null);
+            focusProductSearch();
+          }}
+          onConfirm={(serials) => {
+            const product = productById[serialPicker.productId];
+            setSerialPicker(null);
+            setSerializedProductInCart(product, serials);
+            focusProductSearch();
+          }}
+        />
+      ) : null}
 
       {/* Floating Cart Button - visible when cart is closed and has items */}
       {!cartSheetOpen && cartItemCount > 0 ? (

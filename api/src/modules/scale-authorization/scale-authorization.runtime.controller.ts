@@ -37,12 +37,14 @@ export class ScaleAuthorizationPairingController {
   @Post("agent/weight-captures/observation")
   async captureObservation(@Headers("authorization") authorization: string | undefined, @Body() input: {
     captureId: string; deviceId: string; weight: number; unit: string | null; source: string; unitVerified: boolean; observedAt: string;
+    captureProtocol?: string; acquisition?: { requestToFrameMs: number; frameAgeMs: number };
   }) {
     const captureId = typeof input?.captureId === "string"
       && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.captureId)
       ? input.captureId : undefined;
     logScaleObservationEvent(this.logger, "observation.received", captureId, "request_received");
-    const allowed = new Set(["captureId", "deviceId", "weight", "unit", "source", "unitVerified", "observedAt"]);
+    const allowed = new Set(["captureId", "deviceId", "weight", "unit", "source", "unitVerified", "observedAt",
+      "captureProtocol", "acquisition"]);
     if (!input || Object.keys(input).some((key) => !allowed.has(key))) {
       const error = new BadRequestException("CAPTURE_OBSERVATION_INVALID");
       logScaleObservationFailure(this.logger, captureId, "request_validation", error);

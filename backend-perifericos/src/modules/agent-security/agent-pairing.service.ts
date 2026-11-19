@@ -235,7 +235,10 @@ export class AgentPairingService {
     });
   }
 
-  async submitSaleCaptureObservation(input: { captureId: string; deviceId: string; weight: number; unit: string | null; source: string; unitVerified: boolean; observedAt: string }) {
+  async submitSaleCaptureObservation(input: {
+    captureId: string; deviceId: string; weight: number; unit: string | null; source: string; unitVerified: boolean; observedAt: string;
+    captureProtocol: "EXCLUSIVE_ACQUISITION_V1"; acquisition: { requestToFrameMs: number; frameAgeMs: number };
+  }) {
     return this.withAgentAuthorization(async (authorization, baseUrl) => {
       this.logs().append({ source: "scale", event: "capture.observation_send_started",
         message: "Sending authenticated scale observation to API", metadata: { captureId: input.captureId, stage: "observation_send" } });

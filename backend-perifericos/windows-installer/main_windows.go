@@ -15,7 +15,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -312,37 +314,38 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		return fmt.Errorf("productive installer blocked during CoreFlow QA")
 	}
 	var sequence uint64
-	preflightLogger := newPreflightLogger()
-	if preflightLogger != nil {
-		defer preflightLogger.Close()
-		preflightLogger.Printf("lifecycle phase=START previousVersion=unknown targetVersion=%s", manifest.Version)
-	}
+	layout := buildLayout(manifest)
 	if observer != nil {
 		emitCoreStep(observer, &sequence, eventInstallStarted, "", nil)
 	}
-	if err := runCoreStep(observer, &sequence, stepVerifyRequirements, func() error {
+	admission, err := verifyInstallAdmissionStep(manifest, layout, observer, &sequence, func() error {
 		if err := ensureSupportedHost(); err != nil {
 			return err
 		}
 		if err := ensureElevated(); err != nil {
 			return err
 		}
-		return preflightInstallCoexistence(manifest, buildLayout(manifest))
-	}); err != nil {
-		if preflightLogger != nil {
-			preflightLogger.Printf("lifecycle phase=PREFLIGHT_FAILURE previousVersion=unknown targetVersion=%s rollbackAttempted=NO error=%v", manifest.Version, err)
+		if err := preflightInstallCoexistence(manifest, layout); err != nil {
+			return err
 		}
+		if err := preflightAgentPort(manifest); err != nil {
+			return err
+		}
+		return nil
+	}, func() (installAdmissionSnapshot, error) {
+		return observeInstallAdmission(manifest, layout, nativeInstallAdmissionIO{})
+	})
+	if err != nil {
 		return err
 	}
 
-	layout := buildLayout(manifest)
-	layout.POSPreviousPresent = posPayloadValid(layout, manifest)
-	if err := preflightAgentPort(manifest); err != nil {
-		if preflightLogger != nil {
-			preflightLogger.Printf("lifecycle phase=PORT_PREFLIGHT_FAILURE targetVersion=%s error=%v", manifest.Version, err)
-		}
-		return err
+	// First persistent effect. Rejected/changed observations never reach this point.
+	preflightLogger := newPreflightLogger()
+	if preflightLogger != nil {
+		defer preflightLogger.Close()
+		preflightLogger.Printf("lifecycle phase=START admission=%s previousVersion=%s targetVersion=%s", admission.State, admission.Version, manifest.Version)
 	}
+	layout.POSPreviousPresent = admission.State == installAdmissionRepair && manifest.PosRoot != ""
 	if err := runCoreStep(observer, &sequence, stepPrepareFiles, func() error { return ensureBaseDirectories(layout) }); err != nil {
 		return err
 	}
@@ -356,8 +359,8 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 	logger.Printf("install start version=%s", manifest.Version)
 	logger.Printf("lifecycle phase=PREFLIGHT_SUCCESS previousVersion=pending targetVersion=%s rollbackAttempted=NO", manifest.Version)
 
-	existingVersion, existingVersionPath := currentInstalledVersion(manifest, layout)
-	sameVersion := existingVersion == manifest.Version && existingVersion != ""
+	existingVersion, existingVersionPath := admission.Version, admission.VersionRoot
+	sameVersion := admission.State == installAdmissionRepair
 
 	if sameVersion {
 		logger.Printf("repair existing version=%s path=%s", existingVersion, existingVersionPath)
@@ -2039,6 +2042,922 @@ func withTemporaryAdministratorOwnership(path string, operation func() error) er
 	return nil
 }
 
+// Admission is a consistency check, not uninstall authority or namespace locking.
+type installAdmissionState string
+
+const (
+	installAdmissionFresh   installAdmissionState = "FRESH"
+	installAdmissionRepair  installAdmissionState = "REPAIR"
+	installAdmissionUpdate  installAdmissionState = "UPDATE" // Reserved: no accredited transitions exist here.
+	installAdmissionPartial installAdmissionState = "PARTIAL"
+	installAdmissionUnknown installAdmissionState = "UNKNOWN"
+)
+
+type installAdmissionPresence uint8
+
+const (
+	installEvidenceUnknown installAdmissionPresence = iota
+	installEvidencePresent
+	installEvidenceAbsent
+)
+
+type installAdmissionPath struct {
+	Presence            installAdmissionPresence
+	Directory           bool
+	Target, Fingerprint string
+}
+
+type installAdmissionRegistration struct {
+	Presence                            installAdmissionPresence
+	Version, Location, Uninstall, Quiet string
+}
+
+type installAdmissionService struct {
+	Presence        installAdmissionPresence
+	Account, Binary string
+	State           svc.State
+	PID             uint32
+}
+
+type installAdmissionSnapshot struct {
+	// Agent/POS roots are active footprints. Data/config/log/state are retained.
+	Roots                                      [6]installAdmissionPath
+	Current, POSCurrent                        installAdmissionPath
+	Registration                               installAdmissionRegistration
+	Service                                    installAdmissionService
+	MetadataPresent                            bool
+	Version, CandidateFingerprint, Fingerprint string
+	Payload                                    string // equal, different, missing, or unobserved
+}
+
+type installAdmissionDecision struct {
+	State                        installAdmissionState
+	Reason, Version, VersionRoot string
+}
+
+type installAdmissionError struct {
+	State  installAdmissionState
+	Reason string
+	Cause  error
+}
+
+func (e *installAdmissionError) Error() string {
+	return fmt.Sprintf("install admission %s: %s; manual review required", e.State, e.Reason)
+}
+func (e *installAdmissionError) Unwrap() error { return e.Cause }
+
+func rejectInstallAdmission(state installAdmissionState, reason string, cause error) (installAdmissionDecision, error) {
+	return installAdmissionDecision{State: state, Reason: reason}, &installAdmissionError{State: state, Reason: reason, Cause: cause}
+}
+
+var installAdmissionVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$`)
+
+func validInstallAdmissionVersion(version string) bool {
+	return len(version) <= 128 && installAdmissionVersionPattern.MatchString(version)
+}
+
+// Separate from the permissive legacy reader. Duplicate/unknown fields and trailing
+// data are unsupported; observed values never become path components unvalidated.
+func decodeInstallAdmissionVersion(data []byte) (string, error) {
+	d := json.NewDecoder(strings.NewReader(string(data)))
+	opening, err := d.Token()
+	if err != nil || opening != json.Delim('{') {
+		return "", errors.New("metadata_object_required")
+	}
+	values := map[string]string{}
+	allowed := map[string]bool{"version": true, "agent": true, "platform": true, "architecture": true, "runtime": true, "packaging": true}
+	for d.More() {
+		token, err := d.Token()
+		if err != nil {
+			return "", err
+		}
+		key, ok := token.(string)
+		if !ok || !allowed[key] {
+			return "", errors.New("metadata_field_unsupported")
+		}
+		if _, duplicate := values[key]; duplicate {
+			return "", errors.New("metadata_field_duplicate")
+		}
+		var decoded any
+		if err := d.Decode(&decoded); err != nil {
+			return "", err
+		}
+		value, ok := decoded.(string)
+		if !ok {
+			return "", errors.New("metadata_string_required")
+		}
+		values[key] = value
+	}
+	if _, err := d.Token(); err != nil {
+		return "", err
+	}
+	var trailing any
+	if err := d.Decode(&trailing); err != io.EOF {
+		return "", errors.New("metadata_trailing_data")
+	}
+	if !validInstallAdmissionVersion(values["version"]) {
+		return "", errors.New("metadata_version_unsupported")
+	}
+	for key, expected := range map[string]string{"agent": "manus-pos-peripheral-agent", "platform": "win32", "architecture": "x64", "packaging": "portable-node-runtime"} {
+		if value, present := values[key]; present && value != expected {
+			return "", errors.New("metadata_identity_unsupported")
+		}
+	}
+	return values["version"], nil
+}
+
+func classifyInstallAdmission(m installerManifest, l runtimeLayout, s installAdmissionSnapshot) (installAdmissionDecision, error) {
+	if !validInstallAdmissionVersion(m.Version) || !validInstallAdmissionVersion(m.PosVersion) || m.VersionFileName != "VERSION.json" || m.ServiceName != serviceName || !sameWindowsIdentity(m.ServiceAccount, "NT AUTHORITY\\LocalService") || s.CandidateFingerprint == "" {
+		return rejectInstallAdmission(installAdmissionUnknown, "candidate_unproven", nil)
+	}
+	known := func(p installAdmissionPresence) bool {
+		return p == installEvidencePresent || p == installEvidenceAbsent
+	}
+	for _, p := range append(s.Roots[:], s.Current, s.POSCurrent) {
+		if !known(p.Presence) || p.Fingerprint == "" {
+			return rejectInstallAdmission(installAdmissionUnknown, "path_observation_incomplete", nil)
+		}
+		if p.Presence == installEvidencePresent && !p.Directory {
+			return rejectInstallAdmission(installAdmissionPartial, "path_not_directory", nil)
+		}
+	}
+	if !known(s.Registration.Presence) || !known(s.Service.Presence) {
+		return rejectInstallAdmission(installAdmissionUnknown, "system_observation_incomplete", nil)
+	}
+	if (s.Registration.Presence == installEvidenceAbsent && (s.Registration.Version != "" || s.Registration.Location != "" || s.Registration.Uninstall != "" || s.Registration.Quiet != "")) || (s.Service.Presence == installEvidenceAbsent && (s.Service.Account != "" || s.Service.Binary != "" || s.Service.PID != 0 || s.Service.State != 0)) {
+		return rejectInstallAdmission(installAdmissionUnknown, "contradictory_absence", nil)
+	}
+	if s.Roots[0].Presence == installEvidenceAbsent && s.Roots[1].Presence == installEvidenceAbsent && s.Current.Presence == installEvidenceAbsent && s.POSCurrent.Presence == installEvidenceAbsent && s.Registration.Presence == installEvidenceAbsent && s.Service.Presence == installEvidenceAbsent && !s.MetadataPresent && s.Version == "" {
+		return installAdmissionDecision{State: installAdmissionFresh, Reason: "proven_absent"}, nil
+	}
+	if s.Roots[0].Presence != installEvidencePresent || s.Roots[1].Presence != installEvidencePresent || s.Current.Presence != installEvidencePresent || s.POSCurrent.Presence != installEvidencePresent || s.Registration.Presence != installEvidencePresent || s.Service.Presence != installEvidencePresent || !s.MetadataPresent {
+		return rejectInstallAdmission(installAdmissionPartial, "incomplete_footprints", nil)
+	}
+	if !validInstallAdmissionVersion(s.Version) {
+		return rejectInstallAdmission(installAdmissionUnknown, "metadata_invalid", nil)
+	}
+	versionRoot := filepath.Join(l.VersionsRoot, s.Version)
+	if !strings.EqualFold(s.Current.Target, versionRoot) {
+		return rejectInstallAdmission(installAdmissionPartial, "activation_mismatch", nil)
+	}
+	if s.Registration.Version != s.Version || !strings.EqualFold(s.Registration.Location, l.CurrentRoot) {
+		return rejectInstallAdmission(installAdmissionPartial, "registration_mismatch", nil)
+	}
+	expectedCommand := buildUninstallMetadata(l, m, time.Time{})["UninstallString"]
+	if !strings.EqualFold(s.Registration.Uninstall, expectedCommand) || (!strings.EqualFold(s.Registration.Quiet, expectedCommand) && !strings.EqualFold(s.Registration.Quiet, expectedCommand+" --remove-data")) {
+		return rejectInstallAdmission(installAdmissionPartial, "registration_command_mismatch", nil)
+	}
+	args := m.ServiceArgs
+	if len(args) == 0 {
+		args = []string{"service"}
+	}
+	if !sameWindowsIdentity(s.Service.Account, m.ServiceAccount) || !strings.EqualFold(s.Service.Binary, buildServiceBinaryPath(filepath.Join(versionRoot, "ManusTerminalSetup.exe"), args...)) {
+		return rejectInstallAdmission(installAdmissionPartial, "service_registration_mismatch", nil)
+	}
+	if (s.Service.State != svc.Running && s.Service.State != svc.Stopped) || (s.Service.State == svc.Running && s.Service.PID == 0) {
+		return rejectInstallAdmission(installAdmissionUnknown, "service_state_uncertain", nil)
+	}
+	// Never interpret a target-manifest mismatch as corruption of an older release.
+	if s.Version != m.Version {
+		return rejectInstallAdmission(installAdmissionUnknown, "transition_unproven", nil)
+	}
+	if !strings.EqualFold(s.POSCurrent.Target, l.POSVersionRoot) {
+		return rejectInstallAdmission(installAdmissionUnknown, "pos_transition_unproven", nil)
+	}
+	switch s.Payload {
+	case "equal":
+		return installAdmissionDecision{State: installAdmissionRepair, Reason: "same_candidate", Version: s.Version, VersionRoot: versionRoot}, nil
+	case "missing":
+		return rejectInstallAdmission(installAdmissionPartial, "payload_missing", nil)
+	case "different":
+		return rejectInstallAdmission(installAdmissionUnknown, "candidate_bytes_differ", nil)
+	default:
+		return rejectInstallAdmission(installAdmissionUnknown, "payload_unproven", nil)
+	}
+}
+
+func confirmInstallAdmission(m installerManifest, l runtimeLayout, observe func() (installAdmissionSnapshot, error)) (installAdmissionDecision, error) {
+	var sequence uint64
+	return verifyInstallAdmissionStep(m, l, nil, &sequence, func() error { return nil }, observe)
+}
+
+// The final observation follows all success callbacks. Nothing is emitted after a
+// successful revalidation and before the caller's first persistent effect.
+func verifyInstallAdmissionStep(m installerManifest, l runtimeLayout, sink installerCoreEventSink, sequence *uint64, preflight func() error, observe func() (installAdmissionSnapshot, error)) (installAdmissionDecision, error) {
+	if observe == nil {
+		return rejectInstallAdmission(installAdmissionUnknown, "observer_missing", nil)
+	}
+	var first installAdmissionSnapshot
+	var decision installAdmissionDecision
+	err := runCoreStep(sink, sequence, stepVerifyRequirements, func() error {
+		if preflight == nil {
+			var e error
+			decision, e = rejectInstallAdmission(installAdmissionUnknown, "preflight_missing", nil)
+			return e
+		}
+		if cause := preflight(); cause != nil {
+			var e error
+			decision, e = rejectInstallAdmission(installAdmissionUnknown, "preflight_failed", cause)
+			return e
+		}
+		var e error
+		first, e = observe()
+		if e != nil {
+			reason := "observation_failed"
+			var observation *installAdmissionError
+			if errors.As(e, &observation) {
+				reason = observation.Reason
+			}
+			decision, e = rejectInstallAdmission(installAdmissionUnknown, reason, e)
+			return e
+		}
+		decision, e = classifyInstallAdmission(m, l, first)
+		return e
+	})
+	if err != nil {
+		return decision, err
+	}
+	second, err := observe()
+	if err != nil {
+		decision, err = rejectInstallAdmission(installAdmissionUnknown, "revalidation_failed", err)
+	} else if first != second {
+		decision, err = rejectInstallAdmission(installAdmissionUnknown, "evidence_changed", nil)
+	}
+	if err != nil {
+		// The step-success callback already ran. Its state machine rejects a second
+		// terminal event for that step; use the existing installation-failure event.
+		emitCoreStep(sink, sequence, eventInstallFailed, stepVerifyRequirements, err)
+		return decision, err
+	}
+	return decision, nil
+}
+
+type installAdmissionExpectedFile struct {
+	Path   string
+	Size   int64
+	SHA256 string
+}
+
+// Read-only capability boundary. Fakes implement every method without native calls.
+type installAdmissionIO interface {
+	Path(string, string) (installAdmissionPath, error)
+	ReadFile(string) ([]byte, string, error)
+	HashFile(string) (int64, string, string, error)
+	Files(string) ([]string, error)
+	Registration(string) (installAdmissionRegistration, error)
+	Service(string) (installAdmissionService, error)
+	Candidate(installerManifest, runtimeLayout) ([]installAdmissionExpectedFile, string, error)
+}
+
+func observeInstallAdmission(m installerManifest, l runtimeLayout, api installAdmissionIO) (s installAdmissionSnapshot, err error) {
+	phase := "layout_unproven"
+	defer func() {
+		if err != nil {
+			err = &installAdmissionError{State: installAdmissionUnknown, Reason: phase, Cause: err}
+		}
+	}()
+	if api == nil {
+		return s, errors.New("admission_source_missing")
+	}
+	// Roots must be local, explicit paths. No UNC/device/ADS path or path authority.
+	for _, path := range []string{l.InstallRoot, l.POSInstallRoot, l.ProgramDataRoot, l.ConfigRoot, l.LogsRoot, l.StateRoot, l.CurrentRoot, l.POSCurrentRoot, l.VersionsRoot, l.POSVersionsRoot} {
+		if !admissionLocalPath(path) {
+			return s, errors.New("admission_layout_unsupported")
+		}
+	}
+	if !validInstallAdmissionVersion(m.Version) || !validInstallAdmissionVersion(m.PosVersion) || m.VersionFileName != "VERSION.json" {
+		return s, errors.New("admission_candidate_metadata_invalid")
+	}
+	if m.ServiceName != serviceName || !sameWindowsIdentity(m.ServiceAccount, "NT AUTHORITY\\LocalService") || l.RegistryKey != `Software\Microsoft\Windows\CurrentVersion\Uninstall\ManusPeripheralAgent` {
+		return s, errors.New("admission_system_scope_unsupported")
+	}
+	for _, pair := range [][2]string{{l.VersionsRoot, filepath.Join(l.InstallRoot, "versions")}, {l.CurrentRoot, filepath.Join(l.InstallRoot, "current")}, {l.VersionRoot, filepath.Join(l.VersionsRoot, m.Version)}, {l.ServiceExe, filepath.Join(l.VersionRoot, "ManusTerminalSetup.exe")}, {l.POSVersionsRoot, filepath.Join(l.POSInstallRoot, "versions")}, {l.POSCurrentRoot, filepath.Join(l.POSInstallRoot, "current")}, {l.POSVersionRoot, filepath.Join(l.POSVersionsRoot, m.PosVersion)}, {l.ConfigRoot, filepath.Join(l.ProgramDataRoot, "config")}, {l.LogsRoot, filepath.Join(l.ProgramDataRoot, "logs")}, {l.StateRoot, filepath.Join(l.ProgramDataRoot, "state")}} {
+		if !strings.EqualFold(pair[0], pair[1]) {
+			return s, errors.New("admission_layout_incoherent")
+		}
+	}
+	paths := []string{l.InstallRoot, l.POSInstallRoot, l.ProgramDataRoot, l.ConfigRoot, l.LogsRoot, l.StateRoot}
+	phase = "root_read"
+	for i, path := range paths {
+		s.Roots[i], err = api.Path(path, "")
+		if err != nil {
+			return s, err
+		}
+	}
+	phase = "activation_read"
+	s.Current, err = api.Path(l.CurrentRoot, l.VersionsRoot)
+	if err != nil {
+		return s, err
+	}
+	s.POSCurrent, err = api.Path(l.POSCurrentRoot, l.POSVersionsRoot)
+	if err != nil {
+		return s, err
+	}
+	phase = "registration_read"
+	s.Registration, err = api.Registration(l.RegistryKey)
+	if err != nil {
+		return s, err
+	}
+	phase = "service_read"
+	s.Service, err = api.Service(m.ServiceName)
+	if err != nil {
+		return s, err
+	}
+	fingerprint := sha256.New()
+	if s.Current.Presence == installEvidencePresent && s.Current.Target != "" {
+		phase = "metadata_read"
+		data, stamp, readErr := api.ReadFile(filepath.Join(s.Current.Target, m.VersionFileName))
+		if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
+			return s, readErr
+		}
+		if readErr == nil {
+			if stamp == "" {
+				return s, errors.New("metadata_identity_missing")
+			}
+			s.MetadataPresent = true
+			phase = "metadata_invalid"
+			s.Version, err = decodeInstallAdmissionVersion(data)
+			if err != nil {
+				return s, err
+			}
+			fmt.Fprintf(fingerprint, "metadata:%s:%x\n", stamp, sha256.Sum256(data))
+		}
+	}
+	// Retained configuration is never an active footprint, nor copied into diagnostics.
+	phase = "retained_config_read"
+	data, stamp, readErr := api.ReadFile(filepath.Join(l.ConfigRoot, "agent.config.local.json"))
+	if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
+		return s, readErr
+	}
+	if readErr == nil {
+		if stamp == "" {
+			return s, errors.New("retained_config_identity_missing")
+		}
+		phase = "retained_config_invalid"
+		var config map[string]json.RawMessage
+		if err = json.Unmarshal(data, &config); err != nil {
+			return s, err
+		}
+		if config == nil {
+			return s, errors.New("retained_config_object_required")
+		}
+		fmt.Fprintf(fingerprint, "retained:%s:%x\n", stamp, sha256.Sum256(data))
+	}
+	phase = "candidate_unproven"
+	expected, candidate, candidateErr := api.Candidate(m, l)
+	if candidateErr != nil {
+		return s, candidateErr
+	}
+	if len(expected) == 0 || candidate == "" {
+		return s, errors.New("candidate_inventory_incomplete")
+	}
+	phase = "candidate_inventory_invalid"
+	unique := map[string]bool{}
+	var expectedBytes int64
+	for _, file := range expected {
+		if !admissionLocalPath(file.Path) || (!pathWithinRoot(file.Path, l.VersionRoot) && !pathWithinRoot(file.Path, l.POSVersionRoot)) || file.Size < 0 || file.Size > 1<<30 || len(file.SHA256) != 64 || strings.Trim(file.SHA256, "0123456789abcdef") != "" || unique[strings.ToLower(file.Path)] {
+			return s, errors.New("candidate_inventory_invalid")
+		}
+		unique[strings.ToLower(file.Path)] = true
+		expectedBytes += file.Size
+	}
+	if len(expected) > 32768 || expectedBytes > 4<<30 {
+		return s, errors.New("candidate_inventory_limit")
+	}
+	s.CandidateFingerprint = candidate
+	if s.MetadataPresent && s.Version == m.Version && strings.EqualFold(s.Current.Target, l.VersionRoot) && strings.EqualFold(s.POSCurrent.Target, l.POSVersionRoot) {
+		phase = "payload_read"
+		s.Payload = "equal"
+		for _, file := range expected {
+			size, digest, identity, hashErr := api.HashFile(file.Path)
+			if errors.Is(hashErr, fs.ErrNotExist) {
+				s.Payload = "missing"
+				break
+			}
+			if hashErr != nil {
+				return s, hashErr
+			}
+			if identity == "" {
+				return s, errors.New("payload_identity_missing")
+			}
+			fmt.Fprintf(fingerprint, "%s:%d:%s:%s\n", file.Path, size, digest, identity)
+			if size != file.Size || digest != file.SHA256 {
+				s.Payload = "different"
+			}
+		}
+		if s.Payload != "missing" {
+			phase = "payload_inventory_read"
+			seen := map[string]bool{}
+			for _, root := range []string{l.VersionRoot, l.POSVersionRoot} {
+				paths, listErr := api.Files(root)
+				if listErr != nil {
+					return s, listErr
+				}
+				for _, path := range paths {
+					key := strings.ToLower(path)
+					if seen[key] {
+						return s, errors.New("duplicate_observed_file")
+					}
+					seen[key] = true
+					fmt.Fprintln(fingerprint, "entry:"+key)
+				}
+			}
+			if len(seen) != len(expected) {
+				s.Payload = "different"
+			}
+			for _, file := range expected {
+				if !seen[strings.ToLower(file.Path)] {
+					s.Payload = "different"
+				}
+			}
+		}
+	}
+	// Detect root/activation or registration changes during a potentially long hash scan.
+	phase = "path_revalidation_failed"
+	for i, path := range paths {
+		again, e := api.Path(path, "")
+		if e != nil {
+			return s, e
+		}
+		if again != s.Roots[i] {
+			return s, errors.New("observation_changed")
+		}
+	}
+	for _, check := range []struct {
+		path, versions string
+		expected       installAdmissionPath
+	}{{l.CurrentRoot, l.VersionsRoot, s.Current}, {l.POSCurrentRoot, l.POSVersionsRoot, s.POSCurrent}} {
+		again, e := api.Path(check.path, check.versions)
+		if e != nil {
+			return s, e
+		}
+		if again != check.expected {
+			return s, errors.New("activation_changed")
+		}
+	}
+	phase = "registration_revalidation_failed"
+	reg, e := api.Registration(l.RegistryKey)
+	if e != nil {
+		return s, e
+	}
+	if reg != s.Registration {
+		return s, errors.New("registration_changed")
+	}
+	phase = "service_revalidation_failed"
+	service, e := api.Service(m.ServiceName)
+	if e != nil {
+		return s, e
+	}
+	if service != s.Service {
+		return s, errors.New("service_changed")
+	}
+	s.Fingerprint = fmt.Sprintf("%x", fingerprint.Sum(nil))
+	return s, nil
+}
+
+func admissionLocalPath(path string) bool {
+	volume := filepath.VolumeName(path)
+	return filepath.IsAbs(path) && len(volume) == 2 && ((volume[0] >= 'a' && volume[0] <= 'z') || (volume[0] >= 'A' && volume[0] <= 'Z')) && volume[1] == ':' && !strings.ContainsAny(path[2:], ":\x00") && filepath.Clean(path) == path
+}
+
+type nativeInstallAdmissionIO struct{}
+
+func admissionReparse(info os.FileInfo) bool {
+	if data, ok := info.Sys().(*syscall.Win32FileAttributeData); ok {
+		return data.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0
+	}
+	return info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0
+}
+
+func admissionCheckParents(path string) error {
+	if !admissionLocalPath(path) {
+		return errors.New("nonlocal_admission_path")
+	}
+	for parent := filepath.Dir(path); ; parent = filepath.Dir(parent) {
+		info, err := os.Lstat(parent)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || admissionReparse(info) {
+			return errors.New("unexpected_admission_ancestor")
+		}
+		if parent == filepath.Dir(parent) {
+			break
+		}
+	}
+	return nil
+}
+
+func admissionHandleStamp(handle windows.Handle) (string, error) {
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		return "", err
+	}
+	// LastAccessTime is deliberately not an identity invariant of a read operation.
+	return fmt.Sprintf("%x:%x:%x:%x:%x:%x:%x:%x:%x:%x:%x", info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow, info.FileAttributes, info.FileSizeHigh, info.FileSizeLow, info.CreationTime.HighDateTime, info.CreationTime.LowDateTime, info.LastWriteTime.HighDateTime, info.LastWriteTime.LowDateTime, info.NumberOfLinks), nil
+}
+
+// Owned read-only handle; final path is checked before reading any bytes. No DELETE.
+func admissionOpen(path string, directory, reparse bool) (*os.File, string, error) {
+	if err := admissionCheckParents(path); err != nil {
+		return nil, "", err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, "", err
+	}
+	if (!reparse && admissionReparse(info)) || (!directory && !info.Mode().IsRegular()) {
+		return nil, "", errors.New("unexpected_admission_file_type")
+	}
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, "", err
+	}
+	access := uint32(windows.FILE_READ_ATTRIBUTES)
+	if !directory {
+		access |= windows.FILE_READ_DATA
+	}
+	h, err := windows.CreateFile(name, access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return nil, "", err
+	}
+	f := os.NewFile(uintptr(h), path)
+	if f == nil {
+		return nil, "", errors.Join(errors.New("invalid_admission_handle"), windows.CloseHandle(h))
+	}
+	fail := func(cause error) (*os.File, string, error) { return nil, "", errors.Join(cause, f.Close()) }
+	buffer := make([]uint16, 32768)
+	n, err := windows.GetFinalPathNameByHandle(h, &buffer[0], uint32(len(buffer)), 0)
+	if err != nil {
+		return fail(err)
+	}
+	if n == 0 || n >= uint32(len(buffer)) {
+		return fail(errors.New("admission_final_path_incomplete"))
+	}
+	final := windows.UTF16ToString(buffer[:n])
+	final = strings.TrimPrefix(final, `\\?\`)
+	if !strings.EqualFold(final, path) {
+		return fail(errors.New("admission_final_path_changed"))
+	}
+	stamp, err := admissionHandleStamp(h)
+	if err != nil {
+		return fail(err)
+	}
+	return f, stamp, nil
+}
+
+func (nativeInstallAdmissionIO) Path(path, versions string) (result installAdmissionPath, err error) {
+	if err = admissionCheckParents(path); err == nil {
+		_, err = os.Lstat(path)
+	}
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return result, err
+		}
+		// Absence is bound to the nearest existing, normal ancestor, not a bool.
+		for parent := filepath.Dir(path); ; parent = filepath.Dir(parent) {
+			f, stamp, e := admissionOpen(parent, true, false)
+			if e == nil {
+				closeErr := f.Close()
+				return installAdmissionPath{Presence: installEvidenceAbsent, Fingerprint: "absent:" + parent + ":" + stamp}, closeErr
+			}
+			if !errors.Is(e, fs.ErrNotExist) || parent == filepath.Dir(parent) {
+				return result, e
+			}
+		}
+	}
+	f, stamp, err := admissionOpen(path, true, versions != "")
+	if err != nil {
+		return result, err
+	}
+	defer func() { err = errors.Join(err, f.Close()) }()
+	info, err := os.Lstat(path)
+	if err != nil {
+		return result, err
+	}
+	result = installAdmissionPath{Presence: installEvidencePresent, Directory: info.IsDir(), Fingerprint: stamp}
+	if versions != "" && admissionReparse(info) {
+		var tag struct{ Attributes, Tag uint32 }
+		if unsafe.Sizeof(tag) != 8 {
+			return result, errors.New("attribute_tag_abi")
+		}
+		if err = windows.GetFileInformationByHandleEx(windows.Handle(f.Fd()), windows.FileAttributeTagInfo, (*byte)(unsafe.Pointer(&tag)), uint32(unsafe.Sizeof(tag))); err != nil {
+			return result, err
+		}
+		if tag.Tag != windows.IO_REPARSE_TAG_MOUNT_POINT {
+			return result, errors.New("unexpected_current_reparse")
+		}
+		target, e := os.Readlink(path)
+		if e != nil {
+			return result, e
+		}
+		target = filepath.Clean(target)
+		if !admissionLocalPath(target) || !strings.EqualFold(filepath.Dir(target), versions) || !validInstallAdmissionVersion(filepath.Base(target)) {
+			return result, errors.New("current_target_outside_versions")
+		}
+		resolved, e := (nativeInstallAdmissionIO{}).Path(target, "")
+		if e != nil {
+			return result, e
+		}
+		result.Target = target
+		result.Directory = resolved.Presence == installEvidencePresent && resolved.Directory
+		result.Fingerprint += ":target:" + resolved.Fingerprint
+	} else if versions != "" {
+		result.Target = path
+	} // A normal directory is not the installed activation junction.
+	return result, nil
+}
+
+func (nativeInstallAdmissionIO) ReadFile(path string) (data []byte, stamp string, err error) {
+	f, stamp, err := admissionOpen(path, false, false)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { err = errors.Join(err, f.Close()) }()
+	data, err = io.ReadAll(io.LimitReader(f, (1<<20)+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(data) > 1<<20 {
+		return nil, "", errors.New("admission_metadata_limit")
+	}
+	after, err := admissionHandleStamp(windows.Handle(f.Fd()))
+	if err != nil {
+		return nil, "", err
+	}
+	if after != stamp {
+		return nil, "", errors.New("admission_file_changed")
+	}
+	return data, stamp, nil
+}
+
+func admissionHash(reader io.Reader) (int64, string, error) {
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(reader, (1<<30)+1))
+	if err != nil {
+		return 0, "", err
+	}
+	if n > 1<<30 {
+		return 0, "", errors.New("admission_file_limit")
+	}
+	return n, fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func (nativeInstallAdmissionIO) HashFile(path string) (size int64, digest, stamp string, err error) {
+	f, stamp, err := admissionOpen(path, false, false)
+	if err != nil {
+		return 0, "", "", err
+	}
+	defer func() { err = errors.Join(err, f.Close()) }()
+	size, digest, err = admissionHash(f)
+	if err != nil {
+		return 0, "", "", err
+	}
+	after, err := admissionHandleStamp(windows.Handle(f.Fd()))
+	if err != nil {
+		return 0, "", "", err
+	}
+	if after != stamp {
+		return 0, "", "", errors.New("admission_payload_changed")
+	}
+	return size, digest, stamp, nil
+}
+
+func (nativeInstallAdmissionIO) Files(root string) ([]string, error) {
+	if err := admissionCheckParents(root); err != nil {
+		return nil, err
+	}
+	var files []string
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if admissionReparse(info) {
+			return errors.New("unexpected_payload_reparse")
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !info.Mode().IsRegular() || len(files) >= 32768 {
+			return errors.New("payload_inventory_unsupported")
+		}
+		files = append(files, path)
+		return nil
+	})
+	sort.Slice(files, func(i, j int) bool { return strings.ToLower(files[i]) < strings.ToLower(files[j]) })
+	return files, err
+}
+
+func (nativeInstallAdmissionIO) Registration(path string) (result installAdmissionRegistration, err error) {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE|registry.WOW64_64KEY)
+	if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
+		return installAdmissionRegistration{Presence: installEvidenceAbsent}, nil
+	}
+	if err != nil {
+		return result, err
+	}
+	defer func() { err = errors.Join(err, key.Close()) }()
+	result.Presence = installEvidencePresent
+	for name, destination := range map[string]*string{"DisplayVersion": &result.Version, "InstallLocation": &result.Location, "UninstallString": &result.Uninstall, "QuietUninstallString": &result.Quiet} {
+		*destination, _, err = key.GetStringValue(name)
+		if err != nil {
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func (nativeInstallAdmissionIO) Service(name string) (result installAdmissionService, err error) {
+	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return result, err
+	}
+	defer func() { err = errors.Join(err, windows.CloseServiceHandle(h)) }()
+	serviceName, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		return result, err
+	}
+	sh, err := windows.OpenService(h, serviceName, windows.SERVICE_QUERY_CONFIG|windows.SERVICE_QUERY_STATUS)
+	if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
+		return installAdmissionService{Presence: installEvidenceAbsent}, nil
+	}
+	if err != nil {
+		return result, err
+	}
+	s := mgr.Service{Name: name, Handle: sh}
+	defer func() { err = errors.Join(err, s.Close()) }()
+	status, err := s.Query()
+	if err != nil {
+		return result, err
+	}
+	config, err := s.Config()
+	if err != nil {
+		return result, err
+	}
+	return installAdmissionService{Presence: installEvidencePresent, Account: config.ServiceStartName, Binary: config.BinaryPathName, State: status.State, PID: status.ProcessId}, nil
+}
+
+func admissionRelativeFile(path string) (string, error) {
+	clean, err := safePOSRelativePath(filepath.FromSlash(path))
+	if err != nil {
+		return "", err
+	}
+	if clean != filepath.FromSlash(path) {
+		return "", errors.New("noncanonical_payload_name")
+	}
+	if strings.ContainsAny(clean, ":\x00<>\"|?*") {
+		return "", errors.New("unsupported_payload_name")
+	}
+	for _, part := range strings.Split(clean, string(filepath.Separator)) {
+		if part == "" || strings.TrimRight(part, " .") != part {
+			return "", errors.New("ambiguous_payload_name")
+		}
+	}
+	return clean, nil
+}
+
+func (api nativeInstallAdmissionIO) Candidate(m installerManifest, l runtimeLayout) ([]installAdmissionExpectedFile, string, error) {
+	if m.BundleRoot == "" || !strings.HasPrefix(m.BundleRoot, "assets/bundle/") || !fs.ValidPath(m.BundleRoot) || m.PosRoot != "assets/pos" {
+		return nil, "", errors.New("candidate_source_unsupported")
+	}
+	metadata, err := embeddedAssets.ReadFile(m.BundleRoot + "/" + m.VersionFileName)
+	if err != nil {
+		return nil, "", err
+	}
+	version, err := decodeInstallAdmissionVersion(metadata)
+	if err != nil {
+		return nil, "", err
+	}
+	if version != m.Version {
+		return nil, "", errors.New("candidate_version_mismatch")
+	}
+	files := map[string]installAdmissionExpectedFile{}
+	var total int64
+	add := func(path string, size int64, hash string) error {
+		key := strings.ToLower(path)
+		if _, ok := files[key]; ok {
+			return errors.New("duplicate_candidate_path")
+		}
+		total += size
+		if size < 0 || len(files) >= 32768 || total > 4<<30 {
+			return errors.New("candidate_inventory_limit")
+		}
+		files[key] = installAdmissionExpectedFile{Path: path, Size: size, SHA256: hash}
+		return nil
+	}
+	err = fs.WalkDir(embeddedAssets, m.BundleRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, e := admissionRelativeFile(strings.TrimPrefix(path, m.BundleRoot+"/"))
+		if e != nil {
+			return e
+		}
+		file, e := embeddedAssets.Open(path)
+		if e != nil {
+			return e
+		}
+		n, digest, e := admissionHash(file)
+		e = errors.Join(e, file.Close())
+		if e != nil {
+			return e
+		}
+		return add(filepath.Join(l.VersionRoot, relative), n, digest)
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	for _, required := range []string{m.VersionFileName, "runtime/node.exe", "app/main.js"} {
+		if _, ok := files[strings.ToLower(filepath.Join(l.VersionRoot, filepath.FromSlash(required)))]; !ok {
+			return nil, "", errors.New("candidate_agent_incomplete")
+		}
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return nil, "", err
+	}
+	n, digest, selfIdentity, err := api.HashFile(self)
+	if err != nil {
+		return nil, "", err
+	}
+	if err = add(l.ServiceExe, n, digest); err != nil {
+		return nil, "", err
+	}
+	pos, err := readEmbeddedPOSManifest(m)
+	if err != nil {
+		return nil, "", err
+	}
+	if pos.SchemaVersion != 1 || pos.PosVersion != m.PosVersion || pos.Executable != "Manus POS.exe" || pos.ShellConfig != "resources/manus-shell.config.json" {
+		return nil, "", errors.New("candidate_pos_contract_invalid")
+	}
+	for _, file := range pos.Files {
+		relative, e := admissionRelativeFile(file.Path)
+		if e != nil {
+			return nil, "", e
+		}
+		candidate, e := embeddedAssets.Open(m.PosRoot + "/" + filepath.ToSlash(relative))
+		if e != nil {
+			return nil, "", e
+		}
+		n, digest, e := admissionHash(candidate)
+		e = errors.Join(e, candidate.Close())
+		if e != nil {
+			return nil, "", e
+		}
+		if n != file.Size || digest != strings.ToLower(file.SHA256) {
+			return nil, "", errors.New("candidate_pos_integrity_mismatch")
+		}
+		if e = add(filepath.Join(l.POSVersionRoot, relative), n, digest); e != nil {
+			return nil, "", e
+		}
+	}
+	err = fs.WalkDir(embeddedAssets, m.PosRoot, func(path string, entry fs.DirEntry, e error) error {
+		if e != nil {
+			return e
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, e := admissionRelativeFile(strings.TrimPrefix(path, m.PosRoot+"/"))
+		if e != nil {
+			return e
+		}
+		if _, ok := files[strings.ToLower(filepath.Join(l.POSVersionRoot, relative))]; !ok {
+			return errors.New("candidate_pos_inventory_incomplete")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	for _, required := range []string{"Manus POS.exe", "resources/app.asar", "resources/manus-shell.config.json"} {
+		if _, ok := files[strings.ToLower(filepath.Join(l.POSVersionRoot, filepath.FromSlash(required)))]; !ok {
+			return nil, "", errors.New("candidate_pos_incomplete")
+		}
+	}
+	keys := make([]string, 0, len(files))
+	for key := range files {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	fingerprint := sha256.New()
+	fmt.Fprintln(fingerprint, selfIdentity)
+	result := make([]installAdmissionExpectedFile, 0, len(files))
+	for _, key := range keys {
+		file := files[key]
+		result = append(result, file)
+		fmt.Fprintf(fingerprint, "%s:%d:%s\n", key, file.Size, file.SHA256)
+	}
+	return result, fmt.Sprintf("%x", fingerprint.Sum(nil)), nil
+}
+
 func currentInstalledVersion(manifest installerManifest, layout runtimeLayout) (string, string) {
 	versionPath := filepath.Join(layout.CurrentRoot, manifest.VersionFileName)
 	if version, ok := readInstalledVersion(versionPath); ok {
@@ -2427,21 +3346,7 @@ func writeUninstallMetadata(layout runtimeLayout, manifest installerManifest) er
 	}
 	defer key.Close()
 
-	uninstallExe := filepath.Join(layout.CurrentRoot, "ManusTerminalSetup.exe")
-	uninstallString := fmt.Sprintf("%s uninstall", syscall.EscapeArg(uninstallExe))
-	quietString := fmt.Sprintf("%s uninstall --remove-data", syscall.EscapeArg(uninstallExe))
-
-	values := map[string]string{
-		"DisplayName":          manifest.DisplayName,
-		"DisplayVersion":       manifest.Version,
-		"Publisher":            publisher,
-		"InstallLocation":      layout.CurrentRoot,
-		"InstallDate":          time.Now().Format("20060102"),
-		"UninstallString":      uninstallString,
-		"QuietUninstallString": quietString,
-		"DisplayIcon":          uninstallExe,
-	}
-
+	values := buildUninstallMetadata(layout, manifest, time.Now())
 	for name, value := range values {
 		if err := key.SetStringValue(name, value); err != nil {
 			return err
@@ -2454,6 +3359,23 @@ func writeUninstallMetadata(layout runtimeLayout, manifest installerManifest) er
 		return err
 	}
 	return nil
+}
+
+// buildUninstallMetadata is pure; neither registered command requests data removal.
+// Install, repair and update share this policy through writeUninstallMetadata.
+func buildUninstallMetadata(layout runtimeLayout, manifest installerManifest, installedAt time.Time) map[string]string {
+	uninstallExe := filepath.Join(layout.CurrentRoot, "ManusTerminalSetup.exe")
+	uninstallString := fmt.Sprintf("%s uninstall", syscall.EscapeArg(uninstallExe))
+	return map[string]string{
+		"DisplayName":          manifest.DisplayName,
+		"DisplayVersion":       manifest.Version,
+		"Publisher":            publisher,
+		"InstallLocation":      layout.CurrentRoot,
+		"InstallDate":          installedAt.Format("20060102"),
+		"UninstallString":      uninstallString,
+		"QuietUninstallString": uninstallString,
+		"DisplayIcon":          uninstallExe,
+	}
 }
 
 func deleteUninstallMetadata(manifest installerManifest) error {

@@ -39,7 +39,7 @@ const rochiSerial = {
   },
 };
 
-const buildRuntime = (capture: { port?: RochiA01eSimulatorPort } = {}) => {
+const buildRuntime = (capture: { port?: RochiA01eSimulatorPort } = {}, monotonicNow?: () => number) => {
   const logs = new LogsService();
   const events = new EventsService();
   const devices = new DevicesService(
@@ -63,7 +63,8 @@ const buildRuntime = (capture: { port?: RochiA01eSimulatorPort } = {}) => {
     devices,
     logs,
     events,
-    createRochiA01eSimulatorFactory(capture)
+    createRochiA01eSimulatorFactory(capture),
+    monotonicNow
   );
   return { scale, configured, capture, controller, logs, scaleController: new ScaleController(scale, {
     submitRealObservation: async () => ({ available: false }),
@@ -255,9 +256,9 @@ test("commercial capture logs a safe local rejection stage for non-REAL, non-KG 
   for (const [index, scenario] of rejectedReadings.entries()) {
     const logs = new LogsService();
     const controller = new ScaleController({
-      getCurrentWeight: async () => ({ deviceId: "scale-safe-id", weight: 0.245, unit: scenario.unit,
+      acquireForCapture: async () => ({ reading: { deviceId: "scale-safe-id", weight: 0.245, unit: scenario.unit,
         stable: null, source: scenario.source, unitVerified: scenario.unitVerified,
-        stabilityVerified: false, timestamp: "2026-10-08T00:00:00.000Z" }),
+        stabilityVerified: false, timestamp: "2026-10-08T00:00:00.000Z" }, acceptedMonoMs: 1, frameMonoMs: 2, requestToFrameMs: 1 }),
     } as never, { submitSaleCaptureObservation: async () => assert.fail("rejected reading must not be submitted") } as never, logs);
 
     await assert.rejects(() => controller.captureForSale({
@@ -274,9 +275,9 @@ test("commercial capture logs a safe local rejection stage for non-REAL, non-KG 
 test("commercial capture rejects an exact REAL zero with a semantic code before observation submission", async () => {
   const logs = new LogsService();
   const controller = new ScaleController({
-    getCurrentWeight: async () => ({ deviceId: "scale-safe-id", weight: 0, unit: "kg",
+    acquireForCapture: async () => ({ reading: { deviceId: "scale-safe-id", weight: 0, unit: "kg",
       stable: null, source: "REAL", unitVerified: true, stabilityVerified: false,
-      timestamp: "2026-10-08T00:00:00.000Z" }),
+      timestamp: "2026-10-08T00:00:00.000Z" }, acceptedMonoMs: 1, frameMonoMs: 2, requestToFrameMs: 1 }),
   } as never, { submitSaleCaptureObservation: async () => assert.fail("zero weight must not be submitted") } as never, logs);
 
   await assert.rejects(() => controller.captureForSale({
@@ -290,4 +291,210 @@ test("commercial capture rejects an exact REAL zero with a semantic code before 
   assert.equal(events.some((entry) => entry.event === "capture.local_validation_passed"), false);
   assert.equal(events.some((entry) => entry.event === "capture.observation_send_started"), false);
   assert.equal("weight" in (rejected?.metadata ?? {}), false);
+});
+
+// --- Exclusive commercial acquisition (EXCLUSIVE_ACQUISITION_V1) ---
+
+const withRealMode = async (run: () => Promise<void>) => {
+  const previousMode = process.env.PERIPHERALS_MODE;
+  process.env.PERIPHERALS_MODE = "REAL";
+  try { await run(); } finally {
+    if (previousMode === undefined) delete process.env.PERIPHERALS_MODE;
+    else process.env.PERIPHERALS_MODE = previousMode;
+  }
+};
+
+/** Deterministic monotonic clock: every reading advances by `step` ms. */
+const steppingClock = (start = 1_000, step = 5) => {
+  let value = start;
+  return () => { value += step; return value; };
+};
+
+/** Simulator port whose close completes only when the test releases it. */
+class DeferredClosePort extends RochiA01eSimulatorPort {
+  private readonly pendingCloses: Array<() => void> = [];
+  override close(callback: (error?: Error | null) => void): void {
+    this.closeCount += 1;
+    this.pendingCloses.push(() => { this.isOpen = false; this.emitClose(); callback(); });
+  }
+  releaseClose(): void { this.pendingCloses.shift()?.(); }
+  get pendingCloseCount(): number { return this.pendingCloses.length; }
+}
+
+const verifyKg = (runtime: ReturnType<typeof buildRuntime>) => runtime.controller.update(runtime.configured.id, {
+  metadata: { unitVerification: { unit: "KG", method: "OPERATOR_CONFIRMATION", verifiedAt: new Date().toISOString() } },
+});
+
+const flush = async () => { for (let i = 0; i < 10; i += 1) await Promise.resolve(); };
+
+const captureController = (runtime: ReturnType<typeof buildRuntime>, submitted: Record<string, unknown>[]) =>
+  new ScaleController(runtime.scale, {
+    submitSaleCaptureObservation: async (input: Record<string, unknown>) => {
+      submitted.push(input);
+      return { captureId: input.captureId, status: "READY", expiresAt: new Date(Date.now() + 60_000).toISOString() };
+    },
+  } as never, runtime.logs);
+
+test("commercial capture declares EXCLUSIVE_ACQUISITION_V1 with monotonic evidence independent of the wall clock", async () => {
+  await withRealMode(async () => {
+    const runtime = buildRuntime({}, steppingClock());
+    verifyKg(runtime);
+    const submitted: Record<string, unknown>[] = [];
+    const controller = captureController(runtime, submitted);
+    const resultPromise = controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000101" });
+    runtime.capture.port!.emitFrame("000.245\r\n");
+    const result = await resultPromise;
+    assert.equal(result.status, "READY");
+    assert.equal(submitted.length, 1);
+    assert.equal(submitted[0].captureProtocol, "EXCLUSIVE_ACQUISITION_V1");
+    const acquisition = submitted[0].acquisition as { requestToFrameMs: number; frameAgeMs: number };
+    assert.deepEqual(Object.keys(acquisition).sort(), ["frameAgeMs", "requestToFrameMs"]);
+    // accepted=1005, open=1015 (after resolveScale), frame=1020, submit measured at 1025.
+    assert.equal(Number.isSafeInteger(acquisition.requestToFrameMs) && acquisition.requestToFrameMs > 0, true);
+    assert.equal(Number.isSafeInteger(acquisition.frameAgeMs) && acquisition.frameAgeMs >= 0, true);
+    // The wall-clock observedAt is still sent for audit, unchanged from the frame timestamp.
+    assert.equal(submitted[0].observedAt, result.reading.observedAt);
+    const readLog = runtime.logs.list().find((entry) => entry.event === "capture.real_read_completed")!;
+    assert.equal(readLog.metadata.captureProtocol, "EXCLUSIVE_ACQUISITION_V1");
+    assert.equal(readLog.metadata.requestToFrameMs, acquisition.requestToFrameMs);
+    assert.equal(JSON.stringify(runtime.logs.list()).includes("0.245"), false);
+  });
+});
+
+test("commercial capture never receives a frame read before the capture request, even while that port is closing", async () => {
+  await withRealMode(async () => {
+    const port = new DeferredClosePort();
+    const runtime = buildRuntime({ port }, steppingClock());
+    verifyKg(runtime);
+    const submitted: Record<string, unknown>[] = [];
+    const controller = captureController(runtime, submitted);
+
+    // An administrative read receives its frame; its serial session is still closing.
+    const adminRead = runtime.scale.getCurrentWeight({ deviceId: runtime.configured.id });
+    port.emitFrame("000.111\r\n");
+    await flush();
+    assert.equal(port.pendingCloseCount, 1);
+
+    // The capture arrives inside the close window of that earlier read.
+    const capturePromise = controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000102" });
+    await flush();
+    assert.equal(port.openCount, 1, "capture must wait for the earlier session to close");
+
+    port.releaseClose();
+    assert.equal((await adminRead).weight, 0.111);
+    await flush();
+    assert.equal(port.openCount, 2, "capture opens a new serial session of its own");
+    port.emitFrame("000.222\r\n");
+    await flush();
+    port.releaseClose();
+    const result = await capturePromise;
+    assert.equal(result.reading.weight, 0.222);
+    assert.equal(submitted.length, 1);
+    assert.equal(submitted[0].weight, 0.222);
+  });
+});
+
+test("an administrative read issued during a capture never joins or consumes the capture frame", async () => {
+  await withRealMode(async () => {
+    const port = new DeferredClosePort();
+    const runtime = buildRuntime({ port }, steppingClock());
+    verifyKg(runtime);
+    const submitted: Record<string, unknown>[] = [];
+    const controller = captureController(runtime, submitted);
+
+    const capturePromise = controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000103" });
+    assert.equal(port.openCount, 1);
+    const adminRead = runtime.scale.getCurrentWeight({ deviceId: runtime.configured.id });
+    port.emitFrame("000.300\r\n");
+    await flush();
+    port.releaseClose();
+    const result = await capturePromise;
+    assert.equal(result.reading.weight, 0.3);
+
+    await flush();
+    assert.equal(port.openCount, 2, "the administrative read opens its own session after the capture");
+    port.emitFrame("000.400\r\n");
+    await flush();
+    port.releaseClose();
+    assert.equal((await adminRead).weight, 0.4);
+    assert.equal(submitted.length, 1);
+  });
+});
+
+test("a second simultaneous capture (double click) is rejected as SCALE_CAPTURE_BUSY without a read or submission", async () => {
+  await withRealMode(async () => {
+    const runtime = buildRuntime({}, steppingClock());
+    verifyKg(runtime);
+    const submitted: Record<string, unknown>[] = [];
+    const controller = captureController(runtime, submitted);
+
+    const first = controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000104" });
+    await assert.rejects(() => controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000105" }),
+      /SCALE_CAPTURE_BUSY/);
+    runtime.capture.port!.emitFrame("000.245\r\n");
+    await first;
+    assert.equal(submitted.length, 1);
+    assert.equal(submitted[0].captureId, "00000000-0000-4000-8000-000000000104");
+    assert.equal(runtime.capture.port!.openCount, 1);
+    const busy = runtime.logs.list().find((entry) => entry.event === "capture.failed"
+      && entry.metadata.captureId === "00000000-0000-4000-8000-000000000105");
+    assert.equal(busy?.metadata.errorCode, "SCALE_CAPTURE_BUSY");
+
+    // Once the first capture finishes, the next capture reads a new frame.
+    const next = controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000106" });
+    runtime.capture.port!.emitFrame("000.500\r\n");
+    assert.equal((await next).reading.weight, 0.5);
+    assert.equal(runtime.capture.port!.openCount, 2);
+  });
+});
+
+test("serial parser errors and disconnects fail the capture closed and release the scale for the next capture", async () => {
+  await withRealMode(async () => {
+    const runtime = buildRuntime({}, steppingClock());
+    verifyKg(runtime);
+    const submitted: Record<string, unknown>[] = [];
+    const controller = captureController(runtime, submitted);
+
+    const failing = controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000107" });
+    // First line is synchronization noise; the second invalid frame is a real parser error.
+    runtime.capture.port!.emitFrame("noise\r\nBAD-FRAME\r\n");
+    await assert.rejects(() => failing, /ROCHI parser error/);
+    const failure = runtime.logs.list().find((entry) => entry.event === "capture.failed"
+      && entry.metadata.captureId === "00000000-0000-4000-8000-000000000107");
+    assert.equal(failure?.metadata.errorCode, "REAL_SCALE_READ_FAILED");
+    assert.equal(submitted.length, 0);
+
+    const recovered = controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000108" });
+    runtime.capture.port!.emitFrame("000.245\r\n");
+    assert.equal((await recovered).status, "READY");
+    assert.equal(submitted.length, 1);
+  });
+});
+
+test("a port that cannot open (disconnected scale) rejects the capture without submission", async () => {
+  await withRealMode(async () => {
+    class DisconnectedPort extends RochiA01eSimulatorPort {
+      override open(callback: (error?: Error | null) => void): void { this.openCount += 1; callback(new Error("COM port not found")); }
+    }
+    const runtime = buildRuntime({ port: new DisconnectedPort() }, steppingClock());
+    verifyKg(runtime);
+    const submitted: Record<string, unknown>[] = [];
+    const controller = captureController(runtime, submitted);
+    await assert.rejects(() => controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000109" }),
+      /COM port not found/);
+    assert.equal(submitted.length, 0);
+    await assert.rejects(() => controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000110" }),
+      /COM port not found/, "the lane is released after a failed open");
+  });
+});
+
+test("a capture with no exclusive acquisition evidence is never submitted", async () => {
+  const logs = new LogsService();
+  const controller = new ScaleController({
+    acquireForCapture: async () => ({ reading: { deviceId: "scale-safe-id", weight: 0.245, unit: "kg",
+      stable: null, source: "REAL", unitVerified: true, stabilityVerified: false,
+      timestamp: "2026-10-08T00:00:00.000Z" } }),
+  } as never, { submitSaleCaptureObservation: async () => assert.fail("must not submit without evidence") } as never, logs);
+  await assert.rejects(() => controller.captureForSale({ captureId: "00000000-0000-4000-8000-000000000111" }),
+    /SCALE_ACQUISITION_EVIDENCE_MISSING/);
 });

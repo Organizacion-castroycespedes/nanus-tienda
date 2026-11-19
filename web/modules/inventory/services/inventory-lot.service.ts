@@ -26,6 +26,9 @@ export type InventoryLotResponse = {
   isLegacy: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Solo en `GET /inventory/lots` (contrato aditivo). */
+  productName?: string | null;
+  productSku?: string | null;
 };
 
 export type InventoryLotBalanceResponse = {
@@ -41,6 +44,9 @@ export type InventoryLotBalanceResponse = {
   lastMovementAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Solo en `GET /inventory/lot-balances` (contrato aditivo). */
+  productName?: string | null;
+  productSku?: string | null;
 };
 
 export type ListInventoryLotsParams = {
@@ -189,5 +195,56 @@ export const getLotReconciliationDiscrepancies = (
 ) =>
   apiClient<InventoryLotDiscrepancy[]>(
     `/inventory/lot-reconciliation/discrepancies${buildQuery(params)}`,
+    { headers }
+  );
+
+export type InventoryLotTraceabilityLocation = {
+  balanceId: string;
+  locationId: string | null;
+  locationCode: string | null;
+  locationName: string | null;
+  locationIsActive: boolean | null;
+  quantityOnHand: number;
+  quantityReserved: number;
+  quantityAvailable: number;
+  lastMovementAt: string | null;
+};
+
+export type InventoryLotTraceabilityPurchase = {
+  purchaseId: string;
+  supplierName: string | null;
+  supplierInvoiceNumber: string | null;
+  supplierInvoiceDate: string | null;
+  receivedQuantity: number;
+  unitCost: number | null;
+  firstReceivedAt: string | null;
+  isOrigin: boolean;
+};
+
+export type InventoryLotTraceabilityMovement = {
+  id: string;
+  occurredAt: string;
+  type: "IN" | "OUT";
+  quantity: number;
+  referenceType: string | null;
+  referenceTable: string | null;
+  referenceId: string | null;
+  locationCode: string | null;
+  locationName: string | null;
+  documentLabel: string | null;
+};
+
+export type InventoryLotTraceabilityResponse = {
+  lotId: string;
+  locations: InventoryLotTraceabilityLocation[];
+  purchases: InventoryLotTraceabilityPurchase[];
+  movements: InventoryLotTraceabilityMovement[];
+  movementsTruncated: boolean;
+};
+
+/** Trazabilidad de solo lectura del lote: ubicaciones, compras y movimientos. */
+export const getInventoryLotTraceability = (lotId: string, headers?: HeadersInit) =>
+  apiClient<InventoryLotTraceabilityResponse>(
+    `/inventory/lots/${encodeURIComponent(lotId)}/traceability`,
     { headers }
   );

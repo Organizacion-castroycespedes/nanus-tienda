@@ -20,6 +20,8 @@ type InventoryLotBalanceRow = QueryResultRow & {
   last_movement_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  product_name?: string | null;
+  product_sku?: string | null;
 };
 
 export type InventoryLotBalanceFilters = {
@@ -144,6 +146,12 @@ export class InventoryLotBalanceRepository {
         : null,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
+      ...("product_name" in row
+        ? {
+            productName: row.product_name ?? null,
+            productSku: row.product_sku ?? null,
+          }
+        : {}),
     });
   }
 
@@ -193,11 +201,16 @@ export class InventoryLotBalanceRepository {
     const result = await this.query<InventoryLotBalanceRow>(
       `
       SELECT
-        ${this.aliasedSelectColumns}
+        ${this.aliasedSelectColumns},
+        product.name AS product_name,
+        product.sku AS product_sku
       FROM inventory_lot_balances AS balance
       INNER JOIN inventory_lots AS lot
         ON lot.id = balance.lot_id
        AND lot.tenant_id = balance.tenant_id
+      LEFT JOIN products AS product
+        ON product.id = balance.product_id
+       AND product.tenant_id = balance.tenant_id
       WHERE ${where.join("\n        AND ")}
       ORDER BY balance.branch_id ASC, balance.product_id ASC, lot.expiration_date ASC NULLS LAST, balance.created_at ASC
       `,

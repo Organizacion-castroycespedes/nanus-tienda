@@ -23,6 +23,8 @@ type InventoryLotRow = QueryResultRow & {
   is_legacy: boolean;
   created_at: Date | string;
   updated_at: Date | string;
+  product_name?: string | null;
+  product_sku?: string | null;
 };
 
 export type InventoryLotFilters = {
@@ -42,6 +44,51 @@ export type ProductLotPolicy = {
   tenant_id: string;
   requires_expiration: boolean;
 };
+
+export type InventoryLotTraceabilityLocation = {
+  balanceId: string;
+  locationId: string | null;
+  locationCode: string | null;
+  locationName: string | null;
+  locationIsActive: boolean | null;
+  quantityOnHand: number;
+  quantityReserved: number;
+  quantityAvailable: number;
+  lastMovementAt: Date | null;
+};
+
+export type InventoryLotTraceabilityPurchase = {
+  purchaseId: string;
+  supplierName: string | null;
+  supplierInvoiceNumber: string | null;
+  supplierInvoiceDate: Date | null;
+  receivedQuantity: number;
+  unitCost: number | null;
+  firstReceivedAt: Date | null;
+  isOrigin: boolean;
+};
+
+export type InventoryLotTraceabilityMovement = {
+  id: string;
+  occurredAt: Date;
+  type: "IN" | "OUT";
+  quantity: number;
+  referenceType: string | null;
+  referenceTable: string | null;
+  referenceId: string | null;
+  locationCode: string | null;
+  locationName: string | null;
+  documentLabel: string | null;
+};
+
+export type InventoryLotTraceability = {
+  locations: InventoryLotTraceabilityLocation[];
+  purchases: InventoryLotTraceabilityPurchase[];
+  movements: InventoryLotTraceabilityMovement[];
+  movementsTruncated: boolean;
+};
+
+export const INVENTORY_LOT_TRACEABILITY_MOVEMENT_LIMIT = 200;
 
 type CreateInventoryLotData = InventoryLotProps;
 
@@ -121,6 +168,12 @@ export class InventoryLotRepository {
       isLegacy: row.is_legacy,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
+      ...("product_name" in row
+        ? {
+            productName: row.product_name ?? null,
+            productSku: row.product_sku ?? null,
+          }
+        : {}),
     });
   }
 
@@ -179,16 +232,195 @@ export class InventoryLotRepository {
     const result = await this.query<InventoryLotRow>(
       `
       SELECT
-        ${this.selectColumns}
-      FROM inventory_lots
-      WHERE ${where.join("\n        AND ")}
-      ORDER BY branch_id ASC, product_id ASC, expiration_date ASC NULLS LAST, received_at ASC
+        lot.*,
+        product.name AS product_name,
+        product.sku AS product_sku
+      FROM (
+        SELECT
+          ${this.selectColumns}
+        FROM inventory_lots
+        WHERE ${where.join("\n          AND ")}
+      ) AS lot
+      LEFT JOIN products AS product
+        ON product.id = lot.product_id
+       AND product.tenant_id = lot.tenant_id
+      ORDER BY lot.branch_id ASC, lot.product_id ASC, lot.expiration_date ASC NULLS LAST, lot.received_at ASC
       `,
       params,
       client
     );
 
     return (result.rows ?? []).map((row) => this.mapRowToEntity(row));
+  }
+
+  /**
+   * Trazabilidad de solo lectura de un lote: saldos por ubicación, compras que
+   * lo alimentaron y movimientos vinculados (change
+   * modernizar-inventario-lotes-ubicaciones, D14). Todas las uniones filtran
+   * por `tenant_id`.
+   */
+  async findTraceability(
+    tenantId: string,
+    lot: Pick<InventoryLotEntity, "id" | "productId" | "purchaseId">,
+    client?: PoolClient
+  ): Promise<InventoryLotTraceability> {
+    const locationsResult = await this.query<QueryResultRow>(
+      `
+      SELECT
+        balance.id AS balance_id,
+        balance.location_id,
+        location.code AS location_code,
+        location.name AS location_name,
+        location.is_active AS location_is_active,
+        balance.quantity_on_hand,
+        balance.quantity_reserved,
+        balance.quantity_available,
+        balance.last_movement_at
+      FROM inventory_lot_balances AS balance
+      LEFT JOIN inventory_locations AS location
+        ON location.id = balance.location_id
+       AND location.tenant_id = balance.tenant_id
+      WHERE balance.tenant_id = $1
+        AND balance.lot_id = $2
+      ORDER BY balance.quantity_available DESC, location.code ASC NULLS LAST
+      `,
+      [tenantId, lot.id],
+      client
+    );
+
+    const purchasesResult = await this.query<QueryResultRow>(
+      `
+      WITH linked AS (
+        SELECT
+          movement.reference_id AS purchase_id,
+          SUM(link.quantity) AS received_quantity,
+          MIN(movement.created_at) AS first_received_at
+        FROM stock_movement_lots AS link
+        INNER JOIN stock_movements AS movement
+          ON movement.id = link.stock_movement_id
+         AND movement.tenant_id = link.tenant_id
+        WHERE link.tenant_id = $1
+          AND link.lot_id = $2
+          AND movement.type = 'IN'
+          AND movement.reference_type = 'PURCHASE'
+        GROUP BY movement.reference_id
+      ), purchase_ids AS (
+        SELECT purchase_id FROM linked
+        UNION
+        SELECT $4::uuid WHERE $4::uuid IS NOT NULL
+      )
+      SELECT
+        purchase.id AS purchase_id,
+        supplier.name AS supplier_name,
+        purchase.supplier_invoice_number,
+        purchase.supplier_invoice_date,
+        COALESCE(linked.received_quantity, 0) AS received_quantity,
+        (
+          SELECT AVG(item.cost)
+          FROM purchase_items AS item
+          WHERE item.purchase_id = purchase.id
+            AND item.product_id = $3
+        ) AS unit_cost,
+        linked.first_received_at,
+        (purchase.id = $4::uuid) AS is_origin
+      FROM purchase_ids
+      INNER JOIN purchases AS purchase
+        ON purchase.id = purchase_ids.purchase_id
+       AND purchase.tenant_id = $1
+      LEFT JOIN linked ON linked.purchase_id = purchase.id
+      LEFT JOIN suppliers AS supplier
+        ON supplier.id = purchase.supplier_id
+       AND supplier.tenant_id = purchase.tenant_id
+      ORDER BY linked.first_received_at ASC NULLS FIRST
+      `,
+      [tenantId, lot.id, lot.productId, lot.purchaseId ?? null],
+      client
+    );
+
+    const movementsResult = await this.query<QueryResultRow>(
+      `
+      SELECT
+        link.id,
+        movement.created_at AS occurred_at,
+        movement.type,
+        link.quantity,
+        movement.reference_type,
+        movement.reference_table,
+        movement.reference_id,
+        location.code AS location_code,
+        location.name AS location_name,
+        CASE
+          WHEN movement.reference_type = 'PURCHASE' THEN purchase.supplier_invoice_number
+          ELSE NULL
+        END AS document_label
+      FROM stock_movement_lots AS link
+      INNER JOIN stock_movements AS movement
+        ON movement.id = link.stock_movement_id
+       AND movement.tenant_id = link.tenant_id
+      LEFT JOIN inventory_locations AS location
+        ON location.id = link.location_id
+       AND location.tenant_id = link.tenant_id
+      LEFT JOIN purchases AS purchase
+        ON movement.reference_type = 'PURCHASE'
+       AND purchase.tenant_id = movement.tenant_id
+       AND purchase.id = movement.reference_id
+      WHERE link.tenant_id = $1
+        AND link.lot_id = $2
+      ORDER BY movement.created_at DESC, link.id DESC
+      LIMIT $3
+      `,
+      [tenantId, lot.id, INVENTORY_LOT_TRACEABILITY_MOVEMENT_LIMIT + 1],
+      client
+    );
+
+    const toDate = (value: unknown) =>
+      value === null || value === undefined ? null : new Date(value as string);
+    const toNumber = (value: unknown) => Number(value ?? 0);
+    const movementRows = movementsResult.rows ?? [];
+
+    return {
+      locations: (locationsResult.rows ?? []).map((row) => ({
+        balanceId: row.balance_id,
+        locationId: row.location_id ?? null,
+        locationCode: row.location_code ?? null,
+        locationName: row.location_name ?? null,
+        locationIsActive:
+          row.location_is_active === undefined ? null : row.location_is_active,
+        quantityOnHand: toNumber(row.quantity_on_hand),
+        quantityReserved: toNumber(row.quantity_reserved),
+        quantityAvailable: toNumber(row.quantity_available),
+        lastMovementAt: toDate(row.last_movement_at),
+      })),
+      purchases: (purchasesResult.rows ?? []).map((row) => ({
+        purchaseId: row.purchase_id,
+        supplierName: row.supplier_name ?? null,
+        supplierInvoiceNumber: row.supplier_invoice_number ?? null,
+        supplierInvoiceDate: toDate(row.supplier_invoice_date),
+        receivedQuantity: toNumber(row.received_quantity),
+        unitCost:
+          row.unit_cost === null || row.unit_cost === undefined
+            ? null
+            : Number(row.unit_cost),
+        firstReceivedAt: toDate(row.first_received_at),
+        isOrigin: Boolean(row.is_origin),
+      })),
+      movements: movementRows
+        .slice(0, INVENTORY_LOT_TRACEABILITY_MOVEMENT_LIMIT)
+        .map((row) => ({
+          id: row.id,
+          occurredAt: new Date(row.occurred_at),
+          type: row.type,
+          quantity: toNumber(row.quantity),
+          referenceType: row.reference_type ?? null,
+          referenceTable: row.reference_table ?? null,
+          referenceId: row.reference_id ?? null,
+          locationCode: row.location_code ?? null,
+          locationName: row.location_name ?? null,
+          documentLabel: row.document_label ?? null,
+        })),
+      movementsTruncated:
+        movementRows.length > INVENTORY_LOT_TRACEABILITY_MOVEMENT_LIMIT,
+    };
   }
 
   async findById(

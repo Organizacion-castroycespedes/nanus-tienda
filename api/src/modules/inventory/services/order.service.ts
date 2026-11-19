@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import crypto from "node:crypto";
 import type { PoolClient } from "pg";
@@ -15,6 +17,7 @@ import type { LinePricePreview } from "../../pricing/pricing.types";
 import { OrderItemEntity } from "../entities/order-item.entity";
 import { OrderEntity, type OrderStatus, type OrderType } from "../entities/order.entity";
 import { SaleService } from "./sale.service";
+import { ProductSerialService } from "../serials/product-serial.service";
 import {
   StockMovementService,
   type InventoryContext,
@@ -26,6 +29,42 @@ import {
   type BranchScopedActor,
   type BranchScopedFilters,
 } from "../utils/access";
+
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+};
+
+const normalizeOrderDeliveryIdempotencyKey = (value: string | string[] | undefined) => {
+  if (Array.isArray(value)) {
+    throw new BadRequestException("Idempotency-Key must be sent once");
+  }
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new BadRequestException("Idempotency-Key is required");
+  }
+  if (!/^[A-Za-z0-9._~-]{1,128}$/.test(normalized)) {
+    throw new BadRequestException("Idempotency-Key is invalid");
+  }
+  return normalized;
+};
+
+type OrderDeliveryIdempotencyRow = {
+  request_hash: string;
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  result: unknown;
+  operation_reference: string | null;
+};
 
 type CreateOrderItemInput = {
   id?: string;
@@ -62,6 +101,8 @@ type OrderRow = {
   id: string;
   tenant_id: string;
   customer_id: string;
+  customer_name?: string | null;
+  customer_document?: string | null;
   cash_session_id?: string | null;
   type: OrderType;
   status: OrderStatus;
@@ -75,11 +116,13 @@ type OrderRow = {
 type OrderListRow = OrderRow & {
   tenant_name: string;
   customer_name: string | null;
+  customer_document: string | null;
   branch_id: string | null;
   branch_name: string | null;
   terminal_id: string | null;
   terminal_name: string | null;
   generated_sale_id: string | null;
+  generated_sales: Array<{ id: string; createdAt: string; total: number; status: string; electronicBillingStatus: string | null }> | null;
   billing_status: "UNBILLED" | "PARTIAL" | "INVOICED";
 };
 
@@ -176,7 +219,10 @@ export class OrderService {
     @Inject(StockMovementService)
     private readonly stockMovementService: StockMovementService,
     @Inject(PricingService)
-    private readonly pricingService: PricingService
+    private readonly pricingService: PricingService,
+    @Optional()
+    @Inject(ProductSerialService)
+    private readonly productSerialService?: ProductSerialService
   ) {}
 
   private toNullableNumber(value: string | number | null | undefined) {
@@ -1266,11 +1312,13 @@ export class OrderService {
           o.balance_due,
           o.created_at,
           c.name AS customer_name,
+          c.document_number AS customer_document,
           audit_context.branch_id::text AS branch_id,
           branch.nombre AS branch_name,
           audit_context.terminal_id::text AS terminal_id,
           terminal.name AS terminal_name,
           sale_context.generated_sale_id::text AS generated_sale_id,
+          sale_context.generated_sales,
           CASE
             WHEN COALESCE(item_totals.delivered_total, 0) <= 0
               OR COALESCE(item_totals.billed_total, 0) <= 0 THEN 'UNBILLED'
@@ -1303,13 +1351,20 @@ export class OrderService {
           ON terminal.id = audit_context.terminal_id
          AND terminal.tenant_id = o.tenant_id
         LEFT JOIN LATERAL (
-          SELECT s.id AS generated_sale_id
+          SELECT (array_agg(s.id ORDER BY s.created_at DESC, s.id DESC))[1] AS generated_sale_id,
+            COALESCE(json_agg(json_build_object(
+              'id', s.id, 'createdAt', s.created_at, 'total', s.total,
+              'status', s.status, 'electronicBillingStatus', document.status
+            ) ORDER BY s.created_at DESC, s.id DESC), '[]'::json) AS generated_sales
           FROM sales s
+          LEFT JOIN LATERAL (
+            SELECT d.status FROM electronic_documents d
+            WHERE d.tenant_id = s.tenant_id AND d.source_type = 'SALE' AND d.source_id = s.id
+            ORDER BY d.created_at DESC, d.id DESC LIMIT 1
+          ) document ON TRUE
           WHERE s.tenant_id = o.tenant_id
             AND s.order_id = o.id
             AND s.status <> 'CANCELLED'
-          ORDER BY s.created_at DESC, s.id DESC
-          LIMIT 1
         ) AS sale_context ON TRUE
         LEFT JOIN LATERAL (
           SELECT
@@ -1329,11 +1384,13 @@ export class OrderService {
       cashSessionId: row.cash_session_id ?? null,
       tenantName: row.tenant_name,
       customerName: row.customer_name,
+      customerDocument: row.customer_document ?? null,
       branchId: row.branch_id,
       branchName: row.branch_name,
       terminalId: row.terminal_id,
       terminalName: row.terminal_name,
       generatedSaleId: row.generated_sale_id,
+      generatedSales: row.generated_sales ?? [],
       billingStatus: row.billing_status,
     }));
   }
@@ -1348,19 +1405,22 @@ export class OrderService {
     const orderResult = (await this.db.query(
       `
         SELECT
-          id,
-          tenant_id,
-          customer_id,
-          cash_session_id,
-          type,
-          status,
-          total,
-          payment_status,
-          total_paid,
-          balance_due,
-          created_at
-        FROM orders
-        WHERE id = $1 AND tenant_id = $2
+          o.id,
+          o.tenant_id,
+          o.customer_id,
+          c.name AS customer_name,
+          c.document_number AS customer_document,
+          o.cash_session_id,
+          o.type,
+          o.status,
+          o.total,
+          o.payment_status,
+          o.total_paid,
+          o.balance_due,
+          o.created_at
+        FROM orders o
+        LEFT JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+        WHERE o.id = $1 AND o.tenant_id = $2
         LIMIT 1
       `,
       [id, tenantId]
@@ -1453,8 +1513,11 @@ export class OrderService {
     return {
       ...this.mapOrderWithItems(orderRow, itemsResult.rows),
       cashSessionId: orderRow.cash_session_id ?? null,
+      customerName: orderRow.customer_name ?? null,
+      customerDocument: orderRow.customer_document ?? null,
       branchId: orderAuditContext.branch_id,
       branchName: orderAuditContext.branch_name,
+      terminalId: orderAuditContext.terminal_id,
       terminalName: orderAuditContext.terminal_name,
       payments: (paymentsResult.rows as OrderPaymentRow[]).map((row) =>
         this.mapOrderPayment(row)
@@ -1465,16 +1528,343 @@ export class OrderService {
     };
   }
 
+  /**
+   * Serializa las entregas con el mismo bloqueo por alcance de stock que usan la
+   * recepción de compras y la venta POS (`inventory_lock_stock_scope`, V108), en
+   * orden ascendente de producto (change corregir-lotes-entrega-pedidos, D1).
+   */
+  private async lockDeliveryStockScopes(
+    tenantId: string,
+    branchId: string,
+    productIds: string[],
+    client: PoolClient
+  ) {
+    const orderedProductIds = [...new Set(productIds)].sort();
+    for (const productId of orderedProductIds) {
+      await client.query(
+        `SELECT public.inventory_lock_stock_scope($1::uuid, $2::uuid, $3::uuid)`,
+        [tenantId, branchId, productId]
+      );
+    }
+  }
+
+  private async loadDeliveryLotPolicies(
+    tenantId: string,
+    productIds: string[],
+    client: PoolClient
+  ) {
+    const uniqueProductIds = [...new Set(productIds)];
+    const result = await client.query<{
+      id: string;
+      name?: string | null;
+      requires_lot: boolean | null;
+      requires_expiration: boolean | null;
+      requires_serial?: boolean | null;
+      is_inventoryable?: boolean | null;
+    }>(
+      `
+        SELECT id, name, requires_lot, requires_expiration,
+          COALESCE((to_jsonb(products) ->> 'requires_serial')::boolean, FALSE) AS requires_serial,
+          COALESCE((to_jsonb(products) ->> 'is_inventoryable')::boolean, TRUE) AS is_inventoryable
+        FROM products
+        WHERE tenant_id = $1
+          AND id = ANY($2::uuid[])
+      `,
+      [tenantId, uniqueProductIds]
+    );
+    return new Map(
+      result.rows.map((row) => [
+        row.id,
+        {
+          name: row.name ?? null,
+          requiresLot: Boolean(row.requires_lot),
+          requiresExpiration: Boolean(row.requires_expiration),
+          requiresSerial: Boolean(row.requires_serial),
+          // Servicios (is_inventoryable = FALSE) no tienen saldo ni movimientos fisicos.
+          isInventoryable: row.is_inventoryable !== false,
+        },
+      ])
+    );
+  }
+
+  /**
+   * Consume lotes por FEFO para una salida de entrega ya creada, con la misma
+   * regla que `inventory_create_sale_v2`: lotes ACTIVE, no vencidos, con saldo
+   * disponible, ordenados por vencimiento y recepción; descuento atómico del
+   * saldo y vínculo movimiento–lote (change corregir-lotes-entrega-pedidos, D1-D2).
+   */
+  private async consumeDeliveryLots(
+    input: {
+      tenantId: string;
+      branchId: string;
+      productId: string;
+      quantity: number;
+      stockMovementId: string;
+      requiresExpiration: boolean;
+    },
+    client: PoolClient
+  ) {
+    const balancesResult = await client.query<{
+      balance_id: string;
+      lot_id: string;
+      location_id: string | null;
+      quantity_available: string | number;
+    }>(
+      `
+        SELECT
+          balance.id AS balance_id,
+          balance.lot_id,
+          balance.location_id,
+          balance.quantity_available
+        FROM inventory_lot_balances balance
+        INNER JOIN inventory_lots lot
+          ON lot.id = balance.lot_id
+         AND lot.tenant_id = balance.tenant_id
+         AND lot.branch_id = balance.branch_id
+         AND lot.product_id = balance.product_id
+        WHERE balance.tenant_id = $1
+          AND balance.branch_id = $2
+          AND balance.product_id = $3
+          AND balance.quantity_available > 0
+          AND lot.status = 'ACTIVE'
+          AND (lot.expiration_date IS NULL OR lot.expiration_date >= CURRENT_DATE)
+          AND ($4::boolean = FALSE OR lot.expiration_date IS NOT NULL)
+        ORDER BY
+          lot.expiration_date ASC NULLS LAST,
+          lot.received_at ASC,
+          lot.lot_code ASC,
+          lot.id ASC
+        FOR UPDATE OF balance
+      `,
+      [input.tenantId, input.branchId, input.productId, input.requiresExpiration]
+    );
+
+    const roundQuantity = (value: number) => Math.round(value * 1000) / 1000;
+    const eligible = balancesResult.rows.map((row) => ({
+      balanceId: row.balance_id,
+      lotId: row.lot_id,
+      locationId: row.location_id,
+      available: Number(row.quantity_available),
+    }));
+    const totalAvailable = roundQuantity(
+      eligible.reduce((sum, balance) => sum + balance.available, 0)
+    );
+    if (totalAvailable < roundQuantity(input.quantity)) {
+      throw new BadRequestException("insufficient lot stock for delivery");
+    }
+
+    let remaining = roundQuantity(input.quantity);
+    for (const balance of eligible) {
+      if (remaining <= 0) {
+        break;
+      }
+      const fromLot = roundQuantity(Math.min(remaining, balance.available));
+      if (fromLot <= 0) {
+        continue;
+      }
+
+      const updated = await client.query<{ id: string }>(
+        `
+          UPDATE inventory_lot_balances
+          SET
+            quantity_on_hand = quantity_on_hand - $1,
+            last_movement_at = NOW(),
+            updated_at = NOW()
+          WHERE id = $2
+            AND tenant_id = $3
+            AND branch_id = $4
+            AND product_id = $5
+            AND lot_id = $6
+            AND quantity_available >= $1
+          RETURNING id
+        `,
+        [fromLot, balance.balanceId, input.tenantId, input.branchId, input.productId, balance.lotId]
+      );
+      if (!updated.rows[0]) {
+        throw new BadRequestException("insufficient lot stock for delivery");
+      }
+
+      await client.query(
+        `
+          INSERT INTO stock_movement_lots (
+            id,
+            tenant_id,
+            stock_movement_id,
+            product_id,
+            lot_id,
+            location_id,
+            quantity,
+            created_at
+          ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW())
+        `,
+        [
+          input.tenantId,
+          input.stockMovementId,
+          input.productId,
+          balance.lotId,
+          balance.locationId,
+          fromLot,
+        ]
+      );
+
+      remaining = roundQuantity(remaining - fromLot);
+    }
+
+    if (remaining > 0) {
+      throw new BadRequestException("insufficient lot stock for delivery");
+    }
+  }
+
+  private buildOrderDeliveryRequestHash(input: {
+    orderId: string;
+    tenantId: string;
+    items: Array<{ productId: string; quantity: number; serialIds?: string[] }>;
+    context?: InventoryContext;
+    actor?: BranchScopedActor;
+  }) {
+    return crypto
+      .createHash("sha256")
+      .update(
+        stableSerialize({
+          orderId: input.orderId,
+          tenantId: input.tenantId,
+          items: input.items,
+          context: input.context ?? null,
+          actor: input.actor ?? null,
+        })
+      )
+      .digest("hex");
+  }
+
+  private async claimOrderDeliveryIdempotency(
+    client: PoolClient,
+    tenantId: string,
+    orderId: string,
+    idempotencyKey: string,
+    requestHash: string
+  ): Promise<{ replay: false } | { replay: true; result: unknown }> {
+    const inserted = await client.query<OrderDeliveryIdempotencyRow>(
+      `
+        INSERT INTO order_delivery_idempotency (
+          tenant_id,
+          order_id,
+          idempotency_key,
+          request_hash,
+          status
+        ) VALUES ($1, $2, $3, $4, 'PENDING')
+        ON CONFLICT (tenant_id, order_id, idempotency_key) DO NOTHING
+        RETURNING request_hash, status, result, operation_reference
+      `,
+      [tenantId, orderId, idempotencyKey, requestHash]
+    );
+
+    if (inserted.rows[0]) {
+      return { replay: false };
+    }
+
+    const existing = await client.query<OrderDeliveryIdempotencyRow>(
+      `
+        SELECT request_hash, status, result, operation_reference
+        FROM order_delivery_idempotency
+        WHERE tenant_id = $1
+          AND order_id = $2
+          AND idempotency_key = $3
+        FOR UPDATE
+      `,
+      [tenantId, orderId, idempotencyKey]
+    );
+    const row = existing.rows[0];
+    if (!row) {
+      throw new ConflictException("idempotency operation could not be recovered");
+    }
+    if (row.request_hash !== requestHash) {
+      throw new ConflictException(
+        "Idempotency-Key was already used with a different payload"
+      );
+    }
+    if (row.status === "COMPLETED" && row.result !== null) {
+      return { replay: true, result: row.result };
+    }
+    throw new ConflictException(
+      "Idempotency-Key is already being processed or has failed"
+    );
+  }
+
+  private async completeOrderDeliveryIdempotency(
+    client: PoolClient,
+    tenantId: string,
+    orderId: string,
+    idempotencyKey: string,
+    requestHash: string,
+    result: unknown
+  ) {
+    const completed = await client.query(
+      `
+        UPDATE order_delivery_idempotency
+        SET status = 'COMPLETED',
+            result = $4::jsonb,
+            operation_reference = $5,
+            completed_at = NOW(),
+            updated_at = NOW()
+        WHERE tenant_id = $1
+          AND order_id = $2
+          AND idempotency_key = $3
+          AND request_hash = $6
+          AND status = 'PENDING'
+      `,
+      [
+        tenantId,
+        orderId,
+        idempotencyKey,
+        JSON.stringify(result),
+        `order-delivery:${orderId}:${idempotencyKey}`,
+        requestHash,
+      ]
+    );
+    if (completed.rowCount !== 1) {
+      throw new ConflictException("order delivery idempotency completion failed");
+    }
+  }
+
   async deliverOrder(
     id: string,
     tenantId: string,
-    itemsToDeliver: Array<{ productId: string; quantity: number }>,
+    itemsToDeliver: Array<{ productId: string; quantity: number; serialIds?: string[] }>,
     context?: InventoryContext,
-    actor?: BranchScopedActor
+    actor?: BranchScopedActor,
+    idempotencyKey?: string | string[]
   ) {
     if (!Array.isArray(itemsToDeliver) || itemsToDeliver.length === 0) {
       throw new BadRequestException("deliver items are required");
     }
+    for (const deliverItem of itemsToDeliver) {
+      const serialIds = deliverItem?.serialIds;
+      if (
+        serialIds !== undefined &&
+        (!Array.isArray(serialIds) ||
+          serialIds.length > 2000 ||
+          serialIds.some(
+            (serialId) =>
+              typeof serialId !== "string" ||
+              !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serialId)
+          ))
+      ) {
+        throw new BadRequestException("serialIds must be a list of serial UUIDs");
+      }
+    }
+    const normalizedIdempotencyKey =
+      idempotencyKey !== undefined
+        ? normalizeOrderDeliveryIdempotencyKey(idempotencyKey)
+        : undefined;
+    const requestHash = normalizedIdempotencyKey
+      ? this.buildOrderDeliveryRequestHash({
+          orderId: id,
+          tenantId,
+          items: itemsToDeliver,
+          context,
+          actor,
+        })
+      : undefined;
 
     const client = await this.db.getClient();
     try {
@@ -1496,6 +1886,7 @@ export class OrderService {
           FROM orders
           WHERE id = $1 AND tenant_id = $2
           LIMIT 1
+          FOR UPDATE
         `,
         [id, tenantId]
       );
@@ -1503,6 +1894,19 @@ export class OrderService {
       const orderRow = orderResult.rows[0];
       if (!orderRow) {
         throw new NotFoundException("order not found");
+      }
+      if (normalizedIdempotencyKey && requestHash) {
+        const idempotency = await this.claimOrderDeliveryIdempotency(
+          client,
+          tenantId,
+          id,
+          normalizedIdempotencyKey,
+          requestHash
+        );
+        if (idempotency.replay) {
+          await client.query("COMMIT");
+          return idempotency.result;
+        }
       }
       if (orderRow.status === "CANCELLED") {
         throw new BadRequestException("cancelled orders cannot be delivered");
@@ -1574,6 +1978,70 @@ export class OrderService {
       );
 
       const createdMovements = [];
+      const deliveryBranchId = orderAuditContext.branch_id ?? context?.branchId ?? null;
+      const deliveryProductIds = itemsToDeliver
+        .map((deliverItem) => deliverItem.productId)
+        .filter((productId): productId is string => Boolean(productId));
+      if (deliveryBranchId) {
+        await this.lockDeliveryStockScopes(
+          tenantId,
+          deliveryBranchId,
+          deliveryProductIds,
+          client
+        );
+      }
+      const lotPolicies = await this.loadDeliveryLotPolicies(
+        tenantId,
+        deliveryProductIds,
+        client
+      );
+      // Verificacion previa de stock de todas las lineas fisicas, para informar en un solo
+      // mensaje cuales productos no alcanzan. Los servicios no se validan.
+      const requestedByProduct = new Map<string, number>();
+      for (const deliverItem of itemsToDeliver) {
+        const quantity = Number(deliverItem.quantity);
+        if (
+          !deliverItem.productId ||
+          !Number.isFinite(quantity) ||
+          quantity <= 0 ||
+          lotPolicies.get(deliverItem.productId)?.isInventoryable === false
+        ) {
+          continue;
+        }
+        requestedByProduct.set(
+          deliverItem.productId,
+          (requestedByProduct.get(deliverItem.productId) ?? 0) + quantity
+        );
+      }
+      const shortages: string[] = [];
+      for (const [productId, requested] of requestedByProduct) {
+        const stockResult = await this.stockMovementService.getStockByProduct(
+          productId,
+          tenantId,
+          deliveryBranchId
+        );
+        if (stockResult.stock < requested) {
+          shortages.push(
+            `${lotPolicies.get(productId)?.name ?? productId} (disponible ${Math.max(
+              Number(stockResult.stock) || 0,
+              0
+            )}, a entregar ${requested})`
+          );
+        }
+      }
+      if (shortages.length > 0) {
+        throw new BadRequestException(
+          `insufficient stock for delivery: ${shortages.join("; ")}`
+        );
+      }
+
+      // Solo productos con serie (o líneas que enviaron series); el resto no agrega llamadas.
+      const serialLines: Array<{
+        productId: string;
+        quantity: number;
+        stockMovementId: string;
+        serialIds: string[];
+      }> = [];
 
       for (const deliverItem of itemsToDeliver) {
         const productId = deliverItem.productId;
@@ -1601,13 +2069,45 @@ export class OrderService {
           );
         }
 
+        const lotPolicy = lotPolicies.get(productId);
+        if (lotPolicy?.isInventoryable === false) {
+          // Servicio: se registra la cantidad entregada sin stock ni movimiento OUT.
+          let remainingServiceQuantity = quantity;
+          for (const item of productItems) {
+            if (remainingServiceQuantity <= 0) {
+              break;
+            }
+            const itemPendingQuantity = pendingByItemId.get(item.id) ?? 0;
+            if (itemPendingQuantity <= 0) {
+              continue;
+            }
+            const deliveredDelta = Math.min(remainingServiceQuantity, itemPendingQuantity);
+            pendingByItemId.set(item.id, itemPendingQuantity - deliveredDelta);
+            remainingServiceQuantity -= deliveredDelta;
+            await client.query(
+              `
+                UPDATE order_items
+                SET delivered_quantity = delivered_quantity + $2
+                WHERE id = $1
+              `,
+              [item.id, deliveredDelta]
+            );
+          }
+          continue;
+        }
+
         const stockResult = await this.stockMovementService.getStockByProduct(
           productId,
           tenantId,
           orderAuditContext.branch_id ?? context?.branchId ?? null
         );
         if (stockResult.stock < quantity) {
-          throw new BadRequestException("insufficient stock for delivery");
+          throw new BadRequestException(
+            `insufficient stock for delivery: ${lotPolicy?.name ?? productId} (disponible ${Math.max(
+              Number(stockResult.stock) || 0,
+              0
+            )}, a entregar ${quantity})`
+          );
         }
 
         const movement = await this.stockMovementService.createMovement(
@@ -1639,6 +2139,32 @@ export class OrderService {
           client
         );
         createdMovements.push(movement);
+
+        if (lotPolicy?.requiresLot) {
+          if (!deliveryBranchId) {
+            throw new BadRequestException("branch is required to deliver lot-controlled products");
+          }
+          await this.consumeDeliveryLots(
+            {
+              tenantId,
+              branchId: deliveryBranchId,
+              productId,
+              quantity,
+              stockMovementId: movement.id,
+              requiresExpiration: lotPolicy.requiresExpiration,
+            },
+            client
+          );
+        }
+
+        if (lotPolicy?.requiresSerial || (deliverItem.serialIds?.length ?? 0) > 0) {
+          serialLines.push({
+            productId,
+            quantity,
+            stockMovementId: movement.id,
+            serialIds: deliverItem.serialIds ?? [],
+          });
+        }
 
         let remainingQuantity = quantity;
         for (const item of productItems) {
@@ -1698,6 +2224,22 @@ export class OrderService {
         [id]
       );
 
+      if (serialLines.length > 0) {
+        if (!this.productSerialService) {
+          throw new BadRequestException("serial assignment is unavailable");
+        }
+        if (!deliveryBranchId) {
+          throw new BadRequestException("branch is required to deliver serial-controlled products");
+        }
+        await this.productSerialService.assignForOrderDelivery(client, {
+          tenantId,
+          branchId: deliveryBranchId,
+          orderId: id,
+          lines: serialLines,
+          userId: context?.userId ?? null,
+        });
+      }
+
       const updatedItems = updatedItemsResult.rows.map((row) => this.mapOrderItem(row));
       const nextStatus = this.resolveStatusFromItems(updatedItems);
 
@@ -1721,15 +2263,27 @@ export class OrderService {
         [id, tenantId, nextStatus]
       );
 
+      const deliveryResult = {
+        ...this.mapOrder(updatedOrderResult.rows[0]),
+        items: updatedItems,
+      };
+      if (normalizedIdempotencyKey && requestHash) {
+        await this.completeOrderDeliveryIdempotency(
+          client,
+          tenantId,
+          id,
+          normalizedIdempotencyKey,
+          requestHash,
+          deliveryResult
+        );
+      }
+
       await client.query("COMMIT");
       createdMovements.forEach((movement) =>
         this.stockMovementService.logMovementAuditEvent(movement)
       );
 
-      return {
-        ...this.mapOrder(updatedOrderResult.rows[0]),
-        items: updatedItems,
-      };
+      return deliveryResult;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

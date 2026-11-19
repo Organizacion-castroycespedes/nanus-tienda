@@ -132,6 +132,10 @@ const formatSaleUnitLabel = (
 
 const measurementUnitLabels: Record<ProductMeasurementUnit, string> = {
   UND: "UND",
+  M: "M",
+  L: "L",
+  CM: "CM",
+  M2: "M2",
   KG: "KG",
   LB: "LB",
   G: "G",

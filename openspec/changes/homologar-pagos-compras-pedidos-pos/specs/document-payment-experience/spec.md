@@ -130,3 +130,79 @@ The system SHALL accept one stable operation UUID for each document-payment conf
 #### Scenario: Legacy caller
 - **WHEN** an existing caller omits the optional operation key
 - **THEN** the document payment remains backward compatible while new clients can opt into replay-safe recovery
+
+### Requirement: Financial institution parity for document payment lines
+The system SHALL reuse the POS financial-institution selection experience for purchase and order payment lines, SHALL require an institution when the selected payment method requires one, and SHALL transmit and persist the selected institution with the payment.
+
+#### Scenario: Cash without institution
+- **WHEN** a document payment line uses an active cash method
+- **THEN** the line remains valid without a financial institution and persists a null institution
+
+#### Scenario: Method requiring institution
+- **WHEN** a document payment line uses a method configured to require a financial institution
+- **THEN** the operator must select an active institution visible to the current tenant or global before confirmation, without requiring a method association
+
+#### Scenario: Mixed payment
+- **WHEN** a document payment combines cash and a method requiring an institution
+- **THEN** each line preserves its own optional institution, amount, reference and notes in the same atomic operation
+
+### Requirement: Server-authoritative institution validation
+The system SHALL validate every submitted financial institution inside the existing document-payment transaction against active status and tenant or global visibility. The document-payment path SHALL NOT require an active `payment_method_financial_institutions` association. The institution SHALL be part of the canonical idempotency fingerprint.
+
+#### Scenario: Invalid or foreign institution
+- **WHEN** a client submits an inactive or other-tenant institution
+- **THEN** the complete document payment is rejected and no payment, allocation, cash movement, document-state or operation completion is committed
+
+#### Scenario: Active institution without method association
+- **WHEN** a purchase or order payment selects an active tenant-visible or global institution with no row in `payment_method_financial_institutions`
+- **THEN** the complete document payment can commit and persists that institution when every other validation passes
+
+#### Scenario: Same key with changed institution
+- **WHEN** a committed operation key is replayed with a different financial institution on any line
+- **THEN** the API rejects the replay as a changed payload without new financial effects
+
+#### Scenario: Older client without institution
+- **WHEN** an older client omits the optional institution for a method that does not require one
+- **THEN** the payment remains compatible and persists a null institution
+
+### Requirement: POS financial-institution non-regression
+The system SHALL preserve the existing POS behavior that loads the active tenant-visible/global financial-institution catalog without a payment-method filter. Document-payment changes SHALL NOT replace that catalog, selector validation or sale submission contract with method-associated behavior.
+
+#### Scenario: POS global active catalog
+- **WHEN** POS opens its payment dialog for a method requiring an institution
+- **THEN** it shows the active tenant-visible/global catalog returned by `listFinancialInstitutions()` using the existing search, category and selection behavior
+
+#### Scenario: POS catalog with no mappings
+- **WHEN** active institutions exist but the selected method has no rows in `payment_method_financial_institutions`
+- **THEN** POS still shows the active catalog exactly as before this change
+
+#### Scenario: Document changes do not alter sale policy
+- **WHEN** document payments use the active and tenant-visible/global institution policy
+- **THEN** POS sale creation retains that same pre-change policy and no POS source file or sale contract is modified
+
+### Requirement: Responsive orders workspace
+The orders workspace SHALL use the available desktop width and SHALL preserve readable order and product information across wide, intermediate and narrow viewports without changing order or payment behavior.
+
+#### Scenario: Wide desktop list
+- **WHEN** the orders page is displayed at 1440 px or 1920 px
+- **THEN** the orders table fills the available content width and uses stable column allocation for descriptive, monetary, status and action content
+
+#### Scenario: Intermediate or narrow list
+- **WHEN** the orders table cannot fit at 1180, 1024, 768 or 390 px
+- **THEN** the table retains its readable minimum width inside a labelled keyboard-focusable horizontal scroll region without page-level overlap
+
+#### Scenario: Long order and product names
+- **WHEN** a customer, branch, terminal or selected product has a long name
+- **THEN** descriptive content wraps within its allocated area while amounts and actions remain legible and available
+
+#### Scenario: Responsive filters
+- **WHEN** the viewport changes between mobile and wide desktop breakpoints
+- **THEN** filters compact progressively without hiding, reordering semantically or changing any filter behavior
+
+#### Scenario: Product detail presentations
+- **WHEN** an operator edits, delivers or invoices an order containing multiple or long-named products
+- **THEN** product descriptions retain useful width, numeric values remain aligned and the presentation uses controlled horizontal scrolling when required
+
+#### Scenario: Orders behavior non-regression
+- **WHEN** the responsive layout is applied
+- **THEN** loading, empty state, pagination, action-menu keyboard behavior, order calculations, callbacks and document-payment behavior remain unchanged

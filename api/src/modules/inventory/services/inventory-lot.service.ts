@@ -599,6 +599,20 @@ export class InventoryLotService {
     return lot;
   }
 
+  /** Trazabilidad de solo lectura del lote, con el mismo alcance de sucursal que `findById`. */
+  async getTraceability(
+    tenantId: string,
+    lotId: string,
+    actor: InventoryLotActor
+  ) {
+    const lot = await this.findById(tenantId, lotId, actor);
+    const traceability = await this.inventoryLotRepository.findTraceability(
+      tenantId,
+      lot
+    );
+    return { lotId: lot.id, ...traceability };
+  }
+
   async create(input: CreateInventoryLotInput, actor: InventoryLotActor) {
     const branchId = this.normalizeRequired(input.branchId, "branchId");
     const productId = this.normalizeRequired(input.productId, "productId");

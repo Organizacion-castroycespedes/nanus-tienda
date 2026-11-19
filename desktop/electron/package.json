@@ -1,6 +1,6 @@
 {
   "name": "@soft-manustienda-platform/desktop-electron",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Manus POS Electron online desktop shell",
   "homepage": "https://github.com/Organizacion-castroycespedes/nanus-tienda",
@@ -36,6 +36,7 @@
       "dist/agent-client.js",
       "dist/electron-api.js",
       "dist/window-policy.js",
+      "dist/window-close-policy.js",
       "package.json",
       "dist/connectivity.js",
       "resources/manus-icon.png",

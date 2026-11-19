@@ -147,6 +147,18 @@ export class InventoryLotController {
     );
   }
 
+  @Get(":lotId/traceability")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
+  @RequirePermission({ menuKey: "INVENTORY", level: "READ" })
+  getTraceability(@Param("lotId") lotId: string, @Req() request: AuthRequest) {
+    this.assertUuid(lotId, "lotId");
+    return this.inventoryLotService.getTraceability(
+      this.getTenantId(request),
+      lotId,
+      this.buildActor(request)
+    );
+  }
+
   @Get(":lotId")
   @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN", "USER")
   @RequirePermission({ menuKey: "INVENTORY", level: "READ" })

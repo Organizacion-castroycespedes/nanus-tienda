@@ -55,9 +55,12 @@ type CreatePurchaseBody = {
   }>;
 };
 
-type UpdatePurchaseBody = Partial<CreatePurchaseBody> & {
-  status?: "DRAFT" | "PENDING";
-};
+// La sucursal y la terminal no son editables: se fijan al crear la compra.
+// El estado tampoco: DRAFT -> PENDING solo via PATCH /purchases/:id/confirm.
+type UpdatePurchaseBody = Pick<
+  Partial<CreatePurchaseBody>,
+  "supplierId" | "type" | "total" | "balance" | "items"
+>;
 
 type ReceivePurchaseBody = {
   supplierInvoiceNumber?: string;
@@ -76,6 +79,8 @@ type ReceivePurchaseBody = {
     lotCode?: string | null;
     expiration_date?: string | null;
     expirationDate?: string | null;
+    serial_numbers?: unknown;
+    serialNumbers?: unknown;
     location_id?: string | null;
     locationId?: string | null;
     unit_cost?: number;
@@ -159,9 +164,20 @@ export class PurchaseController {
       type: body.type,
       total: body.total !== undefined ? Number(body.total) : undefined,
       balance: body.balance !== undefined ? Number(body.balance) : undefined,
-      status: body.status,
       items: body.items,
-    }, this.buildActor(request));
+    }, this.buildActor(request), {
+      context: this.getInventoryContext(request),
+    });
+  }
+
+  @Patch(":id/confirm")
+  @Roles("SUPER_ADMIN", "SUPER_USER", "ADMIN")
+  @RequirePermission({ menuKey: "INVENTORY_PURCHASES", level: "WRITE" })
+  confirm(@Param("id") id: string, @Req() request: AuthRequest) {
+    return this.purchaseService.confirmPurchase(id, this.getTenantId(request), {
+      context: this.getInventoryContext(request),
+      actor: this.buildActor(request),
+    });
   }
 
   @Get()
@@ -230,6 +246,7 @@ export class PurchaseController {
             : item.unit_cost !== undefined
               ? Number(item.unit_cost)
               : undefined,
+        serialNumbers: item.serialNumbers ?? item.serial_numbers,
       })),
       this.getInventoryContext(request),
       this.buildActor(request),

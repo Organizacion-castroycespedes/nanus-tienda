@@ -387,3 +387,263 @@ test("observation controller logs receipt and authenticated stage without reques
     assert.equal(serialized.includes(forbidden), false);
   }
 });
+
+const withPairingSigningEnv = async (run: (signingPublicPem: string) => Promise<void>) => {
+  const { generateKeyPairSync } = await import("node:crypto");
+  const pair = generateKeyPairSync("ed25519");
+  const names = ["AGENT_ENROLLMENT_SIGNING_KEY_ID", "AGENT_ENROLLMENT_SIGNING_PRIVATE_KEY_PEM", "AGENT_ENROLLMENT_AUDIENCE"] as const;
+  const previous = names.map((name) => process.env[name]);
+  process.env.AGENT_ENROLLMENT_SIGNING_KEY_ID = "qa-fixture-key";
+  process.env.AGENT_ENROLLMENT_SIGNING_PRIVATE_KEY_PEM = pair.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  process.env.AGENT_ENROLLMENT_AUDIENCE = "manus-agent:qa";
+  try { await run(pair.publicKey.export({ type: "spki", format: "pem" }).toString()); } finally {
+    names.forEach((name, index) => { if (previous[index] === undefined) delete process.env[name]; else process.env[name] = previous[index]; });
+  }
+};
+
+const makePairingService = (issuedCredentialIds: Set<string>) => {
+  const client = {
+    query: async (sql: string) => {
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql.trim())) return { rows: [], rowCount: 0 };
+      if (sql.includes("FROM terminal_devices") && sql.includes("FOR UPDATE")) {
+        return { rows: [{ id: "device-1", tenant_id: "tenant-1", installation_id: "install-1", registration_status: "ACTIVE" }], rowCount: 1 };
+      }
+      if (sql.includes("FROM pos_terminals")) return { rows: [{ id: "pos-1", branch_id: "branch-1", operational_terminal_id: "terminal-1" }], rowCount: 1 };
+      if (sql.includes("FROM terminals")) return { rows: [{ id: "terminal-1" }], rowCount: 1 };
+      if (sql.includes("FROM terminal_device_bindings")) return { rows: [{}], rowCount: 1 };
+      if (sql.includes("FROM terminal_device_credentials")) return { rows: [], rowCount: 0 };
+      throw new Error(`UNEXPECTED_QUERY ${sql.trim().slice(0, 40)}`);
+    },
+    release: () => undefined,
+  };
+  const database = {
+    getClient: async () => client,
+    query: async () => ({ rows: [{ id: "device-1", tenant_id: "tenant-1", registration_status: "ACTIVE" }], rowCount: 1 }),
+  };
+  // Mirrors the terminal_device_credentials_credential_id_unique index (V103).
+  const credentials = { issue: async (_client: unknown, input: { credentialId: string }) => {
+    if (issuedCredentialIds.has(input.credentialId)) throw Object.assign(new Error("duplicate key"), { code: "23505" });
+    issuedCredentialIds.add(input.credentialId);
+    return { id: "credential-row" };
+  } };
+  return new ScaleAuthorizationRuntimeService(database as never, credentials as never, {} as never, {} as never);
+};
+
+test("pairing challenge from the service is backdated, bounded and single-use", async () => {
+  await withPairingSigningEnv(async () => {
+    const { generateKeyPairSync } = await import("node:crypto");
+    const enrollmentPublicKeyPem = generateKeyPairSync("rsa", { modulusLength: 3072 }).publicKey
+      .export({ type: "spki", format: "pem" }).toString();
+    const service = makePairingService(new Set());
+    const before = Date.now();
+    const signedChallenge = await service.createPairingChallenge({ installationId: "install-1", nonce: "n".repeat(48), enrollmentPublicKeyPem });
+    const after = Date.now();
+    const issued = Date.parse(signedChallenge.challenge.issuedAt);
+    const expires = Date.parse(signedChallenge.challenge.expiresAt);
+    assert.ok(issued >= before - 2_000 && issued <= after - 2_000, "issuedAt is API now minus 2,000 ms");
+    assert.equal(expires - issued, 300_000);
+    const approval = { signedChallenge, pairingCode: signedChallenge.challenge.pairingCode, posTerminalId: "pos-1",
+      logicalScaleId: "scale-1", enrollmentPublicKeyPem };
+    const actor = { tenantId: "tenant-1", userId: "user-1" };
+    const first = await service.approvePairing(approval, actor as never);
+    assert.equal(first.credentialId, signedChallenge.challenge.jti);
+    await assert.rejects(service.approvePairing(approval, actor as never),
+      (error: unknown) => error instanceof ConflictException && (error as Error).message === "PAIRING_CHALLENGE_ALREADY_USED");
+    const tampered = { ...approval, signedChallenge: { ...signedChallenge,
+      challenge: { ...signedChallenge.challenge, issuedAt: new Date(issued - 1_000).toISOString() } } };
+    await assert.rejects(service.approvePairing(tampered, actor as never),
+      (error: unknown) => error instanceof ForbiddenException && (error as Error).message === "PAIRING_CHALLENGE_INVALID");
+    await assert.rejects(service.approvePairing({ ...approval, pairingCode: "0000000000" }, actor as never), ForbiddenException);
+  });
+});
+
+test("terminal snapshot exposes the latest credential ID so revocation targets it", async () => {
+  const queries: { sql: string; params: unknown[] }[] = [];
+  const row = {
+    pos_terminal_id: "pos-1", branch_id: "branch-1", operational_terminal_id: "terminal-1",
+    scale_device_id: "scale-1", enable_scale: true,
+    device_id: "device-1", registration_status: "BOUND", installation_id: "install-1",
+    credential_id: "credential-jti-1", credential_status: "ACTIVE", credential_expires_at: new Date(Date.now() + 60_000),
+    binding_id: "binding-1", logical_scale_id: "scale-1", binding_status: "REVOKED", unit_state: "NOT_VERIFIED",
+    unit_verification_method: null, unit_verification_unit: null, unit_verified_by_user_id: null, verified_at: null,
+  };
+  const database = { query: async (sql: string, params: unknown[]) => { queries.push({ sql, params }); return { rows: [row], rowCount: 1 }; } };
+  const service = new ScaleAuthorizationRuntimeService(database as never, {} as never, {} as never, {} as never);
+  const state = await service.getTerminalState("pos-1", { tenantId: "tenant-1", userId: "user-1" } as never);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].sql, /c\.credential_id/);
+  assert.deepEqual(queries[0].params, ["pos-1", "tenant-1"]);
+  assert.equal(state.agent.credentialId, "credential-jti-1");
+  assert.equal(state.agent.authenticated, true);
+  // The latest binding may be REVOKED; the snapshot reports it as such for the UI guard.
+  assert.equal(state.binding?.status, "REVOKED");
+  const expired = { ...row, credential_status: "ACTIVE", credential_expires_at: new Date(Date.now() - 1_000) };
+  const expiredService = new ScaleAuthorizationRuntimeService({ query: async () => ({ rows: [expired], rowCount: 1 }) } as never,
+    {} as never, {} as never, {} as never);
+  const expiredState = await expiredService.getTerminalState("pos-1", { tenantId: "tenant-1", userId: "user-1" } as never);
+  assert.equal(expiredState.agent.credentialId, "credential-jti-1");
+  assert.equal(expiredState.agent.authenticated, false);
+});
+
+// --- EXCLUSIVE_ACQUISITION_V1 observation protocol (deterministic server clock) ---
+
+const CAPTURE_CREATED_AT = Date.parse("2026-11-18T05:42:51.410Z");
+const RECEIVED_AT = CAPTURE_CREATED_AT + 1_000;
+const fixedClock = (legacyPolicy: "ENABLED" | "DISABLED" | "INVALID" = "ENABLED") => ({ now: () => RECEIVED_AT, legacyPolicy: () => legacyPolicy });
+const agentAuth = { tenantId: "tenant-1", terminalDeviceId: "device-1", credentialId: "credential-1" };
+
+const makeTimedPipeline = (row: Partial<{ tenant_id: string; terminal_device_id: string; logical_scale_id: string;
+  status: string; created_at: Date; expires_at: Date }> = {}, options: { credentialRows?: number; contextRows?: number } = {}) => {
+  const statements: string[] = [];
+  const ready: Array<{ captureId: string; observation: Record<string, unknown>; now?: Date }> = [];
+  let state = row.status ?? "PENDING";
+  const client = {
+    query: async (sql: string) => {
+      statements.push(sql.trim().split(/\s+/).slice(0, 3).join(" "));
+      if (sql.includes("FROM terminal_scale_weight_captures WHERE capture_id = $1 FOR UPDATE")) return { rows: [{
+        tenant_id: "tenant-1", terminal_device_id: "device-1", logical_scale_id: "scale-1",
+        created_at: new Date(CAPTURE_CREATED_AT), expires_at: new Date(CAPTURE_CREATED_AT + 60_000), ...row, status: state,
+      }], rowCount: 1 };
+      if (sql.includes("FROM terminal_device_credentials c JOIN terminal_devices d")) {
+        const count = options.credentialRows ?? 1; return { rows: Array(count).fill({}), rowCount: count };
+      }
+      if (sql.includes("SELECT 1 FROM terminal_scale_weight_captures c")) {
+        const count = options.contextRows ?? 1; return { rows: Array(count).fill({}), rowCount: count };
+      }
+      return { rows: [], rowCount: 0 };
+    },
+    release: () => undefined,
+  };
+  const captures = { markReady: async (_client: unknown, input: { captureId: string; observation: Record<string, unknown>; now?: Date }) => {
+    ready.push(input); state = "READY";
+    return { capture_id: input.captureId, status: "READY", expires_at: new Date(CAPTURE_CREATED_AT + 60_000), weight_kg: "0.245000" };
+  } };
+  const service = new ScaleAuthorizationRuntimeService({ getClient: async () => client } as never,
+    {} as never, {} as never, captures as never);
+  return { service, statements, ready };
+};
+
+const observation = (agentWallMs: number, extra: Record<string, unknown> = {}) => ({
+  captureId: "40000000-0000-4000-8000-000000000001", deviceId: "scale-1", weight: 0.245, unit: "kg", source: "REAL",
+  unitVerified: true, observedAt: new Date(agentWallMs).toISOString(),
+  captureProtocol: "EXCLUSIVE_ACQUISITION_V1", acquisition: { requestToFrameMs: 410, frameAgeMs: 90 }, ...extra,
+});
+
+test("V1 capture succeeds with the measured Windows/API skew (Agent wall clock 0.72 s behind created_at)", async () => {
+  const { service, statements, ready } = makeTimedPipeline();
+  const agentWall = CAPTURE_CREATED_AT - 720;
+  const logs = await captureObservationLogs(async () => {
+    const result = await service.submitCaptureObservation(agentAuth, observation(agentWall), fixedClock("DISABLED"));
+    assert.equal(result.status, "READY");
+  });
+  assert.equal(ready.length, 1);
+  // The original Agent observedAt is persisted unchanged; no artificial timestamp.
+  assert.equal(ready[0].observation.observedAt, new Date(agentWall).toISOString());
+  assert.equal(ready[0].now?.getTime(), RECEIVED_AT);
+  assert.equal(statements.at(-1), "COMMIT");
+  const validated = logs.find((entry) => entry.event === "observation.capture_state_validated");
+  assert.equal(validated?.captureProtocol, "EXCLUSIVE_ACQUISITION_V1");
+  assert.equal(validated?.requestToFrameMs, 410);
+  assert.equal(validated?.frameAgeMs, 90);
+  assert.equal(JSON.stringify(logs).includes("0.245"), false);
+});
+
+test("legacy qa.16 observation reproduces the QA rejection with an internal OBSERVATION_BEFORE_CAPTURE reason", async () => {
+  const { service, statements, ready } = makeTimedPipeline();
+  let thrown: unknown;
+  const logs = await captureObservationLogs(async () => {
+    try {
+      await service.submitCaptureObservation(agentAuth, {
+        captureId: "40000000-0000-4000-8000-000000000001", deviceId: "scale-1", weight: 0.245, unit: "kg", source: "REAL",
+        unitVerified: true, observedAt: new Date(CAPTURE_CREATED_AT - 720).toISOString(),
+      }, fixedClock("ENABLED"));
+    } catch (error) { thrown = error; }
+  });
+  assert.ok(thrown instanceof ConflictException);
+  assert.equal((thrown as ConflictException).message, "CAPTURE_NOT_PENDING_OR_EXPIRED");
+  const failed = logs.find((entry) => entry.event === "observation.failed");
+  assert.equal(failed?.stage, "capture_state_validation");
+  assert.equal(failed?.rejectionReason, "OBSERVATION_BEFORE_CAPTURE");
+  assert.equal(ready.length, 0);
+  assert.equal(statements.at(-1), "ROLLBACK");
+});
+
+test("V1 keeps server-clock expiry and single use: expired, READY, CONSUMED and REJECTED captures are refused", async () => {
+  const cases: Array<[Parameters<typeof makeTimedPipeline>[0], string]> = [
+    [{ expires_at: new Date(RECEIVED_AT) }, "CAPTURE_EXPIRED"],
+    [{ status: "READY" }, "CAPTURE_STATUS_INVALID"],
+    [{ status: "CONSUMED" }, "CAPTURE_STATUS_INVALID"],
+    [{ status: "REJECTED" }, "CAPTURE_STATUS_INVALID"],
+  ];
+  for (const [row, reason] of cases) {
+    const { service, ready } = makeTimedPipeline(row);
+    let thrown: unknown;
+    const logs = await captureObservationLogs(async () => {
+      try { await service.submitCaptureObservation(agentAuth, observation(RECEIVED_AT), fixedClock()); }
+      catch (error) { thrown = error; }
+    });
+    assert.ok(thrown instanceof ConflictException);
+    assert.equal((thrown as ConflictException).message, "CAPTURE_NOT_PENDING_OR_EXPIRED");
+    assert.equal(logs.find((entry) => entry.event === "observation.failed")?.rejectionReason, reason);
+    assert.equal(ready.length, 0);
+  }
+});
+
+test("V1 replay of the same observation after READY is refused without a second update", async () => {
+  const { service, ready } = makeTimedPipeline();
+  await service.submitCaptureObservation(agentAuth, observation(RECEIVED_AT), fixedClock());
+  await assert.rejects(service.submitCaptureObservation(agentAuth, observation(RECEIVED_AT), fixedClock()),
+    (error: unknown) => error instanceof ConflictException && error.message === "CAPTURE_NOT_PENDING_OR_EXPIRED");
+  assert.equal(ready.length, 1);
+});
+
+test("V1 keeps tenant, Agent device, scale, credential and authorized binding checks", async () => {
+  for (const row of [{ tenant_id: "tenant-2" }, { terminal_device_id: "device-2" }, { logical_scale_id: "scale-2" }]) {
+    const { service, ready } = makeTimedPipeline(row);
+    await assert.rejects(service.submitCaptureObservation(agentAuth, observation(RECEIVED_AT), fixedClock()),
+      (error: unknown) => error instanceof ForbiddenException && error.message === "CAPTURE_AGENT_CONTEXT_MISMATCH");
+    assert.equal(ready.length, 0);
+  }
+  const revoked = makeTimedPipeline({}, { credentialRows: 0 });
+  await assert.rejects(revoked.service.submitCaptureObservation(agentAuth, observation(RECEIVED_AT), fixedClock()),
+    (error: unknown) => error instanceof ForbiddenException && error.message === "AGENT_CREDENTIAL_INVALID");
+  const unauthorized = makeTimedPipeline({}, { contextRows: 0 });
+  await assert.rejects(unauthorized.service.submitCaptureObservation(agentAuth, observation(RECEIVED_AT), fixedClock()),
+    (error: unknown) => error instanceof ForbiddenException && error.message === "CAPTURE_BINDING_CONTEXT_UNAVAILABLE");
+  assert.equal(revoked.ready.length + unauthorized.ready.length, 0);
+});
+
+test("V1 still rejects MOCK, non-kg, unverified and malformed evidence before opening a transaction", async () => {
+  const service = new ScaleAuthorizationRuntimeService({ getClient: async () => assert.fail("no transaction expected") } as never,
+    {} as never, {} as never, {} as never);
+  for (const extra of [{ source: "MOCK" }, { unit: "lb" }, { unitVerified: false },
+    { acquisition: { requestToFrameMs: 1 } }, { captureProtocol: "UNKNOWN" }]) {
+    await assert.rejects(service.submitCaptureObservation(agentAuth, observation(RECEIVED_AT, extra), fixedClock()),
+      BadRequestException);
+  }
+  await assert.rejects(service.submitCaptureObservation(agentAuth,
+    observation(RECEIVED_AT, { acquisition: { requestToFrameMs: 1, frameAgeMs: 15_001 } }), fixedClock()),
+  (error: unknown) => error instanceof ConflictException && error.message === "CAPTURE_OBSERVATION_STALE");
+});
+
+test("legacy observations are refused with CAPTURE_PROTOCOL_UNSUPPORTED once the legacy policy is disabled", async () => {
+  const { service, ready } = makeTimedPipeline();
+  await assert.rejects(service.submitCaptureObservation(agentAuth, {
+    captureId: "40000000-0000-4000-8000-000000000001", deviceId: "scale-1", weight: 0.245, unit: "kg", source: "REAL",
+    unitVerified: true, observedAt: new Date(RECEIVED_AT).toISOString(),
+  }, fixedClock("DISABLED")), (error: unknown) => error instanceof ConflictException && error.message === "CAPTURE_PROTOCOL_UNSUPPORTED");
+  assert.equal(ready.length, 0);
+});
+
+test("observation controller accepts the V1 fields and still rejects unknown fields", async () => {
+  const received: unknown[] = [];
+  const service = {
+    authenticateAgent: async () => agentAuth,
+    submitCaptureObservation: async (_auth: unknown, input: unknown) => { received.push(input); return { status: "READY" }; },
+  } as never;
+  const controller = new ScaleAuthorizationPairingController(service);
+  await controller.captureObservation("Agent credential.secret", observation(RECEIVED_AT) as never);
+  assert.equal(received.length, 1);
+  await assert.rejects(controller.captureObservation("Agent credential.secret",
+    { ...observation(RECEIVED_AT), sharedFrame: true } as never), BadRequestException);
+});

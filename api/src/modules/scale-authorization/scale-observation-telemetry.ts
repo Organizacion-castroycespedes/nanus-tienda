@@ -74,6 +74,16 @@ const sanitizeDiagnosticRecord = (input: Record<string, unknown>): Record<string
   if (logicalScaleId) result.logicalScaleId = logicalScaleId;
   const deviceId = safeString(input.deviceId, /^[A-Za-z0-9._:-]+$/);
   if (deviceId) result.deviceId = deviceId;
+  const rejectionReason = safeString(input.rejectionReason, /^[A-Z][A-Z0-9_]{2,63}$/);
+  if (rejectionReason) result.rejectionReason = rejectionReason;
+  if (typeof input.captureProtocol === "string"
+    && /^(EXCLUSIVE_ACQUISITION_V1|LEGACY_WALL_CLOCK)$/.test(input.captureProtocol)) {
+    result.captureProtocol = input.captureProtocol;
+  }
+  for (const key of ["requestToFrameMs", "frameAgeMs"] as const) {
+    const value = input[key];
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) result[key] = value;
+  }
 
   return result;
 };
@@ -148,6 +158,7 @@ const diagnosticSink = createScaleCaptureDiagnosticSink();
 
 type ObservationFailure = {
   errorClass: string;
+  rejectionReason?: string;
   httpStatus?: number;
   errorCode?: string;
   sqlState?: string;
@@ -180,8 +191,11 @@ export const observationFailureMetadata = (error: unknown): ObservationFailure =
   }
 
   const errorCode = safeIdentifier(candidateCode, /^[A-Z][A-Z0-9_]{2,95}$/);
+  // Internal, log-only reason; the public HTTP error code stays unchanged.
+  const rejectionReason = safeIdentifier(details.rejectionReason, /^[A-Z][A-Z0-9_]{2,63}$/);
   return {
     errorClass,
+    ...(rejectionReason ? { rejectionReason } : {}),
     ...(httpStatus === undefined ? {} : { httpStatus }),
     ...(errorCode ? { errorCode } : {}),
     ...(sqlState ? { sqlState } : {}),

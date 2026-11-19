@@ -3,9 +3,10 @@
 import { FileText } from "lucide-react";
 import { Input } from "../../../../components/design-system/Input";
 import { Select } from "../../../../components/design-system/Select";
-import type {
-  ProductMeasurementUnit,
-  ProductSaleType,
+import {
+  isUnitMeasurementUnit,
+  type ProductMeasurementUnit,
+  type ProductSaleType,
 } from "../../../../domains/products/dtos";
 import { ProductSectionCard } from "./ProductSectionCard";
 import {
@@ -211,11 +212,13 @@ export const ProductBasicSection = ({
               event.target.value as ProductMeasurementUnit,
             )
           }
-          disabled={structuralConfigurationLocked}
+          disabled={structuralConfigurationLocked && values.saleType !== "UNIT"}
           hint={
-            structuralConfigurationLocked
+            structuralConfigurationLocked && values.saleType !== "UNIT"
               ? "Configuracion estructural bloqueada despues de crear."
-              : "Para peso usa KG, LB, G u OZ."
+              : values.saleType === "UNIT"
+                ? "Por unidad: UND, M, L, CM o M2. Es la unidad que se factura."
+                : "Para peso usa KG, LB, G u OZ."
           }
         >
           {measurementUnitOptions.map((option) => (
@@ -224,8 +227,8 @@ export const ProductBasicSection = ({
               value={option.value}
               disabled={
                 values.saleType === "UNIT"
-                  ? option.value !== "UND"
-                  : option.value === "UND"
+                  ? !isUnitMeasurementUnit(option.value)
+                  : isUnitMeasurementUnit(option.value)
               }
             >
               {option.label}

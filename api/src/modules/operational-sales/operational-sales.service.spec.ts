@@ -545,6 +545,55 @@ test("processDueVoidRequests skips quietly when V096 is not applied", async () =
   assert.deepEqual(await service.processDueVoidRequests(), { processed: 0 });
 });
 
+test("processDueVoidRequests reschedules with typed parameters when credit note issuing fails", async () => {
+  const queries: Array<{ text: string; params: unknown[] }> = [];
+  const service = new OperationalSalesService(
+    {} as never,
+    {} as never,
+    {
+      issueCreditNote: async () => {
+        throw new Error("billing unavailable");
+      },
+    } as never,
+    undefined,
+    undefined,
+    {
+      getClient: async () => ({
+        query: async (text: string, params: unknown[]) => {
+          queries.push({ text, params });
+          if (text.includes("RETURNING id, tenant_id, sale_id")) {
+            return {
+              rows: [{
+                id: "void-request-a",
+                tenant_id: "tenant-a",
+                sale_id: "sale-a",
+                invoice_electronic_document_id: "invoice-a",
+                request_payload: { reason: "Anulación por error de digitación" },
+                actor: { id: "user-a", roles: ["ADMIN"] },
+                attempt_count: 1,
+              }],
+            };
+          }
+          return { rows: [] };
+        },
+        release: () => undefined,
+      }),
+    } as never,
+    {} as never,
+  );
+
+  assert.deepEqual(await service.processDueVoidRequests(), { processed: 1 });
+
+  const reschedule = queries.find((q) => q.text.includes("SET attempt_count = $2"));
+  assert.ok(reschedule, "the failed void request must be rescheduled");
+  // Postgres rejects reusing $2 as integer and text ("inconsistent types deduced").
+  assert.match(reschedule!.text, /CASE WHEN \$2::int > \$5::int THEN 'FAILED'/);
+  assert.equal(reschedule!.params[0], "void-request-a");
+  assert.equal(reschedule!.params[1], 2);
+  assert.equal(reschedule!.params[3], "billing unavailable");
+});
+
+
 test("issueDebitNote rejects sale without accepted electronic invoice", async () => {
   const { service } = createService();
   const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
@@ -578,3 +627,45 @@ test("issueDebitNote dispatches to Factucore and saves document", async () => {
 });
 
 
+
+// --- Series (fase 5): la anulación marca las series en la misma transacción ---
+
+const attachSerialService = (service: OperationalSalesService) => {
+  const calls: Array<Record<string, unknown>> = [];
+  (service as unknown as Record<string, unknown>).productSerialService = {
+    markReturnedForSale: async (_client: unknown, input: Record<string, unknown>) => {
+      calls.push(input);
+      return 0;
+    },
+  };
+  return calls;
+};
+
+test("voidSale con devolución de inventario marca las series como RETURNED", async () => {
+  const { service } = createService();
+  const serialCalls = attachSerialService(service);
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.voidSale(actor, "sale-a", { reason: "Cliente desistió de la compra", returnInventory: true });
+
+  assert.deepEqual(serialCalls, [
+    {
+      tenantId: "tenant-a",
+      saleId: "sale-a",
+      returnInventory: true,
+      userId: "user-a",
+      reason: "Cliente desistió de la compra",
+    },
+  ]);
+});
+
+test("voidSale sin devolución de inventario deja las series vendidas y registra el evento", async () => {
+  const { service } = createService();
+  const serialCalls = attachSerialService(service);
+  const actor = { id: "user-a", tenantId: "tenant-a", roles: ["ADMIN"] };
+
+  await service.voidSale(actor, "sale-a", { reason: "Producto entregado y no devuelto", returnInventory: false });
+
+  assert.equal(serialCalls.length, 1);
+  assert.equal(serialCalls[0].returnInventory, false);
+});

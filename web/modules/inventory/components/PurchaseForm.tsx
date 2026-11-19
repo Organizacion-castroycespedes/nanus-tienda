@@ -1,35 +1,65 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
+import { SearchableSelect, type SearchableSelectOption } from "../../../components/design-system/SearchableSelect";
 import { Select } from "../../../components/design-system/Select";
 import { listBranches } from "../../../domains/branches/api";
 import type { BranchResponse } from "../../../domains/branches/dtos";
 import { getAuthContext } from "../../../domains/pos/api";
 import type { PosBranch } from "../../../domains/pos/types";
 import type { ProductResponse } from "../../../domains/products/dtos";
+import { useConfirm } from "../../../hooks/use-confirm";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
 import { getProducts } from "../services/product.service";
-import { createPurchase, type PurchaseResponse } from "../services/purchase.service";
+import {
+  createPurchase,
+  updatePurchaseDraft,
+  type PurchaseDetailResponse,
+  type PurchaseResponse,
+} from "../services/purchase.service";
 import { getSuppliers, type SupplierResponse } from "../services/supplier.service";
 import { buildTenantPath, resolveTenantSlug } from "../../../domains/auth/tenant-path";
 import { useAppSelector } from "../../../store/hooks";
 import type { PurchasePeripheralContext } from "../../../domains/peripherals/purchase-integration";
-
-type PurchaseFormItem = {
-  productId: string;
-  quantity: string;
-  cost: string;
-};
+import {
+  addInventoryCaptureQuantity,
+  removeInventoryCaptureLine,
+  resolveInventoryProductSaleType,
+  setInventoryCaptureQuantity,
+  type InventoryCaptureMode,
+} from "../barcode/barcode-lines";
+import { resolveInventoryBarcode } from "../barcode/barcode-resolver";
+import { searchInventoryProducts } from "../barcode/inventory-product-search";
+import {
+  createInventoryScanFeedback,
+  createInventoryScanSoundPlayer,
+  inventoryScanMessages,
+  type InventoryScanFeedback,
+  type InventoryScanTone,
+} from "../barcode/inventory-scan-feedback";
+import { InventoryProductSearchResults } from "../barcode/InventoryProductSearchResults";
+import { InventoryQuantityDialog } from "../barcode/InventoryQuantityDialog";
+import { InventorySaleModeDialog } from "../barcode/InventorySaleModeDialog";
+import { InventoryScanBar } from "../barcode/InventoryScanBar";
+import { useInventoryBarcodeCapture } from "../barcode/use-inventory-barcode-capture";
+import {
+  buildPurchaseItemsPayload,
+  countPurchaseLinesWithoutCost,
+  createPurchaseCaptureLine,
+  getPurchaseLineSubtotal,
+  setPurchaseLineCost,
+  type PurchaseCaptureLine,
+} from "../purchase-capture/purchase-capture-lines";
+import { PurchaseInvoiceTable, type PurchaseInvoiceRow } from "../purchase-capture/PurchaseInvoiceTable";
+import { getQuantityPolicyViolation } from "../utils/quantity-policy";
 
 type PurchaseFormValues = {
   supplierId: string;
   branchId: string;
   type: "CASH" | "CREDIT";
-  items: PurchaseFormItem[];
 };
 
 type PurchaseFormErrors = {
@@ -48,13 +78,13 @@ type PurchaseFormProps = {
   ) => void;
   onError?: (error: unknown) => void;
   onDirtyChange?: (isDirty: boolean) => void;
+  /** Borrador a editar. Si se omite, el formulario crea una compra nueva. */
+  purchase?: PurchaseDetailResponse | null;
 };
 
-const createEmptyItem = (): PurchaseFormItem => ({
-  productId: "",
-  quantity: "",
-  cost: "",
-});
+type PendingDialog =
+  | { kind: "sale-mode"; product: ProductResponse }
+  | { kind: "weight"; product: ProductResponse };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("es-CO", {
@@ -63,24 +93,59 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value);
 
+const formatDateLabel = (value: Date | string) =>
+  new Intl.DateTimeFormat("es-CO", { dateStyle: "medium", timeZone: "America/Bogota" }).format(
+    new Date(value)
+  );
+
+/** Lineas de captura a partir de los items guardados del borrador. */
+const buildLinesFromPurchase = (purchase?: PurchaseDetailResponse | null): PurchaseCaptureLine[] =>
+  (purchase?.items ?? []).map((item) => {
+    const quantity = Number(item.orderedQuantity);
+    return {
+      productId: item.productId,
+      quantity,
+      mode: Number.isInteger(quantity) ? "UNIT" : "WEIGHT",
+      cost: Number(item.cost),
+      costEdited: true,
+    };
+  });
+
 export const PurchaseForm = ({
   onCancel,
   onSuccess,
   onError,
   onDirtyChange,
+  purchase = null,
 }: PurchaseFormProps) => {
+  const isEdit = Boolean(purchase);
   const router = useRouter();
+  const confirm = useConfirm();
   const { currentBranch, currentTenant, isSuperRole } = useInventoryScope();
   const authUser = useAppSelector((state) => state.auth.user);
   const currentPosBranchId = useAppSelector((state) => state.pos.branchId);
   const currentPosTerminalId = useAppSelector((state) => state.pos.terminalId);
   const authBranchName = authUser?.branchName ?? null;
-  const [values, setValues] = useState<PurchaseFormValues>({
-    supplierId: "",
-    branchId: currentBranch ?? "",
-    type: "CASH",
-    items: [createEmptyItem()],
-  });
+  const [values, setValues] = useState<PurchaseFormValues>(() => ({
+    supplierId: purchase?.supplierId ?? "",
+    branchId: purchase?.branchId ?? currentBranch ?? "",
+    type: purchase?.type ?? "CASH",
+  }));
+  const [lines, setLinesState] = useState<PurchaseCaptureLine[]>(() =>
+    buildLinesFromPurchase(purchase)
+  );
+  // Fuente sincrónica para escaneos consecutivos antes del siguiente render.
+  const linesRef = useRef<PurchaseCaptureLine[]>(lines);
+  const purchaseItemNames = useMemo(
+    () =>
+      new Map(
+        (purchase?.items ?? []).map((item) => [
+          item.productId,
+          { name: item.productName ?? item.productId, sku: item.productSku ?? null },
+        ])
+      ),
+    [purchase]
+  );
   const [errors, setErrors] = useState<PurchaseFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
@@ -92,19 +157,48 @@ export const PurchaseForm = ({
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [scanFeedback, setScanFeedback] = useState<InventoryScanFeedback | null>(null);
+  const [candidates, setCandidates] = useState<ProductResponse[] | null>(null);
+  const [pendingDialog, setPendingDialog] = useState<PendingDialog | null>(null);
+  const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
+  const sounds = useMemo(() => createInventoryScanSoundPlayer(), []);
+  const formRef = useRef<HTMLFormElement>(null);
 
-  const markDirty = () => {
+  const markDirty = useCallback(() => {
     onDirtyChange?.(true);
-  };
+  }, [onDirtyChange]);
+
+  const setLines = useCallback(
+    (next: PurchaseCaptureLine[]) => {
+      linesRef.current = next;
+      setLinesState(next);
+      markDirty();
+    },
+    [markDirty]
+  );
 
   useEffect(() => {
-    if (!currentBranch) {
+    // En edicion la sucursal es la del borrador y no se cambia.
+    if (!currentBranch || isEdit) {
       return;
     }
     setValues((prev) =>
       prev.branchId === currentBranch ? prev : { ...prev, branchId: currentBranch }
     );
-  }, [currentBranch]);
+  }, [currentBranch, isEdit]);
+
+  // Si la sucursal cambia desde el selector global de alcance, las líneas ya no aplican.
+  const previousBranchRef = useRef(values.branchId);
+  useEffect(() => {
+    if (previousBranchRef.current !== values.branchId) {
+      previousBranchRef.current = values.branchId;
+      if (linesRef.current.length > 0) {
+        linesRef.current = [];
+        setLinesState([]);
+        setCandidates(null);
+      }
+    }
+  }, [values.branchId]);
 
   useEffect(() => {
     let mounted = true;
@@ -249,25 +343,262 @@ export const PurchaseForm = ({
     "pos/select-context"
   );
 
-  const itemSubtotals = useMemo(
+  const productsById = useMemo(
+    () => new Map(products.map((product) => [product.id, product])),
+    [products]
+  );
+
+  // En edicion: ajusta el modo (unidad/peso) de las lineas guardadas segun el catalogo,
+  // para que los escaneos posteriores sumen sobre la misma linea.
+  const modesReconciledRef = useRef(!isEdit);
+  useEffect(() => {
+    if (modesReconciledRef.current || products.length === 0) {
+      return;
+    }
+    modesReconciledRef.current = true;
+    const next = linesRef.current.map((line) => {
+      const product = productsById.get(line.productId);
+      if (!product) {
+        return line;
+      }
+      const saleType = resolveInventoryProductSaleType(product);
+      const mode: InventoryCaptureMode =
+        saleType === "UNIT" ? "UNIT" : saleType === "BOTH" ? line.mode : "WEIGHT";
+      return mode === line.mode ? line : { ...line, mode };
+    });
+    linesRef.current = next;
+    setLinesState(next);
+  }, [products, productsById]);
+
+  const supplierOptions: SearchableSelectOption[] = useMemo(
     () =>
-      values.items.map((item) => {
-        const quantity = Number(item.quantity);
-        const cost = Number(item.cost);
+      suppliers.map((supplier) => ({
+        value: supplier.id,
+        label: supplier.name,
+        description: supplier.documentNumber ? `Documento ${supplier.documentNumber}` : null,
+        keywords: [supplier.legalName, supplier.documentNumber].filter(
+          (keyword): keyword is string => Boolean(keyword)
+        ),
+      })),
+    [suppliers]
+  );
+  const selectedSupplier = suppliers.find((supplier) => supplier.id === values.supplierId);
 
-        if (!Number.isFinite(quantity) || !Number.isFinite(cost)) {
-          return 0;
-        }
-
-        return quantity * cost;
+  const invoiceRows: PurchaseInvoiceRow[] = useMemo(
+    () =>
+      lines.map((line) => {
+        const product = productsById.get(line.productId);
+        const saved = purchaseItemNames.get(line.productId);
+        return {
+          line,
+          name: product?.name ?? saved?.name ?? line.productId,
+          code: product?.primaryBarcode ?? product?.sku ?? saved?.sku ?? null,
+        };
       }),
-    [values.items]
+    [lines, productsById, purchaseItemNames]
   );
 
-  const total = useMemo(
-    () => itemSubtotals.reduce((sum, subtotal) => sum + subtotal, 0),
-    [itemSubtotals]
+  const { items: payloadItems, total } = useMemo(() => buildPurchaseItemsPayload(lines), [lines]);
+  const linesWithoutCost = countPurchaseLinesWithoutCost(lines);
+
+  const notify = useCallback(
+    (tone: InventoryScanTone, message: string) => {
+      setScanFeedback(createInventoryScanFeedback(tone, message));
+      if (tone === "success") {
+        sounds.success();
+      } else if (tone === "error" || tone === "warning") {
+        sounds.error();
+      }
+    },
+    [sounds]
   );
+
+  const addQuantity = useCallback(
+    (product: ProductResponse, captureMode: InventoryCaptureMode, quantity: number) => {
+      const result = addInventoryCaptureQuantity(
+        linesRef.current,
+        { productId: product.id, mode: captureMode, quantity },
+        createPurchaseCaptureLine(product)
+      );
+      if (result.ok) {
+        setLines(result.lines);
+        setCandidates(null);
+        setHighlightedProductId(product.id);
+        setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
+        notify("success", inventoryScanMessages.added(product.name, result.line.quantity));
+        return;
+      }
+      if (result.reason === "MODE_MISMATCH") {
+        notify("error", inventoryScanMessages.modeMismatch(product.name, result.existingMode));
+        return;
+      }
+      notify("error", inventoryScanMessages.invalidQuantity());
+    },
+    [notify, setLines]
+  );
+
+  const addProduct = useCallback(
+    (product: ProductResponse) => {
+      setCandidates(null);
+      const saleType = resolveInventoryProductSaleType(product);
+      const existing = linesRef.current.find((line) => line.productId === product.id);
+      if (saleType === "UNIT" || (saleType === "BOTH" && existing?.mode === "UNIT")) {
+        addQuantity(product, "UNIT", 1);
+        return;
+      }
+      if (saleType === "BOTH" && !existing) {
+        setPendingDialog({ kind: "sale-mode", product });
+        return;
+      }
+      setPendingDialog({ kind: "weight", product });
+    },
+    [addQuantity]
+  );
+
+  const handleScan = useCallback(
+    (code: string) => {
+      const resolution = resolveInventoryBarcode(code, products);
+      switch (resolution.kind) {
+        case "MATCH":
+          addProduct(resolution.product);
+          return;
+        case "AMBIGUOUS":
+          setCandidates(resolution.candidates);
+          notify("warning", inventoryScanMessages.ambiguous(resolution.code, resolution.candidates.length));
+          return;
+        case "PRESENTATION_UNSUPPORTED":
+          setCandidates(null);
+          notify("error", inventoryScanMessages.presentationUnsupported(resolution.code));
+          return;
+        default:
+          setCandidates(null);
+          notify("error", inventoryScanMessages.notFound(resolution.code));
+      }
+    },
+    [addProduct, notify, products]
+  );
+
+  const capture = useInventoryBarcodeCapture({
+    enabled: !catalogLoading && !isSubmitting,
+    focusReleased: pendingDialog !== null,
+    onScan: handleScan,
+    onDuplicateIgnored: (code) => notify("info", inventoryScanMessages.duplicateIgnored(code)),
+    // Un código leído con el foco en cantidad o costo se procesa como escaneo.
+    fieldScanScope: formRef,
+    onFieldScan: (code) => {
+      handleScan(code);
+      return true;
+    },
+    onManualSubmit: (query) => {
+      const exact = resolveInventoryBarcode(query, products);
+      if (exact.kind !== "NOT_FOUND") {
+        handleScan(query);
+        capture.clear();
+        return;
+      }
+      const results = searchInventoryProducts(products, query);
+      if (results.length === 1) {
+        addProduct(results[0]);
+        capture.clear();
+        return;
+      }
+      if (results.length === 0) {
+        notify("warning", `Sin resultados para "${query}".`);
+      }
+    },
+  });
+
+  const searchResults = useMemo(
+    () => (candidates ? [] : searchInventoryProducts(products, capture.query)),
+    [candidates, capture.query, products]
+  );
+
+  const selectFromList = (product: ProductResponse) => {
+    capture.clear();
+    addProduct(product);
+    capture.focusScanInput();
+  };
+
+  const closeDialog = () => {
+    setPendingDialog(null);
+    capture.focusScanInput();
+  };
+
+  const updateLineQuantity = (line: PurchaseCaptureLine, quantity: number) => {
+    const result = setInventoryCaptureQuantity(linesRef.current, line.productId, quantity);
+    if (result.ok) {
+      setLines(result.lines);
+      setHighlightedProductId(line.productId);
+    }
+  };
+
+  const updateLineCost = (line: PurchaseCaptureLine, cost: number) => {
+    const next = setPurchaseLineCost(linesRef.current, line.productId, cost);
+    if (next) {
+      setLines(next);
+      setHighlightedProductId(line.productId);
+    }
+  };
+
+  const removeLine = async (line: PurchaseCaptureLine) => {
+    const name =
+      productsById.get(line.productId)?.name ??
+      purchaseItemNames.get(line.productId)?.name ??
+      "este producto";
+    try {
+      await confirm({
+        title: "Eliminar producto",
+        description: `Se quitará ${name} de la compra.`,
+        confirmText: "Eliminar",
+        cancelText: "Volver",
+        variant: "danger",
+      });
+    } catch {
+      capture.focusScanInput();
+      return;
+    }
+    setLines(removeInventoryCaptureLine(linesRef.current, line.productId));
+    capture.focusScanInput();
+  };
+
+  const decrementLine = (line: PurchaseCaptureLine) => {
+    if (line.quantity - 1 <= 0) {
+      void removeLine(line);
+      return;
+    }
+    updateLineQuantity(line, line.quantity - 1);
+  };
+
+  const changeBranch = async (branchId: string) => {
+    if (branchId === values.branchId) {
+      return;
+    }
+    if (linesRef.current.length > 0) {
+      try {
+        await confirm({
+          title: "Cambiar sucursal",
+          description:
+            "El catálogo cambia con la sucursal. Se quitarán los productos capturados.",
+          confirmText: "Cambiar y limpiar",
+          cancelText: "Volver",
+          variant: "warning",
+        });
+      } catch {
+        return;
+      }
+      setLines([]);
+      setCandidates(null);
+    }
+    markDirty();
+    setValues((prev) => ({ ...prev, branchId }));
+    setSelectedTerminalId("");
+    setErrors((prev) => ({
+      ...prev,
+      branchId: undefined,
+      terminalId: undefined,
+      submit: undefined,
+    }));
+  };
 
   const validate = () => {
     const nextErrors: PurchaseFormErrors = {};
@@ -276,11 +607,12 @@ export const PurchaseForm = ({
       nextErrors.supplierId = "Debes seleccionar un proveedor.";
     }
 
-    if (!values.branchId) {
+    if (!values.branchId && !isEdit) {
       nextErrors.branchId = "Debes seleccionar una sucursal.";
     }
 
-    if (!resolvedTerminalId) {
+    // En edicion la terminal ya quedo fijada al crear el borrador.
+    if (!isEdit && !resolvedTerminalId) {
       nextErrors.terminalId =
         values.branchId && !terminalLoading
           ? "La sucursal seleccionada no tiene terminal activa disponible. Abre caja o selecciona contexto para operar la compra."
@@ -288,6 +620,7 @@ export const PurchaseForm = ({
     }
 
     if (
+      !isEdit &&
       resolvedTerminalId === currentPosTerminalId &&
       currentPosBranchId &&
       values.branchId &&
@@ -297,53 +630,36 @@ export const PurchaseForm = ({
         "La terminal activa no pertenece a la sucursal de la compra.";
     }
 
-    const hasInvalidItems = values.items.some((item) => {
-      const quantity = Number(item.quantity);
-      const cost = Number(item.cost);
-      return (
-        !item.productId ||
-        !Number.isFinite(quantity) ||
-        quantity <= 0 ||
-        !Number.isFinite(cost) ||
-        cost < 0
-      );
-    });
-
-    if (values.items.length === 0 || hasInvalidItems) {
-      nextErrors.items =
-        "Todos los items deben tener producto, cantidad mayor a 0 y costo valido.";
+    if (lines.length === 0) {
+      nextErrors.items = "Agrega al menos un producto a la compra.";
+    } else if (lines.some((line) => !(line.quantity > 0) || !(line.cost >= 0))) {
+      nextErrors.items = "Todos los productos deben tener cantidad mayor a 0 y costo válido.";
+    } else {
+      // V118: enteros salvo productos marcados "Permite cantidades con decimales".
+      for (const line of lines) {
+        if (line.mode !== "UNIT") {
+          continue;
+        }
+        const product = productsById.get(line.productId);
+        const savedItem = purchase?.items.find((item) => item.productId === line.productId);
+        const violation = getQuantityPolicyViolation(
+          line.quantity,
+          {
+            saleType: product?.saleType ?? savedItem?.saleType ?? "UNIT",
+            allowsDecimalQuantity:
+              product?.allowsDecimalQuantity ?? savedItem?.allowsDecimalQuantity ?? false,
+          },
+          product?.name ?? savedItem?.productName ?? "El producto"
+        );
+        if (violation) {
+          nextErrors.items = violation;
+          break;
+        }
+      }
     }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
-  };
-
-  const handleItemChange = (
-    index: number,
-    field: keyof PurchaseFormItem,
-    value: string
-  ) => {
-    markDirty();
-    setValues((prev) => ({
-      ...prev,
-      items: prev.items.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              [field]: value,
-              ...(field === "productId"
-                ? {
-                    cost:
-                      value && Number(products.find((product) => product.id === value)?.cost) > 0
-                        ? String(products.find((product) => product.id === value)?.cost)
-                        : "",
-                  }
-                : {}),
-            }
-          : item
-      ),
-    }));
-    setErrors((prev) => ({ ...prev, items: undefined, submit: undefined }));
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -353,8 +669,49 @@ export const PurchaseForm = ({
       return;
     }
 
+    try {
+      await confirm(
+        isEdit
+          ? {
+              title: "Guardar cambios del borrador",
+              description: `Se reemplazarán el proveedor, el tipo y los productos del borrador por lo que ves en pantalla (${lines.length} producto(s), total ${formatCurrency(total)}).\n\nLa compra seguirá en borrador y no se moverá inventario.`,
+              confirmText: "Guardar cambios",
+              cancelText: "Seguir editando",
+              variant: "warning",
+            }
+          : {
+              title: "Guardar compra como borrador",
+              description: `Se registrará la compra de ${selectedSupplier?.name ?? "el proveedor"} por ${formatCurrency(total)} con ${lines.length} producto(s).\n\nQuedará en borrador: podrás editarla y luego confirmarla para recibir la mercancía. Guardar no mueve inventario.`,
+              confirmText: "Guardar borrador",
+              cancelText: "Seguir editando",
+              variant: "default",
+            }
+      );
+    } catch {
+      return;
+    }
+
     setErrors({});
     setIsSubmitting(true);
+
+    if (purchase) {
+      try {
+        const response = await updatePurchaseDraft(purchase.id, {
+          supplierId: values.supplierId,
+          type: values.type,
+          total,
+          items: payloadItems,
+        });
+        onDirtyChange?.(false);
+        onSuccess(response);
+      } catch (error) {
+        onError?.(error);
+        setErrors({ submit: "No se pudieron guardar los cambios del borrador." });
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
 
     try {
       const response = await createPurchase({
@@ -363,17 +720,9 @@ export const PurchaseForm = ({
         terminalId: resolvedTerminalId ?? "",
         type: values.type,
         total,
-        items: values.items.map((item, index) => ({
-          productId: item.productId,
-          quantity: Number(item.quantity),
-          cost: Number(item.cost),
-          subtotal: itemSubtotals[index] ?? 0,
-        })),
+        items: payloadItems,
       });
 
-      const selectedSupplier = suppliers.find(
-        (supplier) => supplier.id === values.supplierId
-      );
       const peripheralContext: PurchasePeripheralContext = {
         purchaseId: response.id,
         purchaseNumber: response.id,
@@ -383,18 +732,12 @@ export const PurchaseForm = ({
         branchName: response.branchName ?? selectedBranchName,
         cashier: authUser?.name ?? authUser?.email ?? undefined,
         supplierName: response.supplierName ?? selectedSupplier?.name ?? "Proveedor",
-        items: values.items.map((item, index) => {
-          const product = products.find((candidate) => candidate.id === item.productId);
-          const quantity = Number(item.quantity);
-          const cost = Number(item.cost);
-
-          return {
-            name: product?.name ?? item.productId,
-            quantity,
-            unitPrice: cost,
-            total: itemSubtotals[index] ?? 0,
-          };
-        }),
+        items: invoiceRows.map((row) => ({
+          name: row.name,
+          quantity: row.line.quantity,
+          unitPrice: row.line.cost,
+          total: getPurchaseLineSubtotal(row.line),
+        })),
         subtotal: total,
         taxes: 0,
         discounts: 0,
@@ -424,14 +767,17 @@ export const PurchaseForm = ({
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:bg-slate-800 dark:border-slate-700">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Purchases</p>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Crear compra</h2>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            {isEdit ? "Editar borrador de compra" : "Crear compra"}
+          </h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Registra el proveedor, el tipo de compra y los items. Esta accion aun no
-            mueve inventario.
+            {isEdit
+              ? "Ajusta proveedor, tipo, productos, cantidades y costos. La sucursal, la terminal y la fecha quedan fijas. Cuando esté lista, confírmala desde el listado para poder recibirla."
+              : "Registra la factura del proveedor escaneando los productos. La compra se guarda como borrador editable; guardarla no mueve inventario y el stock entra al confirmar la recepción."}
           </p>
         </div>
         <Button variant="ghost" onClick={onCancel}>
@@ -439,258 +785,239 @@ export const PurchaseForm = ({
         </Button>
       </div>
 
-      <form className="grid gap-5" onSubmit={handleSubmit}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1">
-            <Select
+      <form ref={formRef} className="grid gap-5" onSubmit={handleSubmit}>
+        <div
+          aria-label="Encabezado de la factura de proveedor"
+          className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)] dark:border-slate-700 dark:bg-slate-900/40"
+        >
+          <div className="space-y-2">
+            <SearchableSelect
+              id="purchase-supplier"
               label="Proveedor"
-              required
               value={values.supplierId}
+              options={supplierOptions}
+              loading={catalogLoading}
               disabled={catalogLoading || suppliers.length === 0}
-              onChange={(event) => {
+              placeholder={catalogLoading ? "Cargando..." : "Selecciona un proveedor"}
+              searchPlaceholder="Buscar por nombre, razón social o documento"
+              noResultsMessage="No hay proveedores que coincidan"
+              onChange={(supplierId) => {
+                if (supplierId === values.supplierId) {
+                  return;
+                }
                 markDirty();
-                setValues((prev) => ({ ...prev, supplierId: event.target.value }));
+                setValues((prev) => ({ ...prev, supplierId }));
                 setErrors((prev) => ({ ...prev, supplierId: undefined, submit: undefined }));
               }}
-            >
-              <option value="">
-                {catalogLoading ? "Cargando..." : "Selecciona un proveedor"}
-              </option>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </Select>
+            />
+            {isEdit && values.supplierId && !selectedSupplier && purchase?.supplierName ? (
+              <p className="text-xs text-amber-700">
+                Proveedor actual: {purchase.supplierName} (inactivo). Selecciona otro o conserva el actual.
+              </p>
+            ) : null}
+            {selectedSupplier ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {[
+                  selectedSupplier.legalName && selectedSupplier.legalName !== selectedSupplier.name
+                    ? selectedSupplier.legalName
+                    : null,
+                  selectedSupplier.documentNumber ? `Documento ${selectedSupplier.documentNumber}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            ) : null}
             {errors.supplierId ? (
               <p className="text-xs text-rose-600">{errors.supplierId}</p>
             ) : null}
           </div>
 
-          {isSuperRole ? (
-            <div className="space-y-1">
-              <Select
-                label="Sucursal"
-                required
-                value={values.branchId}
-                disabled={catalogLoading || branches.length === 0}
-                onChange={(event) => {
-                  markDirty();
-                  setValues((prev) => ({ ...prev, branchId: event.target.value }));
-                  setSelectedTerminalId("");
-                  setErrors((prev) => ({
-                    ...prev,
-                    branchId: undefined,
-                    terminalId: undefined,
-                    submit: undefined,
-                  }));
-                }}
-              >
-                <option value="">
-                  {catalogLoading ? "Cargando..." : "Selecciona una sucursal"}
-                </option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.nombre}
-                  </option>
-                ))}
-              </Select>
-              {errors.branchId ? <p className="text-xs text-rose-600">{errors.branchId}</p> : null}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <Input label="Sucursal" value={selectedBranchName} disabled readOnly />
-            </div>
-          )}
-
-          <div className="space-y-1">
-            {selectedBranchTerminals.length > 1 ? (
-              <Select
-                label="Terminal"
-                required
-                value={resolvedTerminalId ?? ""}
-                disabled={terminalLoading}
-                onChange={(event) => {
-                  markDirty();
-                  setSelectedTerminalId(event.target.value);
-                  setErrors((prev) => ({
-                    ...prev,
-                    terminalId: undefined,
-                    submit: undefined,
-                  }));
-                }}
-              >
-                <option value="">
-                  {terminalLoading ? "Cargando..." : "Selecciona una terminal"}
-                </option>
-                {selectedBranchTerminals.map((terminal) => (
-                  <option key={terminal.id} value={terminal.id}>
-                    {terminal.name} ({terminal.code})
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <Input label="Terminal" value={terminalDisplayName} disabled readOnly />
-            )}
-            {terminalError ? (
-              <p className="text-xs text-amber-700">{terminalError}</p>
-            ) : null}
-            {errors.terminalId ? (
-              <div className="space-y-2">
-                <p className="text-xs text-rose-600">{errors.terminalId}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push(contextTarget)}
-                >
-                  Ir a seleccion de contexto
-                </Button>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {isEdit ? (
+              <div className="space-y-1">
+                <Input
+                  label="Sucursal"
+                  value={purchase?.branchName ?? selectedBranchName}
+                  disabled
+                  readOnly
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  No se puede cambiar. Si es incorrecta, cancela el borrador y crea uno nuevo.
+                </p>
               </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-1">
-          <Select
-            label="Tipo"
-            value={values.type}
-            onChange={(event) => {
-              markDirty();
-              setValues((prev) => ({
-                ...prev,
-                type: event.target.value as "CASH" | "CREDIT",
-              }));
-            }}
-          >
-            <option value="CASH">CASH</option>
-            <option value="CREDIT">CREDIT</option>
-          </Select>
-        </div>
-
-        <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">Items</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300">
-                Agrega productos, cantidades y costos para calcular el total.
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => {
-                markDirty();
-                setValues((prev) => ({
-                  ...prev,
-                  items: [...prev.items, createEmptyItem()],
-                }));
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Agregar item
-            </Button>
-          </div>
-
-          <div className="grid gap-4">
-            {values.items.map((item, index) => {
-              const selectedProduct = products.find(
-                (product) => product.id === item.productId
-              );
-              const productCost = Number(selectedProduct?.cost ?? 0);
-
-              return (
-              <div
-                key={`${index}-${item.productId}`}
-                className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[2fr_1fr_1fr_auto] dark:bg-slate-800 dark:border-slate-700"
-              >
+            ) : isSuperRole ? (
+              <div className="space-y-1">
                 <Select
-                  label="Producto"
-                  value={item.productId}
-                  disabled={catalogLoading || products.length === 0}
-                  onChange={(event) =>
-                    handleItemChange(index, "productId", event.target.value)
-                  }
+                  label="Sucursal"
+                  required
+                  value={values.branchId}
+                  disabled={catalogLoading || branches.length === 0}
+                  onChange={(event) => void changeBranch(event.target.value)}
                 >
                   <option value="">
-                    {catalogLoading ? "Cargando..." : "Selecciona un producto"}
+                    {catalogLoading ? "Cargando..." : "Selecciona una sucursal"}
                   </option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.nombre}
                     </option>
                   ))}
                 </Select>
+                {errors.branchId ? <p className="text-xs text-rose-600">{errors.branchId}</p> : null}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Input label="Sucursal" value={selectedBranchName} disabled readOnly />
+              </div>
+            )}
 
+            <div className="space-y-1">
+              {isEdit ? (
                 <Input
-                  label="Cantidad"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.quantity}
-                  onChange={(event) =>
-                    handleItemChange(index, "quantity", event.target.value)
-                  }
+                  label="Terminal"
+                  value={purchase?.terminalName ?? "-"}
+                  disabled
+                  readOnly
                 />
-
-                <Input
-                  label="Costo"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.cost}
-                  onChange={(event) => handleItemChange(index, "cost", event.target.value)}
-                />
-
-                {selectedProduct && productCost <= 0 ? (
-                  <p className="text-xs text-amber-700 md:col-start-3">
-                    Este producto no tiene costo registrado. Ingresa el costo de compra.
-                  </p>
-                ) : null}
-
-                <div className="flex items-end gap-2">
-                  <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Subtotal
-                    </p>
-                    <p className="mt-1 font-semibold text-slate-900 dark:text-white">
-                      {formatCurrency(itemSubtotals[index] ?? 0)}
-                    </p>
-                  </div>
+              ) : selectedBranchTerminals.length > 1 ? (
+                <Select
+                  label="Terminal"
+                  required
+                  value={resolvedTerminalId ?? ""}
+                  disabled={terminalLoading}
+                  onChange={(event) => {
+                    markDirty();
+                    setSelectedTerminalId(event.target.value);
+                    setErrors((prev) => ({
+                      ...prev,
+                      terminalId: undefined,
+                      submit: undefined,
+                    }));
+                  }}
+                >
+                  <option value="">
+                    {terminalLoading ? "Cargando..." : "Selecciona una terminal"}
+                  </option>
+                  {selectedBranchTerminals.map((terminal) => (
+                    <option key={terminal.id} value={terminal.id}>
+                      {terminal.name} ({terminal.code})
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <Input label="Terminal" value={terminalDisplayName} disabled readOnly />
+              )}
+              {terminalError && !isEdit ? (
+                <p className="text-xs text-amber-700">{terminalError}</p>
+              ) : null}
+              {errors.terminalId ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-rose-600">{errors.terminalId}</p>
                   <Button
-                    variant="ghost"
-                    onClick={() => {
-                      markDirty();
-                      setValues((prev) => ({
-                        ...prev,
-                        items:
-                          prev.items.length > 1
-                            ? prev.items.filter((_, itemIndex) => itemIndex !== index)
-                            : prev.items,
-                      }));
-                    }}
-                    disabled={values.items.length === 1}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(contextTarget)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    Ir a seleccion de contexto
                   </Button>
                 </div>
-              </div>
-              );
-            })}
+              ) : null}
+            </div>
+
+            <Select
+              label="Tipo"
+              value={values.type}
+              onChange={(event) => {
+                markDirty();
+                setValues((prev) => ({
+                  ...prev,
+                  type: event.target.value as "CASH" | "CREDIT",
+                }));
+              }}
+            >
+              <option value="CASH">CASH</option>
+              <option value="CREDIT">CREDIT</option>
+            </Select>
+
+            <Input
+              label="Fecha"
+              value={formatDateLabel(purchase?.createdAt ?? new Date())}
+              disabled
+              readOnly
+            />
           </div>
+        </div>
 
-          {errors.items ? <p className="mt-3 text-xs text-rose-600">{errors.items}</p> : null}
-        </section>
+        <InventoryScanBar
+          id="purchase-scan"
+          capture={capture}
+          feedback={scanFeedback}
+          disabled={catalogLoading || isSubmitting}
+          placeholder="Escanea los productos de la factura o escribe nombre, SKU o código"
+        >
+          {candidates ? (
+            <InventoryProductSearchResults
+              title="Elige el producto del código ambiguo"
+              products={candidates}
+              onSelect={selectFromList}
+            />
+          ) : capture.query.trim().length >= 2 ? (
+            <InventoryProductSearchResults
+              title="Resultados de búsqueda"
+              products={searchResults}
+              emptyMessage="Sin resultados. Revisa el nombre, SKU o código."
+              onSelect={selectFromList}
+            />
+          ) : null}
+        </InventoryScanBar>
 
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-emerald-700">Resumen</p>
-              <p className="text-sm text-emerald-900/80">
-                El total general se calcula con la suma de subtotales por item.
+        <PurchaseInvoiceTable
+          rows={invoiceRows}
+          highlightedProductId={highlightedProductId}
+          disabled={isSubmitting}
+          onIncrement={(line) => updateLineQuantity(line, line.quantity + 1)}
+          onDecrement={decrementLine}
+          onSetQuantity={updateLineQuantity}
+          onSetCost={updateLineCost}
+          onInvalidQuantity={() => notify("error", inventoryScanMessages.invalidQuantity())}
+          onInvalidCost={() =>
+            notify("error", "Costo inválido: debe ser mayor o igual a 0 con máximo 2 decimales.")
+          }
+          onRemove={(line) => void removeLine(line)}
+        />
+        {errors.items ? <p className="text-xs text-rose-600">{errors.items}</p> : null}
+
+        <div
+          aria-label="Totales de la compra"
+          className="sticky bottom-0 z-10 grid gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-lg sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center lg:static lg:shadow-none dark:border-emerald-500/30 dark:bg-emerald-950"
+        >
+          <div className="min-w-0">
+            <div className="flex items-baseline justify-between gap-3 sm:justify-start">
+              <p className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                Total compra
+              </p>
+              <p className="text-2xl font-semibold tabular-nums text-emerald-950 dark:text-white">
+                {formatCurrency(total)}
               </p>
             </div>
-            <p className="text-xl font-semibold text-emerald-950">{formatCurrency(total)}</p>
+            <p className="text-xs text-emerald-900/80 dark:text-emerald-100/80">
+              {lines.length} producto(s) en la factura.
+            </p>
+            {linesWithoutCost > 0 ? (
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                {linesWithoutCost} producto(s) sin costo.
+              </p>
+            ) : null}
           </div>
-        </section>
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" isLoading={isSubmitting} className="flex-1 sm:flex-none">
+              {isEdit ? "Guardar cambios" : "Guardar borrador"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
 
         {catalogError ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -703,16 +1030,38 @@ export const PurchaseForm = ({
             {errors.submit}
           </div>
         ) : null}
-
-        <div className="flex flex-wrap gap-3">
-          <Button type="submit" isLoading={isSubmitting}>
-            Guardar compra
-          </Button>
-          <Button type="button" variant="ghost" onClick={onCancel} disabled={isSubmitting}>
-            Cancelar
-          </Button>
-        </div>
       </form>
+
+      {pendingDialog?.kind === "sale-mode" ? (
+        <InventorySaleModeDialog
+          productName={pendingDialog.product.name}
+          onCancel={closeDialog}
+          onSelect={(captureMode) => {
+            const product = pendingDialog.product;
+            if (captureMode === "UNIT") {
+              setPendingDialog(null);
+              addQuantity(product, "UNIT", 1);
+              capture.focusScanInput();
+              return;
+            }
+            setPendingDialog({ kind: "weight", product });
+          }}
+        />
+      ) : null}
+
+      {pendingDialog?.kind === "weight" ? (
+        <InventoryQuantityDialog
+          title="Peso del producto"
+          productName={pendingDialog.product.name}
+          onCancel={closeDialog}
+          onConfirm={(quantity) => {
+            const product = pendingDialog.product;
+            setPendingDialog(null);
+            addQuantity(product, "WEIGHT", quantity);
+            capture.focusScanInput();
+          }}
+        />
+      ) : null}
     </section>
   );
 };

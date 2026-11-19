@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import type { PoolClient } from "pg";
 import { OrderService } from "./order.service";
 import type {
@@ -822,6 +822,44 @@ test("OrderService.getOrders filters by customerId", async () => {
   assert.deepEqual(queries[0].params, [ids.tenant, ids.customer]);
 });
 
+test("OrderService.getOrders returns aggregated generated sales without per-order queries", async () => {
+  const queries: RecordedQuery[] = [];
+  const sale = { id: "sale-1", createdAt: "2026-01-01", total: 100, status: "COMPLETED", electronicBillingStatus: "ACCEPTED" };
+  const base = { tenant_id: ids.tenant, customer_id: ids.customer, type: "CASH", status: "CONFIRMED", total: 100, payment_status: "PENDING", total_paid: 0, balance_due: 100, created_at: "2026-01-01" };
+  const service = new OrderService({ query: async (text: string, params: unknown[] = []) => {
+    queries.push({ text, params });
+    return { rows: [{ ...base, id: ids.order, generated_sales: [] }, { ...base, id: ids.otherCustomer, generated_sales: [sale], generated_sale_id: sale.id }, { ...base, id: ids.customer, generated_sales: [sale, { ...sale, id: "sale-2", electronicBillingStatus: null }] }] };
+  } } as never, { logEvent: () => undefined } as never, { findAccessibleBranchIds: async () => [] } as never, {} as never, {} as never, {} as never);
+  const result = await service.getOrders({ tenantId: ids.tenant, cashScope: "all" }, actor);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].text, /s\.tenant_id = o\.tenant_id/);
+  assert.match(queries[0].text, /s\.status <> 'CANCELLED'/);
+  assert.match(queries[0].text, /ORDER BY s\.created_at DESC, s\.id DESC/);
+  assert.deepEqual(result.map((order) => order.generatedSales.length), [0, 1, 2]);
+  assert.equal(result[1].generatedSaleId, sale.id);
+  assert.equal(result[2].generatedSales[1].electronicBillingStatus, null);
+});
+
+test("OrderService.getOrderById maps tenant-scoped customer and terminal, including missing customer", async () => {
+  for (const customer of [{ customer_name: "Cliente", customer_document: "123" }, { customer_name: null, customer_document: null }]) {
+    const queries: RecordedQuery[] = [];
+    const service = new OrderService({ query: async (text: string, params: unknown[] = []) => {
+      queries.push({ text, params });
+      if (text.includes("auditoria_eventos")) return { rows: [{ branch_id: ids.branch, branch_name: "Sucursal", terminal_id: ids.terminal, terminal_name: "Caja" }] };
+      if (text.includes("FROM orders o")) return { rows: [{ id: ids.order, tenant_id: ids.tenant, customer_id: ids.customer, type: "CASH", status: "CONFIRMED", total: 100, payment_status: "PENDING", total_paid: 0, balance_due: 100, created_at: "2026-01-01", ...customer }] };
+      return { rows: [] };
+    } } as never, { logEvent: () => undefined } as never, { findAccessibleBranchIds: async () => [] } as never, {} as never, {} as never, {} as never);
+    const result = await service.getOrderById(ids.order, ids.tenant, actor);
+    assert.equal(result.customerName, customer.customer_name);
+    assert.equal(result.customerDocument, customer.customer_document);
+    assert.equal(result.terminalId, ids.terminal);
+    const detail = queries.find((query) => query.text.includes("LEFT JOIN customers c"));
+    assert.ok(detail);
+    assert.match(detail.text, /c\.id = o\.customer_id AND c\.tenant_id = o\.tenant_id/);
+    assert.deepEqual(detail.params, [ids.order, ids.tenant]);
+  }
+});
+
 test("OrderService.getOrders current scope filters by current cash session", async () => {
   const queries: RecordedQuery[] = [];
   const service = new OrderService(
@@ -958,4 +996,644 @@ test("OrderService.invoiceOrder rejects POS session from another order branch", 
 
   assert.equal(saleCreated, false);
   assert.ok(queries.length >= 4);
+});
+
+// --- corregir-lotes-entrega-pedidos: consumo de lotes al entregar pedidos ---
+
+type DeliveryBalance = {
+  balance_id: string;
+  lot_id: string;
+  location_id: string | null;
+  quantity_available: number;
+};
+
+const deliveryProductB = "10000000-0000-0000-0000-000000000013";
+
+class FakeDeliveryClient {
+  queries: RecordedQuery[] = [];
+  balanceUpdates: Array<{ quantity: number; balanceId: string }> = [];
+  lotLinks: Array<{ movementId: unknown; lotId: unknown; locationId: unknown; quantity: unknown }> = [];
+  committed = false;
+  rolledBack = false;
+
+  constructor(
+    private readonly options: {
+      items: Array<{ id: string; productId: string; ordered: number; delivered?: number }>;
+      lotPolicies: Record<
+        string,
+        {
+          requiresLot: boolean;
+          requiresExpiration?: boolean;
+          requiresSerial?: boolean;
+          isInventoryable?: boolean;
+          name?: string;
+        }
+      >;
+      balances: Record<string, DeliveryBalance[]>;
+    }
+  ) {}
+
+  private itemRows() {
+    return this.options.items.map((item) => ({
+      id: item.id,
+      order_id: ids.order,
+      product_id: item.productId,
+      ordered_quantity: item.ordered,
+      delivered_quantity: item.delivered ?? 0,
+      billed_quantity: 0,
+      price: 100,
+      subtotal: 100 * item.ordered,
+      base_unit_price: 100,
+      final_unit_price: 100,
+      discount_amount: 0,
+      discount_percent: 0,
+      discount_total: 0,
+      applied_promotion_id: null,
+      applied_promotion_name: null,
+      tax_id: null,
+      tax_rate: 0,
+      tax_base: 0,
+      tax_amount: 0,
+      line_total: 100 * item.ordered,
+      pricing_snapshot: null,
+      pricing_calculated_at: null,
+    }));
+  }
+
+  async query<T>(text: string, params: unknown[] = []) {
+    this.queries.push({ text, params });
+    const sql = text.replace(/\s+/g, " ").trim();
+
+    if (sql === "BEGIN") {
+      return { rows: [] as T[] };
+    }
+    if (sql === "COMMIT") {
+      this.committed = true;
+      return { rows: [] as T[] };
+    }
+    if (sql === "ROLLBACK") {
+      this.rolledBack = true;
+      return { rows: [] as T[] };
+    }
+    if (sql.includes("auditoria_eventos")) {
+      return {
+        rows: [
+          { branch_id: ids.branch, branch_name: "Sucursal QA", terminal_id: null, terminal_name: null },
+        ] as T[],
+      };
+    }
+    if (sql.includes("FROM orders") && sql.includes("LIMIT 1")) {
+      return {
+        rows: [
+          {
+            id: ids.order,
+            tenant_id: ids.tenant,
+            customer_id: ids.customer,
+            type: "CASH",
+            status: "CONFIRMED",
+            total: 500,
+            payment_status: "PAID",
+            total_paid: 500,
+            balance_due: 0,
+            created_at: new Date("2026-11-13T10:00:00.000Z"),
+          },
+        ] as T[],
+      };
+    }
+    if (sql.includes("inventory_lock_stock_scope")) {
+      return { rows: [{}] as T[] };
+    }
+    if (sql.includes("requires_lot") && sql.includes("FROM products")) {
+      const productIds = params[1] as string[];
+      return {
+        rows: productIds
+          .filter((productId) => this.options.lotPolicies[productId])
+          .map((productId) => ({
+            id: productId,
+            requires_lot: this.options.lotPolicies[productId].requiresLot,
+            requires_expiration: this.options.lotPolicies[productId].requiresExpiration ?? false,
+            requires_serial: this.options.lotPolicies[productId].requiresSerial ?? false,
+            is_inventoryable: this.options.lotPolicies[productId].isInventoryable ?? true,
+            name: this.options.lotPolicies[productId].name ?? null,
+          })) as T[],
+      };
+    }
+    if (sql.includes("FROM inventory_lot_balances balance")) {
+      return { rows: (this.options.balances[params[2] as string] ?? []) as T[] };
+    }
+    if (sql.startsWith("UPDATE inventory_lot_balances")) {
+      this.balanceUpdates.push({ quantity: Number(params[0]), balanceId: String(params[1]) });
+      return { rows: [{ id: params[1] }] as T[] };
+    }
+    if (sql.startsWith("INSERT INTO stock_movement_lots")) {
+      this.lotLinks.push({
+        movementId: params[1],
+        lotId: params[3],
+        locationId: params[4],
+        quantity: params[5],
+      });
+      return { rows: [] as T[] };
+    }
+    if (sql.startsWith("UPDATE order_items")) {
+      return { rows: [] as T[] };
+    }
+    if (sql.includes("FROM order_items")) {
+      return { rows: this.itemRows() as T[] };
+    }
+    if (sql.startsWith("UPDATE orders")) {
+      return {
+        rows: [
+          {
+            id: ids.order,
+            tenant_id: ids.tenant,
+            customer_id: ids.customer,
+            type: "CASH",
+            status: params[2],
+            total: 500,
+            payment_status: "PAID",
+            total_paid: 500,
+            balance_due: 0,
+            created_at: new Date("2026-11-13T10:00:00.000Z"),
+          },
+        ] as T[],
+      };
+    }
+    throw new Error(`Unexpected SQL in delivery test: ${sql}`);
+  }
+
+  release() {}
+}
+
+const buildDeliveryService = (
+  clientOptions: ConstructorParameters<typeof FakeDeliveryClient>[0],
+  kardexStock = 100
+) => {
+  const client = new FakeDeliveryClient(clientOptions);
+  const movements: Array<{ id: string; productId: string; quantity: number }> = [];
+  const stockMovementService = {
+    getStockByProduct: async () => ({ stock: kardexStock }),
+    createMovement: async (data: { productId: string; quantity: number }) => {
+      const movement = { id: `movement-${movements.length + 1}`, productId: data.productId, quantity: data.quantity };
+      movements.push(movement);
+      return movement;
+    },
+    logMovementAuditEvent: () => undefined,
+  };
+  const service = new OrderService(
+    { getClient: async () => client as unknown as PoolClient } as never,
+    { logEvent: () => undefined } as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {} as never,
+    stockMovementService as never,
+    {} as never
+  );
+  return { service, client, movements };
+};
+
+const deliveryContext = { userId: ids.user, branchId: ids.branch };
+
+test("OrderService.deliverOrder: producto con lote consume un lote por FEFO y crea el vínculo", async () => {
+  const { service, client, movements } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 3 }],
+    lotPolicies: { [ids.product]: { requiresLot: true } },
+    balances: {
+      [ids.product]: [{ balance_id: "balance-1", lot_id: "lot-1", location_id: "loc-1", quantity_available: 5 }],
+    },
+  });
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 3 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.deepEqual(client.balanceUpdates, [{ quantity: 3, balanceId: "balance-1" }]);
+  assert.deepEqual(client.lotLinks, [
+    { movementId: "movement-1", lotId: "lot-1", locationId: "loc-1", quantity: 3 },
+  ]);
+});
+
+test("OrderService.deliverOrder: reparte la entrega entre varios lotes en orden FEFO", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 7 }],
+    lotPolicies: { [ids.product]: { requiresLot: true } },
+    balances: {
+      [ids.product]: [
+        { balance_id: "balance-1", lot_id: "lot-1", location_id: null, quantity_available: 5 },
+        { balance_id: "balance-2", lot_id: "lot-2", location_id: null, quantity_available: 4 },
+      ],
+    },
+  });
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 7 }], deliveryContext, actor);
+
+  assert.deepEqual(client.balanceUpdates, [
+    { quantity: 5, balanceId: "balance-1" },
+    { quantity: 2, balanceId: "balance-2" },
+  ]);
+  assert.equal(client.lotLinks.length, 2);
+  const lotQuery = client.queries.find((query) => query.text.includes("FROM inventory_lot_balances balance"));
+  const lotSql = lotQuery?.text.replace(/\s+/g, " ") ?? "";
+  assert.match(lotSql, /lot\.status = 'ACTIVE'/);
+  assert.match(lotSql, /lot\.expiration_date IS NULL OR lot\.expiration_date >= CURRENT_DATE/);
+  assert.match(lotSql, /ORDER BY lot\.expiration_date ASC NULLS LAST, lot\.received_at ASC/);
+  assert.match(lotSql, /FOR UPDATE OF balance/);
+});
+
+test("OrderService.deliverOrder: rechaza sin efectos si los lotes vendibles no alcanzan", async () => {
+  const { service, client } = buildDeliveryService(
+    {
+      items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 5 }],
+      lotPolicies: { [ids.product]: { requiresLot: true } },
+      balances: {
+        [ids.product]: [{ balance_id: "balance-1", lot_id: "lot-1", location_id: null, quantity_available: 2 }],
+      },
+    },
+    10
+  );
+
+  await assert.rejects(
+    () => service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 5 }], deliveryContext, actor),
+    /insufficient lot stock for delivery/
+  );
+  assert.equal(client.rolledBack, true);
+  assert.equal(client.committed, false);
+  assert.equal(client.balanceUpdates.length, 0);
+  assert.equal(client.lotLinks.length, 0);
+});
+
+test("OrderService.deliverOrder: producto sin lote conserva el flujo y no toca lotes", async () => {
+  const { service, client, movements } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 2 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.equal(
+    client.queries.some((query) => query.text.includes("inventory_lot_balances")),
+    false
+  );
+  assert.equal(client.lotLinks.length, 0);
+});
+
+test("OrderService.deliverOrder: bloquea el alcance de stock en orden ascendente antes de consumir lotes", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [
+      { id: "10000000-0000-0000-0000-0000000000a1", productId: deliveryProductB, ordered: 1 },
+      { id: "10000000-0000-0000-0000-0000000000a2", productId: ids.product, ordered: 1 },
+    ],
+    lotPolicies: {
+      [ids.product]: { requiresLot: true },
+      [deliveryProductB]: { requiresLot: true },
+    },
+    balances: {
+      [ids.product]: [{ balance_id: "balance-a", lot_id: "lot-a", location_id: null, quantity_available: 1 }],
+      [deliveryProductB]: [{ balance_id: "balance-b", lot_id: "lot-b", location_id: null, quantity_available: 1 }],
+    },
+  });
+
+  await service.deliverOrder(
+    ids.order,
+    ids.tenant,
+    [
+      { productId: deliveryProductB, quantity: 1 },
+      { productId: ids.product, quantity: 1 },
+    ],
+    deliveryContext,
+    actor
+  );
+
+  const lockCalls = client.queries.filter((query) => query.text.includes("inventory_lock_stock_scope"));
+  assert.deepEqual(
+    lockCalls.map((query) => query.params[2]),
+    [ids.product, deliveryProductB].sort()
+  );
+  const firstLotQueryIndex = client.queries.findIndex((query) =>
+    query.text.includes("FROM inventory_lot_balances balance")
+  );
+  const lastLockIndex = client.queries.lastIndexOf(lockCalls[lockCalls.length - 1]);
+  assert.ok(lastLockIndex < firstLotQueryIndex);
+  assert.deepEqual(lockCalls[0].params.slice(0, 2), [ids.tenant, ids.branch]);
+});
+type DeliveryIdempotencyRow = {
+  request_hash: string;
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  result: unknown;
+  operation_reference: string | null;
+};
+
+class FakeIdempotentDeliveryClient extends FakeDeliveryClient {
+  idempotencyRows = new Map<string, DeliveryIdempotencyRow>();
+
+  async query<T>(text: string, params: unknown[] = []) {
+    const sql = text.replace(/\s+/g, " ").trim();
+    if (sql.startsWith("INSERT INTO order_delivery_idempotency")) {
+      this.queries.push({ text, params });
+      const key = `${params[0]}:${params[1]}:${params[2]}`;
+      if (this.idempotencyRows.has(key)) {
+        return { rows: [] as T[] };
+      }
+      const row: DeliveryIdempotencyRow = {
+        request_hash: String(params[3]),
+        status: "PENDING",
+        result: null,
+        operation_reference: null,
+      };
+      this.idempotencyRows.set(key, row);
+      return { rows: [row] as T[] };
+    }
+    if (sql.includes("FROM order_delivery_idempotency")) {
+      this.queries.push({ text, params });
+      const row = this.idempotencyRows.get(`${params[0]}:${params[1]}:${params[2]}`);
+      return { rows: (row ? [row] : []) as T[] };
+    }
+    if (sql.startsWith("UPDATE order_delivery_idempotency")) {
+      this.queries.push({ text, params });
+      const row = this.idempotencyRows.get(`${params[0]}:${params[1]}:${params[2]}`);
+      if (!row || row.status !== "PENDING" || row.request_hash !== params[5]) {
+        return { rows: [] as T[], rowCount: 0 };
+      }
+      row.status = "COMPLETED";
+      row.result = JSON.parse(String(params[3]));
+      row.operation_reference = String(params[4]);
+      return { rows: [] as T[], rowCount: 1 };
+    }
+    return super.query<T>(text, params);
+  }
+}
+
+const buildIdempotentDeliveryService = () => {
+  const client = new FakeIdempotentDeliveryClient({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 10 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+  const movements: Array<{ id: string; productId: string; quantity: number }> = [];
+  const stockMovementService = {
+    getStockByProduct: async () => ({ stock: 100 }),
+    createMovement: async (data: { productId: string; quantity: number }) => {
+      const movement = { id: `movement-${movements.length + 1}`, productId: data.productId, quantity: data.quantity };
+      movements.push(movement);
+      return movement;
+    },
+    logMovementAuditEvent: () => undefined,
+  };
+  const service = new OrderService(
+    { getClient: async () => client as unknown as PoolClient } as never,
+    { logEvent: () => undefined } as never,
+    { findAccessibleBranchIds: async () => [] } as never,
+    {} as never,
+    stockMovementService as never,
+    {} as never
+  );
+  return { service, client, movements };
+};
+
+test("OrderService.deliverOrder: bloquea la fila del pedido antes de leer los ítems pendientes", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 2 }], deliveryContext, actor);
+
+  const orderQueryIndex = client.queries.findIndex((query) => {
+    const sql = query.text.replace(/\s+/g, " ");
+    return sql.includes("FROM orders") && sql.includes("LIMIT 1");
+  });
+  const itemsQueryIndex = client.queries.findIndex((query) => query.text.includes("FROM order_items"));
+  assert.match(client.queries[orderQueryIndex].text.replace(/\s+/g, " "), /LIMIT 1 FOR UPDATE/);
+  assert.ok(orderQueryIndex < itemsQueryIndex);
+});
+
+test("OrderService.deliverOrder: el reintento con la misma Idempotency-Key devuelve el resultado sin volver a entregar", async () => {
+  const { service, client, movements } = buildIdempotentDeliveryService();
+  const items = [{ productId: ids.product, quantity: 5 }];
+
+  const first = await service.deliverOrder(ids.order, ids.tenant, items, deliveryContext, actor, "delivery-key-1");
+  const second = await service.deliverOrder(ids.order, ids.tenant, items, deliveryContext, actor, "delivery-key-1");
+
+  assert.equal(movements.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(second)), JSON.parse(JSON.stringify(first)));
+  assert.equal(client.queries.filter((query) => query.text.startsWith("UPDATE order_items") || query.text.trim().startsWith("UPDATE order_items")).length, 1);
+  const [row] = [...client.idempotencyRows.values()];
+  assert.equal(row.status, "COMPLETED");
+  assert.equal(row.operation_reference, `order-delivery:${ids.order}:delivery-key-1`);
+});
+
+test("OrderService.deliverOrder: la misma Idempotency-Key con otro contenido responde conflicto sin efectos", async () => {
+  const { service, movements } = buildIdempotentDeliveryService();
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 5 }], deliveryContext, actor, "delivery-key-2");
+  await assert.rejects(
+    () => service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 3 }], deliveryContext, actor, "delivery-key-2"),
+    /Idempotency-Key was already used with a different payload/
+  );
+  assert.equal(movements.length, 1);
+});
+
+test("OrderService.deliverOrder: rechaza una Idempotency-Key inválida antes de abrir la transacción", async () => {
+  const { service, client } = buildIdempotentDeliveryService();
+
+  await assert.rejects(
+    () => service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 1 }], deliveryContext, actor, "clave con espacios"),
+    /Idempotency-Key is invalid/
+  );
+  assert.equal(client.queries.length, 0);
+});
+
+// --- Series (fase 6): asignación al entregar pedidos ---
+
+const deliverySerials = ["20000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000002"];
+
+const attachDeliverySerialService = (service: OrderService, error?: Error) => {
+  const calls: Array<Record<string, unknown>> = [];
+  (service as unknown as Record<string, unknown>).productSerialService = {
+    assignForOrderDelivery: async (_client: unknown, input: Record<string, unknown>) => {
+      calls.push(input);
+      if (error) {
+        throw error;
+      }
+      return 2;
+    },
+  };
+  return calls;
+};
+
+test("OrderService.deliverOrder: producto con serie asigna las series al OUT de la entrega", async () => {
+  const { service, client, movements } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+  const calls = attachDeliverySerialService(service);
+
+  await service.deliverOrder(
+    ids.order,
+    ids.tenant,
+    [{ productId: ids.product, quantity: 2, serialIds: deliverySerials }],
+    deliveryContext,
+    actor
+  );
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.deepEqual(calls, [
+    {
+      tenantId: ids.tenant,
+      branchId: ids.branch,
+      orderId: ids.order,
+      lines: [{ productId: ids.product, quantity: 2, stockMovementId: "movement-1", serialIds: deliverySerials }],
+      userId: ids.user,
+    },
+  ]);
+  assert.equal(client.lotLinks.length, 0);
+});
+
+test("OrderService.deliverOrder: error de series revierte toda la entrega", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+  attachDeliverySerialService(
+    service,
+    new ConflictException({ code: "SERIAL_NOT_AVAILABLE", message: "Serie no disponible", productId: ids.product })
+  );
+
+  await assert.rejects(
+    service.deliverOrder(
+      ids.order,
+      ids.tenant,
+      [{ productId: ids.product, quantity: 2, serialIds: deliverySerials }],
+      deliveryContext,
+      actor
+    ),
+    ConflictException
+  );
+  assert.equal(client.committed, false);
+  assert.equal(client.rolledBack, true);
+});
+
+test("OrderService.deliverOrder: producto sin serie no llama al servicio de series", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false } },
+    balances: {},
+  });
+  const calls = attachDeliverySerialService(service);
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 2 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(calls.length, 0);
+});
+
+test("OrderService.deliverOrder: valida serialIds antes de abrir la transacción", async () => {
+  const { service, client } = buildDeliveryService({
+    items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 2 }],
+    lotPolicies: { [ids.product]: { requiresLot: false, requiresSerial: true } },
+    balances: {},
+  });
+
+  await assert.rejects(
+    service.deliverOrder(
+      ids.order,
+      ids.tenant,
+      [{ productId: ids.product, quantity: 1, serialIds: ["no-es-uuid"] }],
+      deliveryContext,
+      actor
+    ),
+    BadRequestException
+  );
+  assert.equal(client.queries.length, 0);
+});
+
+test("OrderService.deliverOrder: servicio no inventariable se entrega sin stock ni movimiento", async () => {
+  const { service, client, movements } = buildDeliveryService(
+    {
+      items: [{ id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 1 }],
+      lotPolicies: { [ids.product]: { requiresLot: false, isInventoryable: false, name: "Servicio Tecnico Celular" } },
+      balances: {},
+    },
+    0
+  );
+
+  await service.deliverOrder(ids.order, ids.tenant, [{ productId: ids.product, quantity: 1 }], deliveryContext, actor);
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 0);
+  assert.ok(client.queries.some((query) => query.text.trim().startsWith("UPDATE order_items")));
+});
+
+test("OrderService.deliverOrder: pedido mixto entrega el servicio y descuenta solo el producto fisico", async () => {
+  const { service, client, movements } = buildDeliveryService(
+    {
+      items: [
+        { id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 1 },
+        { id: "10000000-0000-0000-0000-0000000000a2", productId: deliveryProductB, ordered: 2 },
+      ],
+      lotPolicies: {
+        [ids.product]: { requiresLot: false, isInventoryable: false, name: "Servicio" },
+        [deliveryProductB]: { requiresLot: false, name: "Cable" },
+      },
+      balances: {},
+    },
+    5
+  );
+
+  await service.deliverOrder(
+    ids.order,
+    ids.tenant,
+    [
+      { productId: ids.product, quantity: 1 },
+      { productId: deliveryProductB, quantity: 2 },
+    ],
+    deliveryContext,
+    actor
+  );
+
+  assert.equal(client.committed, true);
+  assert.equal(movements.length, 1);
+  assert.equal(movements[0].productId, deliveryProductB);
+});
+
+test("OrderService.deliverOrder: sin stock informa los productos fisicos que no alcanzan y no crea efectos", async () => {
+  const { service, client, movements } = buildDeliveryService(
+    {
+      items: [
+        { id: "10000000-0000-0000-0000-0000000000a1", productId: ids.product, ordered: 3 },
+        { id: "10000000-0000-0000-0000-0000000000a2", productId: deliveryProductB, ordered: 4 },
+      ],
+      lotPolicies: {
+        [ids.product]: { requiresLot: false, name: "Cable blanco" },
+        [deliveryProductB]: { requiresLot: false, name: "Cable negro" },
+      },
+      balances: {},
+    },
+    2
+  );
+
+  await assert.rejects(
+    () =>
+      service.deliverOrder(
+        ids.order,
+        ids.tenant,
+        [
+          { productId: ids.product, quantity: 3 },
+          { productId: deliveryProductB, quantity: 4 },
+        ],
+        deliveryContext,
+        actor
+      ),
+    (error: Error) =>
+      /insufficient stock for delivery: Cable blanco \(disponible 2, a entregar 3\); Cable negro \(disponible 2, a entregar 4\)/.test(
+        error.message
+      )
+  );
+  assert.equal(client.committed, false);
+  assert.equal(movements.length, 0);
 });

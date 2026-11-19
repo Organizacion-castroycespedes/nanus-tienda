@@ -12,11 +12,13 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "../../../../components/design-system/Button";
 import { Modal } from "../../../../components/design-system/Modal";
 import { InventoryImagePreview } from "../../../inventory/components/InventoryImagePreview";
 import type { PosCartAppliedTax, PosCartItem } from "../../../../store/posCart";
 import { buildPosCartDiscountDisplay } from "../pos-discount-display";
+import { formatPosSerialLabel } from "../../utils/pos-serials";
 
 export type CartSaleLineItem = PosCartItem & {
   unitPrice: number;
@@ -32,6 +34,78 @@ export type CartSaleSummary = {
   discountTotal: number;
   total: number;
   taxBreakdown: Array<[string, number]>;
+};
+
+const formatCartQuantity = (value: number) =>
+  new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 }).format(value);
+
+/**
+ * Cantidad editable del carrito. Mantiene el texto mientras se escribe para poder
+ * llegar a valores como "10.85" en productos que admiten decimales (V118).
+ */
+const CartQuantityInput = ({
+  value,
+  allowsDecimal,
+  label,
+  onCommit,
+}: {
+  value: number;
+  allowsDecimal: boolean;
+  label: string;
+  onCommit: (quantity: number) => void;
+}) => {
+  const [text, setText] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) {
+      setText(String(value));
+    }
+  }, [focused, value]);
+
+  const sanitize = (raw: string) => {
+    const normalized = raw.replace(",", ".");
+    if (!allowsDecimal) {
+      return normalized.replace(/[^0-9]/g, "");
+    }
+    const cleaned = normalized.replace(/[^0-9.]/g, "");
+    const [whole, ...rest] = cleaned.split(".");
+    return rest.length > 0 ? `${whole}.${rest.join("").slice(0, 2)}` : whole;
+  };
+
+  const commit = (raw: string) => {
+    if (raw === "" || raw.endsWith(".")) {
+      return;
+    }
+    const quantity = Number(raw);
+    if (Number.isFinite(quantity)) {
+      onCommit(quantity);
+    }
+  };
+
+  return (
+    <input
+      value={text}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        commit(text.endsWith(".") ? text.slice(0, -1) : text);
+      }}
+      onChange={(event) => {
+        const next = sanitize(event.target.value);
+        setText(next);
+        commit(next);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        }
+      }}
+      className={`${allowsDecimal ? "w-16" : "w-12"} border-x border-slate-200 bg-transparent px-1 py-1.5 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white`}
+      inputMode={allowsDecimal ? "decimal" : "numeric"}
+      aria-label={label}
+    />
+  );
 };
 
 export type CartSaleItemPresentation = {
@@ -62,6 +136,8 @@ type CartSaleModalProps = {
   onCancelSale: () => void;
   onCharge: () => void;
   onUpdateQuantity: (productId: string, quantity: number) => void;
+  /** Productos con serie: abre el selector para cambiar las series (y la cantidad). */
+  onEditSerials?: (productId: string) => void;
   onRemoveItem: (productId: string) => void;
   onToggleTaxBreakdown: (productId: string) => void;
   onToggleSummaryTaxes: () => void;
@@ -87,6 +163,7 @@ export const CartSaleModal = ({
   onCancelSale,
   onCharge,
   onUpdateQuantity,
+  onEditSerials,
   onRemoveItem,
   onToggleTaxBreakdown,
   onToggleSummaryTaxes,
@@ -236,7 +313,41 @@ export const CartSaleModal = ({
 
                           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                             <div className="space-y-1.5">
-                              {item.saleMode === "WEIGHT" ? (
+                              {item.requiresSerial ? (
+                                <div className="space-y-1.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span
+                                      className={`text-sm font-semibold ${
+                                        (item.serials?.length ?? 0) === item.quantity
+                                          ? "text-slate-900 dark:text-white"
+                                          : "text-rose-600"
+                                      }`}
+                                    >
+                                      {item.serials?.length ?? 0} de {item.quantity}{" "}
+                                      {item.quantity === 1 ? "serie" : "series"}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => onEditSerials?.(item.productId)}
+                                      className="inline-flex h-8 items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 text-[11px] font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100"
+                                    >
+                                      Cambiar series
+                                    </button>
+                                  </div>
+                                  {item.serials && item.serials.length > 0 ? (
+                                    <ul className="flex flex-wrap gap-1">
+                                      {item.serials.map((serial) => (
+                                        <li
+                                          key={serial.id}
+                                          className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                        >
+                                          {formatPosSerialLabel(serial)}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : null}
+                                </div>
+                              ) : item.saleMode === "WEIGHT" ? (
                                 <span className="px-3 py-2 text-sm font-semibold">{item.quantity.toFixed(3)} kg</span>
                               ) : <div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
                                 <button
@@ -248,17 +359,16 @@ export const CartSaleModal = ({
                                 >
                                   <Minus className="h-4 w-4" />
                                 </button>
-                                <input
+                                <CartQuantityInput
                                   value={item.quantity}
-                                  onChange={(event) =>
+                                  allowsDecimal={Boolean(item.allowsDecimalQuantity) || presentation.isWeighable}
+                                  label={`Cantidad de ${item.name}`}
+                                  onCommit={(quantity) =>
                                     onUpdateQuantity(
                                       item.productId,
-                                      parseQuantityInput(event.target.value)
+                                      parseQuantityInput(String(quantity))
                                     )
                                   }
-                                  className="w-12 border-x border-slate-200 bg-transparent px-1 py-1.5 text-center text-sm font-semibold text-slate-900 focus:outline-none dark:border-slate-700 dark:text-white"
-                                  inputMode={presentation.isWeighable ? "decimal" : "numeric"}
-                                  aria-label={`Cantidad de ${item.name}`}
                                 />
                                 <button
                                   type="button"
@@ -289,7 +399,7 @@ export const CartSaleModal = ({
 
                               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                                 {presentation.isInventoryable
-                                  ? `Stock disponible: ${item.stock}`
+                                  ? `Stock disponible: ${formatCartQuantity(item.stock)}${item.allowsDecimalQuantity ? " · admite decimales" : ""}`
                                   : "Servicio · sin control de stock"}
                               </p>
                             </div>

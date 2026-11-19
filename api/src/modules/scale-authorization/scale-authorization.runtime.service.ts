@@ -11,6 +11,10 @@ import { createAgentCredentialEnvelope, createSignedAgentPairingChallenge, publi
 import { deriveRealAvailability, type RealAvailabilityInput } from "./domain/real-availability.domain";
 import type { ScaleBindingContext } from "./domain/scale-binding.domain";
 import { readPairingSigningConfig } from "./pairing-config";
+import {
+  captureStateRejection, captureStateRejectionError, parseObservationTiming, readLegacyObservationPolicy,
+  WEIGHT_CAPTURE_PROTOCOL_EXCLUSIVE_V1, type LegacyObservationPolicy, type ObservationTiming,
+} from "./domain/weight-capture-observation-protocol";
 import { logScaleObservationEvent, logScaleObservationFailure } from "./scale-observation-telemetry";
 
 // markReady runs four SQL statements under the Agent's 10-second observation deadline.
@@ -182,22 +186,23 @@ export class ScaleAuthorizationRuntimeService {
 
   async submitCaptureObservation(auth: { tenantId: string; terminalDeviceId: string; credentialId: string }, input: {
     captureId: string; deviceId: string; weight: number; unit: string | null; source: string; unitVerified: boolean; observedAt: string;
+    captureProtocol?: string; acquisition?: { requestToFrameMs: number; frameAgeMs: number };
+  }, clock: { now: () => number; legacyPolicy: () => LegacyObservationPolicy } = {
+    now: () => Date.now(), legacyPolicy: () => readLegacyObservationPolicy(),
   }) {
     const captureId = typeof input?.captureId === "string"
       && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.captureId)
       ? input.captureId : undefined;
     let stage = "input_validation";
     let now: number;
-    let observedAt: number;
+    let timing: ObservationTiming;
     try {
       if (!captureId || typeof input.deviceId !== "string" || !input.deviceId.trim()
         || input.source !== "REAL" || input.unit !== "kg" || input.unitVerified !== true
         || !Number.isFinite(input.weight) || input.weight < 0) throw new BadRequestException("CAPTURE_OBSERVATION_INVALID");
-      observedAt = Date.parse(input.observedAt);
-      now = Date.now();
-      if (!Number.isFinite(observedAt) || observedAt > now || now - observedAt > 15_000) {
-        throw new ConflictException("CAPTURE_OBSERVATION_STALE");
-      }
+      // Server clock for expiry and TTL; the Agent wall clock never proves order in V1.
+      now = clock.now();
+      timing = parseObservationTiming(input, now, clock.legacyPolicy());
     } catch (error) {
       logScaleObservationFailure(this.logger, captureId, stage, error);
       throw error;
@@ -229,9 +234,13 @@ export class ScaleAuthorizationRuntimeService {
         throw new ForbiddenException("CAPTURE_AGENT_CONTEXT_MISMATCH");
       }
       stage = "capture_state_validation";
-      if (row.status !== "PENDING" || row.expires_at.getTime() <= now
-        || observedAt < row.created_at.getTime()) throw new ConflictException("CAPTURE_NOT_PENDING_OR_EXPIRED");
-      logScaleObservationEvent(this.logger, "observation.capture_state_validated", captureId, stage);
+      const rejection = captureStateRejection(row, timing, now);
+      if (rejection) throw captureStateRejectionError(rejection);
+      logScaleObservationEvent(this.logger, "observation.capture_state_validated", captureId, stage, {
+        captureProtocol: timing.protocol,
+        ...(timing.protocol === WEIGHT_CAPTURE_PROTOCOL_EXCLUSIVE_V1
+          ? { requestToFrameMs: timing.requestToFrameMs, frameAgeMs: timing.frameAgeMs } : {}),
+      });
       stage = "agent_credential_validation";
       const credential = await client.query<QueryResultRow>(
         `SELECT 1 FROM terminal_device_credentials c JOIN terminal_devices d
@@ -393,7 +402,7 @@ export class ScaleAuthorizationRuntimeService {
       `SELECT p.id AS pos_terminal_id, p.branch_id, p.operational_terminal_id,
          ps.scale_device_id, COALESCE(ps.enable_scale, false) AS enable_scale,
          d.id AS device_id, d.registration_status, d.installation_id,
-         c.status AS credential_status, c.expires_at AS credential_expires_at,
+         c.credential_id, c.status AS credential_status, c.expires_at AS credential_expires_at,
          b.id AS binding_id, b.logical_scale_id, b.status AS binding_status, b.unit_state,
          b.unit_verification_method, b.unit_verification_unit, b.unit_verified_by_user_id, b.verified_at
        FROM pos_terminals p

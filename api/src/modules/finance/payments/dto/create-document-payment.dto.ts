@@ -8,6 +8,10 @@ export class DocumentPaymentLineDto {
   @IsUUID()
   paymentMethodId!: string;
 
+  @IsOptional()
+  @IsUUID()
+  financialInstitutionId?: string;
+
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2, allowInfinity: false, allowNaN: false })
   @Min(0.01)

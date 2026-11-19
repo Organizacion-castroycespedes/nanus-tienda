@@ -38,10 +38,17 @@ import {
   buildAgentUnitVerificationFromConfirmedBinding,
   buildAgentMetadataAfterBackendKgConfirmation,
   deriveScaleAuthorizationUiState,
+  describeScaleSaveOutcome,
+  isAgentPairingChallengeUsable,
   isCurrentKgConfirmationEvidence,
+  isRevocableAgentCredential,
+  isRevocableScaleBinding,
+  isStalePairingChallengeError,
   KG_CONFIRMATION_EVIDENCE_MAX_AGE_MS,
   loadScaleAuthorizationRefresh,
+  shouldRevokeBindingForScaleChange,
   type KgConfirmationEvidence,
+  type ScaleSaveRevocation,
 } from "../scale-authorization-ui-state";
 import {
   DEFAULT_SCALE_DEVICE_ID,
@@ -361,10 +368,27 @@ const PeripheralsAdminWorkspace = () => {
     const logicalScaleId = resolved?.scaleDeviceId;
     const pairing = agentPairing?.pairing;
     if (!posTerminalId || !logicalScaleId || !pairing) throw new Error("Falta terminal, balanza o desafío vigente del Agent.");
+    const dropHeldChallenge = () => {
+      setAgentPairing((current) => current ? { ...current, pairing: null } : current);
+      setOperatorPairingCode("");
+    };
+    if (!isAgentPairingChallengeUsable(pairing)) {
+      dropHeldChallenge();
+      throw new Error("El desafío de emparejamiento expiró. Inicia un nuevo emparejamiento del Agent.");
+    }
     if (operatorPairingCode.trim() !== pairing.pairingCode) throw new Error("El código confirmado no coincide con el Agent.");
-    const approved = await approveAgentPairing({ signedChallenge: pairing.signedChallenge,
-      pairingCode: operatorPairingCode.trim(), posTerminalId, logicalScaleId,
-      enrollmentPublicKeyPem: pairing.enrollmentPublicKeyPem });
+    let approved: Awaited<ReturnType<typeof approveAgentPairing>>;
+    try {
+      approved = await approveAgentPairing({ signedChallenge: pairing.signedChallenge,
+        pairingCode: operatorPairingCode.trim(), posTerminalId, logicalScaleId,
+        enrollmentPublicKeyPem: pairing.enrollmentPublicKeyPem });
+    } catch (error) {
+      if (isStalePairingChallengeError(error)) {
+        dropHeldChallenge();
+        throw new Error("El API rechazó el desafío (vencido, ya usado o alterado). Inicia un nuevo emparejamiento del Agent.");
+      }
+      throw error;
+    }
     await deliverAgentEnrollmentEnvelope(approved.envelope);
     await refreshScaleAuthorization(posTerminalId);
     setOperatorPairingCode("");
@@ -475,11 +499,25 @@ const PeripheralsAdminWorkspace = () => {
   });
 
   const handleRevokeScaleAuthorization = () => withAuthorizationBusy(async () => {
-    if (authorization?.binding?.id) await revokeScaleBinding(authorization.binding.id);
-    if (authorization?.agent.credentialId) await revokeAgentCredential(authorization.agent.credentialId);
+    const binding = authorization?.binding;
+    const revokeBinding = isRevocableScaleBinding(binding);
+    const revokeCredential = isRevocableAgentCredential(authorization);
+    if (!revokeBinding && !revokeCredential) throw new Error("No hay autorización comercial ni credencial activa para revocar.");
+    if (revokeBinding && binding) await revokeScaleBinding(binding.id);
+    if (revokeCredential && authorization?.agent.credentialId) {
+      try { await revokeAgentCredential(authorization.agent.credentialId); }
+      catch (error) {
+        if (authorization.posTerminalId) await refreshScaleAuthorization(authorization.posTerminalId);
+        const reason = error instanceof Error ? error.message : "error desconocido";
+        throw new Error(revokeBinding
+          ? `Autorización comercial revocada, pero no se pudo revocar la credencial del Agent: ${reason}.`
+          : `No se pudo revocar la credencial del Agent: ${reason}.`);
+      }
+    }
     if (authorization?.posTerminalId) await refreshScaleAuthorization(authorization.posTerminalId);
     setRealTestResult(null);
-    showToast("Autorización comercial y credencial activa revocadas.", "success");
+    showToast(revokeBinding && revokeCredential ? "Autorización comercial y credencial activa revocadas."
+      : revokeBinding ? "Autorización comercial revocada." : "Credencial activa del Agent revocada.", "success");
   });
 
   const selectedTerminal = terminals.find((terminal) => terminal.id === selectedTerminalId);
@@ -677,16 +715,28 @@ const PeripheralsAdminWorkspace = () => {
       setScaleDeviceId(persisted.scaleDeviceId ?? "");
       setUnitConfirmationReading(null);
       setRealTestResult(null);
-      if (authorization?.binding?.id && authorization.binding.logicalScaleId !== nextScaleDeviceId) {
-        await revokeScaleBinding(authorization.binding.id);
-        setRealTestResult(null);
+      // The association is persisted from here on; later steps must not report it as failed.
+      let revocation: ScaleSaveRevocation = "NOT_REQUIRED";
+      let revocationError: string | null = null;
+      const priorBinding = authorization?.binding;
+      if (priorBinding && shouldRevokeBindingForScaleChange(priorBinding, nextScaleDeviceId)) {
+        try {
+          await revokeScaleBinding(priorBinding.id);
+          revocation = "REVOKED";
+        } catch (error) {
+          revocation = "FAILED";
+          revocationError = error instanceof Error ? error.message : null;
+        }
       }
-      await loadSnapshot(selectedTerminalId || undefined);
-      if (persisted.posTerminalId) await refreshScaleAuthorization(persisted.posTerminalId);
-      showToast(
-        nextScaleDeviceId ? "Balanza asociada." : "Balanza desasociada.",
-        "success"
-      );
+      let refreshError: string | null = null;
+      try {
+        await loadSnapshot(selectedTerminalId || undefined);
+        if (persisted.posTerminalId) await refreshScaleAuthorization(persisted.posTerminalId);
+      } catch (error) {
+        refreshError = error instanceof Error ? error.message : "error desconocido";
+      }
+      const outcome = describeScaleSaveOutcome({ scaleAssociated: Boolean(nextScaleDeviceId), revocation, revocationError, refreshError });
+      showToast(outcome.message, outcome.kind);
     } catch (error) {
       showToast(error instanceof Error ? error.message : "No se pudo guardar la balanza.", "error");
     } finally {
@@ -1057,7 +1107,7 @@ const PeripheralsAdminWorkspace = () => {
               {infoBox("Agent", authorizationUi.agentAuthenticated ? "Autenticado" : "No emparejado / no autenticado")}
               {infoBox("Instalación", agentPairing?.installationId ?? authorization?.agent.installationId ?? "- ")}
               {infoBox("Asociación", authorization?.binding ? `${authorization.binding.status} · ${authorization.binding.logicalScaleId ?? "sin identidad"}` : "Sin asociación comercial")}
-              {infoBox("Unidad confirmada", authorization?.binding?.unitState === "KG_VERIFIED" ? `kg · ${authorization.binding.verificationMethod ?? "operador"}` : "Pendiente de confirmación del operador")}
+              {infoBox("Unidad confirmada", authorizationUi.currentKgVerified ? `kg · ${authorization?.binding?.verificationMethod ?? "operador"}` : "Pendiente de confirmación del operador")}
               {infoBox("REAL_AVAILABLE", authorizationUi.realAvailable ? "YES" : authorizationUi.reason)}
               {agentPairing?.pairing ? (
                 <div className="rounded-lg border border-amber-300 bg-white p-3 text-sm dark:bg-slate-900">
@@ -1099,7 +1149,7 @@ const PeripheralsAdminWorkspace = () => {
                   Probar lectura REAL
                 </Button>
                 <Button variant="ghost" onClick={() => void handleRevokeScaleAuthorization()} isLoading={authorizationBusy}
-                  disabled={!authorization?.binding && !authorization?.agent.credentialId}>
+                  disabled={!isRevocableScaleBinding(authorization?.binding) && !isRevocableAgentCredential(authorization)}>
                   Revocar autorización
                 </Button>
                 <Button variant="ghost" onClick={() => void handleRefreshAuthorization()} isLoading={authorizationRefresh === "loading"}

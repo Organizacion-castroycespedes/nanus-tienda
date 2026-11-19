@@ -32,8 +32,21 @@ export const PRODUCT_ROTATION_CLASSES = [
 
 export const PRODUCT_SALE_TYPES = ["UNIT", "WEIGHT", "BOTH"] as const;
 
+/** Unidades de venta por unidad (V118: metro, litro, centimetro, metro cuadrado). */
+export const PRODUCT_UNIT_MEASUREMENT_UNITS = ["UND", "M", "L", "CM", "M2"] as const;
+
+/** Unidades de venta por peso (bascula). */
+export const PRODUCT_WEIGHT_MEASUREMENT_UNITS = ["KG", "LB", "G", "OZ"] as const;
+
+export const isUnitMeasurementUnit = (value: unknown): boolean =>
+  (PRODUCT_UNIT_MEASUREMENT_UNITS as readonly unknown[]).includes(value);
+
 export const PRODUCT_MEASUREMENT_UNITS = [
   "UND",
+  "M",
+  "L",
+  "CM",
+  "M2",
   "KG",
   "LB",
   "G",
@@ -86,6 +99,8 @@ export type ProductProps = {
   isPerishable?: boolean;
   requiresLot?: boolean;
   requiresExpiration?: boolean;
+  requiresSerial?: boolean;
+  allowsDecimalQuantity?: boolean;
   operationalStatus?: ProductOperationalStatus;
   rotationClass?: ProductRotationClass;
   saleType?: ProductSaleType;
@@ -124,6 +139,8 @@ export class ProductEntity {
   readonly isPerishable: boolean;
   readonly requiresLot: boolean;
   readonly requiresExpiration: boolean;
+  readonly requiresSerial: boolean;
+  readonly allowsDecimalQuantity: boolean;
   readonly operationalStatus: ProductOperationalStatus;
   readonly rotationClass: ProductRotationClass;
   readonly saleType: ProductSaleType;
@@ -239,10 +256,10 @@ export class ProductEntity {
     }
     const saleType = props.saleType ?? "UNIT";
     const measurementUnit = props.measurementUnit ?? "UND";
-    if (saleType === "UNIT" && measurementUnit !== "UND") {
-      throw new Error("UNIT products must use UND measurementUnit");
+    if (saleType === "UNIT" && !isUnitMeasurementUnit(measurementUnit)) {
+      throw new Error("UNIT products must use UND, M, L, CM or M2 measurementUnit");
     }
-    if (saleType !== "UNIT" && measurementUnit === "UND") {
+    if (saleType !== "UNIT" && isUnitMeasurementUnit(measurementUnit)) {
       throw new Error("weighted products must use a weight measurementUnit");
     }
     if (
@@ -279,6 +296,26 @@ export class ProductEntity {
         "isPerishable requires requiresLot or requiresExpiration"
       );
     }
+    if (props.requiresSerial === true) {
+      if (!isInventoryable) {
+        throw new Error("requiresSerial requires an inventoryable product");
+      }
+      if (saleType !== "UNIT" || measurementUnit !== "UND") {
+        throw new Error("requiresSerial requires UNIT saleType and UND measurementUnit");
+      }
+      if (props.requiresLot === true || props.requiresExpiration === true) {
+        throw new Error("requiresSerial cannot be combined with requiresLot or requiresExpiration");
+      }
+    }
+
+    if (props.allowsDecimalQuantity === true) {
+      if (saleType !== "UNIT") {
+        throw new Error("allowsDecimalQuantity requires UNIT saleType");
+      }
+      if (props.requiresSerial === true) {
+        throw new Error("allowsDecimalQuantity cannot be combined with requiresSerial");
+      }
+    }
 
     this.id = props.id;
     this.tenantId = props.tenantId;
@@ -304,6 +341,8 @@ export class ProductEntity {
     this.isPerishable = props.isPerishable ?? false;
     this.requiresLot = props.requiresLot ?? false;
     this.requiresExpiration = props.requiresExpiration ?? false;
+    this.requiresSerial = props.requiresSerial ?? false;
+    this.allowsDecimalQuantity = props.allowsDecimalQuantity ?? false;
     this.operationalStatus = props.operationalStatus ?? "ACTIVE";
     this.rotationClass = props.rotationClass ?? null;
     this.saleType = saleType;

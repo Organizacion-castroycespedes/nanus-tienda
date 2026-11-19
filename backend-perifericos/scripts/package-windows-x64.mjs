@@ -14,6 +14,8 @@ const agentVersion = resolveAgentVersion({ packageVersion: packageJson.version }
 const artifactName = `ManusPeripheralAgent-win-x64-${agentVersion}`;
 const artifactRoot = join(projectRoot, "dist-terminal", "windows-x64", artifactName);
 const environment = getEnvironment(process.env.MANUS_ENVIRONMENT ?? "qa");
+const enableRealAdapters = environment.agentRealAdaptersEnabled;
+const discoverOnStartup = environment.agentDiscoveryOnStartupEnabled;
 const requiredNode = [24, 21, 0];
 const versionParts = (version) => version.replace(/^v/, "").split(".").map(Number);
 const isCompatibleNode = (version) => {
@@ -374,6 +376,7 @@ try {
   cpSync(toolchainNodePath, join(artifactRoot, "runtime", "node.exe"));
 
   writeText("config/agent.config.example.json", `${JSON.stringify({
+    packageProfile: environment.agentPackageProfile,
     port: 4050,
     bind: "127.0.0.1",
     mode: "REAL",
@@ -381,7 +384,8 @@ try {
       environment.origin,
     ],
     logLevel: "INFO",
-    enableRealAdapters: true,
+    enableRealAdapters,
+    discoverOnStartup,
     usbPrintTransport: "RAW",
     usbRawPhysicalCutCertified: false,
     logLimit: 500,
@@ -395,6 +399,7 @@ try {
   // This QA local config contains no secrets. It keeps the agent loopback-only
   // and lets the approved web origin be supplied at package time.
   writeText("config/agent.config.local.json", `${JSON.stringify({
+    packageProfile: environment.agentPackageProfile,
     port: 4050,
     bind: "127.0.0.1",
     mode: "REAL",
@@ -402,7 +407,8 @@ try {
       environment.origin,
     ],
     logLevel: "INFO",
-    enableRealAdapters: true,
+    enableRealAdapters,
+    discoverOnStartup,
     usbPrintTransport: "RAW",
     usbRawPhysicalCutCertified: false,
     logLimit: 500,
