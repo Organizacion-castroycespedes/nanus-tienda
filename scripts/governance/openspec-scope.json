@@ -319,6 +319,7 @@
         "web/domains/peripherals/scale-authorization-ui-state.ts",
         "openspec/changes/autorizar-balanza-real-pos-peso/**",
         "desktop/electron/package.json",
+        "desktop/electron/package-lock.json",
         "desktop/electron/window-close-policy.ts",
         "desktop/electron/window-close-policy.spec.ts"
       ],
@@ -900,7 +901,9 @@
         "backend-perifericos/scripts/agent-version.spec.mjs",
         "backend-perifericos/scripts/build-windows-qa-static.mjs",
         "backend-perifericos/scripts/validate-windows-qa-static.mjs",
-        "backend-perifericos/scripts/qa-static-build.spec.mjs"
+        "backend-perifericos/scripts/qa-static-build.spec.mjs",
+        "backend-perifericos/scripts/pos-version.mjs",
+        "backend-perifericos/scripts/pos-version.spec.mjs"
       ],
       "exemptions": []
     }
