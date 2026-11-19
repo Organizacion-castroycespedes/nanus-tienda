@@ -101,6 +101,8 @@ type OrderRow = {
   id: string;
   tenant_id: string;
   customer_id: string;
+  customer_name?: string | null;
+  customer_document?: string | null;
   cash_session_id?: string | null;
   type: OrderType;
   status: OrderStatus;
@@ -114,11 +116,13 @@ type OrderRow = {
 type OrderListRow = OrderRow & {
   tenant_name: string;
   customer_name: string | null;
+  customer_document: string | null;
   branch_id: string | null;
   branch_name: string | null;
   terminal_id: string | null;
   terminal_name: string | null;
   generated_sale_id: string | null;
+  generated_sales: Array<{ id: string; createdAt: string; total: number; status: string; electronicBillingStatus: string | null }> | null;
   billing_status: "UNBILLED" | "PARTIAL" | "INVOICED";
 };
 
@@ -1308,11 +1312,13 @@ export class OrderService {
           o.balance_due,
           o.created_at,
           c.name AS customer_name,
+          c.document_number AS customer_document,
           audit_context.branch_id::text AS branch_id,
           branch.nombre AS branch_name,
           audit_context.terminal_id::text AS terminal_id,
           terminal.name AS terminal_name,
           sale_context.generated_sale_id::text AS generated_sale_id,
+          sale_context.generated_sales,
           CASE
             WHEN COALESCE(item_totals.delivered_total, 0) <= 0
               OR COALESCE(item_totals.billed_total, 0) <= 0 THEN 'UNBILLED'
@@ -1345,13 +1351,20 @@ export class OrderService {
           ON terminal.id = audit_context.terminal_id
          AND terminal.tenant_id = o.tenant_id
         LEFT JOIN LATERAL (
-          SELECT s.id AS generated_sale_id
+          SELECT (array_agg(s.id ORDER BY s.created_at DESC, s.id DESC))[1] AS generated_sale_id,
+            COALESCE(json_agg(json_build_object(
+              'id', s.id, 'createdAt', s.created_at, 'total', s.total,
+              'status', s.status, 'electronicBillingStatus', document.status
+            ) ORDER BY s.created_at DESC, s.id DESC), '[]'::json) AS generated_sales
           FROM sales s
+          LEFT JOIN LATERAL (
+            SELECT d.status FROM electronic_documents d
+            WHERE d.tenant_id = s.tenant_id AND d.source_type = 'SALE' AND d.source_id = s.id
+            ORDER BY d.created_at DESC, d.id DESC LIMIT 1
+          ) document ON TRUE
           WHERE s.tenant_id = o.tenant_id
             AND s.order_id = o.id
             AND s.status <> 'CANCELLED'
-          ORDER BY s.created_at DESC, s.id DESC
-          LIMIT 1
         ) AS sale_context ON TRUE
         LEFT JOIN LATERAL (
           SELECT
@@ -1371,11 +1384,13 @@ export class OrderService {
       cashSessionId: row.cash_session_id ?? null,
       tenantName: row.tenant_name,
       customerName: row.customer_name,
+      customerDocument: row.customer_document ?? null,
       branchId: row.branch_id,
       branchName: row.branch_name,
       terminalId: row.terminal_id,
       terminalName: row.terminal_name,
       generatedSaleId: row.generated_sale_id,
+      generatedSales: row.generated_sales ?? [],
       billingStatus: row.billing_status,
     }));
   }
@@ -1390,19 +1405,22 @@ export class OrderService {
     const orderResult = (await this.db.query(
       `
         SELECT
-          id,
-          tenant_id,
-          customer_id,
-          cash_session_id,
-          type,
-          status,
-          total,
-          payment_status,
-          total_paid,
-          balance_due,
-          created_at
-        FROM orders
-        WHERE id = $1 AND tenant_id = $2
+          o.id,
+          o.tenant_id,
+          o.customer_id,
+          c.name AS customer_name,
+          c.document_number AS customer_document,
+          o.cash_session_id,
+          o.type,
+          o.status,
+          o.total,
+          o.payment_status,
+          o.total_paid,
+          o.balance_due,
+          o.created_at
+        FROM orders o
+        LEFT JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+        WHERE o.id = $1 AND o.tenant_id = $2
         LIMIT 1
       `,
       [id, tenantId]
@@ -1495,8 +1513,11 @@ export class OrderService {
     return {
       ...this.mapOrderWithItems(orderRow, itemsResult.rows),
       cashSessionId: orderRow.cash_session_id ?? null,
+      customerName: orderRow.customer_name ?? null,
+      customerDocument: orderRow.customer_document ?? null,
       branchId: orderAuditContext.branch_id,
       branchName: orderAuditContext.branch_name,
+      terminalId: orderAuditContext.terminal_id,
       terminalName: orderAuditContext.terminal_name,
       payments: (paymentsResult.rows as OrderPaymentRow[]).map((row) =>
         this.mapOrderPayment(row)

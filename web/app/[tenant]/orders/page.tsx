@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "../../../components/design-system/Button";
 import { Input } from "../../../components/design-system/Input";
 import { Modal } from "../../../components/design-system/Modal";
@@ -21,6 +22,9 @@ import { RowActionsMenu } from "../../../components/design-system/RowActionsMenu
 import { Select } from "../../../components/design-system/Select";
 import { Toast, type ToastVariant } from "../../../components/design-system/Toast";
 import { useInventoryScope } from "../../../hooks/useInventoryScope";
+import { usePosContext } from "../../../domains/pos/hooks/usePosContext";
+import { useSalePrintWorkflow } from "../../../modules/pos/hooks/useSalePrintWorkflow";
+import { PARAMETER_MODES } from "../../../domains/parameters/api";
 import { isConfirmCancelledError, useConfirm } from "../../../hooks/use-confirm";
 import { hasPermission } from "../../../lib/permissions";
 import { MENU_KEYS } from "../../../domains/menu/constants";
@@ -100,8 +104,12 @@ const formatDate = (value: string) =>
   }).format(new Date(value));
 
 const OrdersPage = () => {
+  const router = useRouter();
   const confirm = useConfirm();
   const authUser = useAppSelector((state) => state.auth.user);
+  const branding = useAppSelector((state) => state.branding.config);
+  const posContext = usePosContext();
+  const { pdfConfig, isBillingProcessing, closePdfModal, triggerPrintWorkflow } = useSalePrintWorkflow();
   const authRole = useAppSelector((state) => state.auth.role ?? null);
   const role = authUser?.role ?? authRole;
   const [orders, setOrders] = useState<OrderResponse[]>([]);
@@ -121,6 +129,7 @@ const OrdersPage = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<OrderResponse | null>(null);
   const [previewOrder, setPreviewOrder] = useState<OrderResponse | null>(null);
+  const [saleSelection, setSaleSelection] = useState<OrderResponse | null>(null);
   const [currentCashSession, setCurrentCashSession] = useState<CashSession | null>(null);
   const [cashSessionChecked, setCashSessionChecked] = useState(false);
   const [cashScope, setCashScope] = useState<"current" | "all">("all");
@@ -138,6 +147,7 @@ const OrdersPage = () => {
   const isGlobalRole = role === "SUPER_ADMIN";
   const tenantSlug =
     authUser?.tenantSlug ?? authUser?.tenantId ?? currentTenant ?? "default";
+  const openSale = (saleId: string) => router.push(`/${tenantSlug}/operations/sales/${encodeURIComponent(saleId)}?from=orders`);
 
   useAutoClearState(toastMessage, setToastMessage);
 
@@ -402,7 +412,7 @@ const OrdersPage = () => {
     try {
       await confirm({
         title: "Cancelar pedido",
-        description: `Se cancelará el pedido de ${order.customerName || order.customerId}.`,
+        description: `Se cancelará el pedido de ${order.customerName || "Cliente sin nombre"}.`,
         confirmText: "Cancelar pedido",
         variant: "danger",
       });
@@ -467,7 +477,7 @@ const OrdersPage = () => {
       title: labels[formMode],
       description: selectedOrderSummary
         ? `Pedido ${selectedOrderSummary.id.slice(0, 8)} · ${
-            selectedOrderSummary.customerName || selectedOrderSummary.customerId
+            selectedOrderSummary.customerName || "Cliente sin nombre"
           }`
         : "Completa la accion activa y vuelve al listado cuando termines.",
     };
@@ -596,13 +606,20 @@ const OrdersPage = () => {
         <OrderInvoiceForm
           orderId={selectedOrderId}
           onCancel={closeForms}
-          onSuccess={() =>
+          onSuccess={(sale) =>
             void (async () => {
-              await showActionResult(
-                "Venta creada",
-                "La venta fue creada correctamente desde el pedido."
-              );
+              const orderBranchId = selectedOrderSummary?.branchId;
               await refreshAfterMutation("Venta creada correctamente desde la orden.");
+              void triggerPrintWorkflow({
+                saleId: sale.id,
+                tenantId: authUser?.tenantId,
+                branchId: orderBranchId ?? posContext.branchId,
+                terminalId: posContext.terminalId,
+                electronicBillingEnabled: branding.electronicBillingEnabled !== false,
+                electronicBillingMode: branding.electronicBillingMode === PARAMETER_MODES.ON_DEMAND ? PARAMETER_MODES.ON_DEMAND : PARAMETER_MODES.AUTOMATIC,
+                electronicBilling: sale.electronicBilling ?? null,
+                showToast,
+              }).catch(() => showToast("No se pudo preparar la impresión.", "warning"));
             })()
           }
         />
@@ -617,7 +634,7 @@ const OrdersPage = () => {
           referenceId={selectedPaymentOrder.id}
           direction="IN"
           partyLabel="Cliente del pedido"
-          partyName={selectedPaymentOrder.customerName ?? selectedPaymentOrder.customerId}
+          partyName={[selectedPaymentOrder.customerName || "Cliente sin nombre", selectedPaymentOrder.customerDocument].filter(Boolean).join(" · ")}
           documentLabel={`Pedido ${selectedPaymentOrder.id.slice(0, 8)}`}
           total={selectedPaymentOrder.total}
           totalPaid={selectedPaymentOrder.totalPaid}
@@ -693,6 +710,10 @@ const OrdersPage = () => {
             : Promise.reject(new Error("order ticket not selected"))
         }
       />
+
+      {pdfConfig ? <PdfPreviewModal isOpen title={pdfConfig.title} fileName={pdfConfig.fileName} getPdf={pdfConfig.getPdf} description={pdfConfig.description} allowPrint={pdfConfig.allowPrint ?? true} variant="ticket" onClose={closePdfModal} /> : null}
+      {isBillingProcessing ? <Modal title="Facturación electrónica" size="md"><div className="px-6 py-8 text-center">Preparando la factura…</div></Modal> : null}
+      {saleSelection ? <Modal title="Seleccionar venta" onClose={() => setSaleSelection(null)}><div className="grid gap-2">{(saleSelection.generatedSales ?? []).map((sale) => <Button key={sale.id} variant="outline" onClick={() => openSale(sale.id)}>{formatDate(sale.createdAt)} · {formatCurrency(Number(sale.total))} · {sale.electronicBillingStatus ?? "Sin factura electrónica"}</Button>)}</div></Modal> : null}
 
       {!isActionMode ? (
       <CollapsibleFilterPanel
@@ -825,7 +846,7 @@ const OrdersPage = () => {
           aria-label="Tabla de pedidos con desplazamiento horizontal"
           tabIndex={0}
         >
-          <table className="w-full min-w-[1360px] table-fixed divide-y divide-slate-200 text-sm">
+          <table className="w-full min-w-[1480px] table-fixed divide-y divide-slate-200 text-sm">
             <colgroup>
               <col className="w-[17%]" />
               <col className="w-[11%]" />
@@ -834,6 +855,7 @@ const OrdersPage = () => {
               <col className="w-[8%]" />
               <col className="w-[8%]" />
               <col className="w-[6%]" />
+              <col className="w-[8%]" />
               <col className="w-[8%]" />
               <col className="w-[8%]" />
               <col className="w-[8%]" />
@@ -851,25 +873,26 @@ const OrdersPage = () => {
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Pago</th>
                 <th className="px-4 py-3 font-medium">Fecha</th>
+                <th className="px-4 py-3 font-medium">Facturación</th>
                 <th className="sticky right-0 z-10 border-l border-slate-200 bg-slate-50 px-4 py-3 text-right font-medium dark:border-slate-700 dark:bg-slate-800">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={12} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Cargando pedidos...
                   </td>
                 </tr>
               ) : !hasSearched ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={12} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     Usa el boton Buscar para consultar pedidos.
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={12} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay pedidos para mostrar.
                   </td>
                 </tr>
@@ -877,7 +900,7 @@ const OrdersPage = () => {
                 paginatedOrders.map((order) => (
                   <tr key={order.id} className="group hover:bg-slate-50/70 dark:hover:bg-slate-700/40">
                     <td className="break-words px-4 py-3 font-medium leading-5 text-slate-900 dark:text-white">
-                      {order.customerName || order.customerId}
+                      {order.customerName || "Cliente sin nombre"}
                     </td>
                     <td className="break-words px-4 py-3 leading-5 text-slate-700 dark:text-slate-200">{order.branchName ?? "-"}</td>
                     <td className="break-words px-4 py-3 leading-5 text-slate-700 dark:text-slate-200">{order.terminalName ?? "-"}</td>
@@ -896,10 +919,12 @@ const OrdersPage = () => {
                     <td className="whitespace-nowrap px-4 py-3 text-slate-700 dark:text-slate-200">
                       {formatDate(order.createdAt)}
                     </td>
+                    <td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{order.billingStatus === "INVOICED" ? "Facturada" : order.billingStatus === "PARTIAL" ? "Parcial" : "Sin facturar"}</span></td>
                     <td className="sticky right-0 z-[1] border-l border-slate-200 bg-white px-4 py-3 text-right group-hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:group-hover:bg-slate-700">
                       <div className="flex items-center justify-end">
                         <RowActionsMenu
                           items={[
+                            ...(hasPermission(MENU_KEYS.OPERATIONS_SALES, "read") && (order.generatedSales?.length ?? 0) > 0 ? [{ label: "Gestionar factura / ticket", icon: <Receipt className="h-4 w-4" />, onSelect: () => { const sales = order.generatedSales ?? []; if (sales.length === 1) openSale(sales[0].id); else setSaleSelection(order); } }] : []),
                             ...(canUpdate && canEditOrder(order.status)
                               ? [
                                   {

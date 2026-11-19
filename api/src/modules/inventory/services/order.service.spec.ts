@@ -822,6 +822,44 @@ test("OrderService.getOrders filters by customerId", async () => {
   assert.deepEqual(queries[0].params, [ids.tenant, ids.customer]);
 });
 
+test("OrderService.getOrders returns aggregated generated sales without per-order queries", async () => {
+  const queries: RecordedQuery[] = [];
+  const sale = { id: "sale-1", createdAt: "2026-01-01", total: 100, status: "COMPLETED", electronicBillingStatus: "ACCEPTED" };
+  const base = { tenant_id: ids.tenant, customer_id: ids.customer, type: "CASH", status: "CONFIRMED", total: 100, payment_status: "PENDING", total_paid: 0, balance_due: 100, created_at: "2026-01-01" };
+  const service = new OrderService({ query: async (text: string, params: unknown[] = []) => {
+    queries.push({ text, params });
+    return { rows: [{ ...base, id: ids.order, generated_sales: [] }, { ...base, id: ids.otherCustomer, generated_sales: [sale], generated_sale_id: sale.id }, { ...base, id: ids.customer, generated_sales: [sale, { ...sale, id: "sale-2", electronicBillingStatus: null }] }] };
+  } } as never, { logEvent: () => undefined } as never, { findAccessibleBranchIds: async () => [] } as never, {} as never, {} as never, {} as never);
+  const result = await service.getOrders({ tenantId: ids.tenant, cashScope: "all" }, actor);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].text, /s\.tenant_id = o\.tenant_id/);
+  assert.match(queries[0].text, /s\.status <> 'CANCELLED'/);
+  assert.match(queries[0].text, /ORDER BY s\.created_at DESC, s\.id DESC/);
+  assert.deepEqual(result.map((order) => order.generatedSales.length), [0, 1, 2]);
+  assert.equal(result[1].generatedSaleId, sale.id);
+  assert.equal(result[2].generatedSales[1].electronicBillingStatus, null);
+});
+
+test("OrderService.getOrderById maps tenant-scoped customer and terminal, including missing customer", async () => {
+  for (const customer of [{ customer_name: "Cliente", customer_document: "123" }, { customer_name: null, customer_document: null }]) {
+    const queries: RecordedQuery[] = [];
+    const service = new OrderService({ query: async (text: string, params: unknown[] = []) => {
+      queries.push({ text, params });
+      if (text.includes("auditoria_eventos")) return { rows: [{ branch_id: ids.branch, branch_name: "Sucursal", terminal_id: ids.terminal, terminal_name: "Caja" }] };
+      if (text.includes("FROM orders o")) return { rows: [{ id: ids.order, tenant_id: ids.tenant, customer_id: ids.customer, type: "CASH", status: "CONFIRMED", total: 100, payment_status: "PENDING", total_paid: 0, balance_due: 100, created_at: "2026-01-01", ...customer }] };
+      return { rows: [] };
+    } } as never, { logEvent: () => undefined } as never, { findAccessibleBranchIds: async () => [] } as never, {} as never, {} as never, {} as never);
+    const result = await service.getOrderById(ids.order, ids.tenant, actor);
+    assert.equal(result.customerName, customer.customer_name);
+    assert.equal(result.customerDocument, customer.customer_document);
+    assert.equal(result.terminalId, ids.terminal);
+    const detail = queries.find((query) => query.text.includes("LEFT JOIN customers c"));
+    assert.ok(detail);
+    assert.match(detail.text, /c\.id = o\.customer_id AND c\.tenant_id = o\.tenant_id/);
+    assert.deepEqual(detail.params, [ids.order, ids.tenant]);
+  }
+});
+
 test("OrderService.getOrders current scope filters by current cash session", async () => {
   const queries: RecordedQuery[] = [];
   const service = new OrderService(

@@ -625,7 +625,7 @@ export const OrderDeliverForm = ({
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Cliente</p>
                 <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-                  {order.customerName || order.customerId}
+                  {order.customerName || "Cliente sin nombre"}{order.customerDocument ? ` · ${order.customerDocument}` : ""}
                 </p>
               </div>
               <div>

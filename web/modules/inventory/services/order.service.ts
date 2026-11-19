@@ -1,4 +1,7 @@
 import { apiBlobClient, apiClient } from "../../../lib/http";
+import type { ElectronicBillingOnlineResult } from "../../reporteria/services/electronic-billing.service";
+
+export type OrderInvoiceSale = { id: string; electronicBilling?: ElectronicBillingOnlineResult | null };
 
 export type OrderResponse = {
   id: string;
@@ -6,12 +9,20 @@ export type OrderResponse = {
   tenantName?: string;
   customerId: string;
   customerName?: string | null;
+  customerDocument?: string | null;
   branchId?: string | null;
   branchName?: string | null;
   terminalId?: string | null;
   terminalName?: string | null;
   cashSessionId?: string | null;
   generatedSaleId?: string | null;
+  generatedSales?: Array<{
+    id: string;
+    createdAt: string;
+    total: number;
+    status: string;
+    electronicBillingStatus: string | null;
+  }>;
   billingStatus?: "UNBILLED" | "PARTIAL" | "INVOICED";
   type: "CASH" | "CREDIT";
   status: "DRAFT" | "CONFIRMED" | "PARTIAL" | "COMPLETED" | "CANCELLED";
@@ -176,7 +187,7 @@ export const invoiceOrder = (
   payload: InvoiceOrderPayload,
   headers?: HeadersInit
 ) =>
-  apiClient<{ id: string }>(`/orders/${orderId}/invoice`, {
+  apiClient<OrderInvoiceSale>(`/orders/${orderId}/invoice`, {
     method: "POST",
     headers,
     includePosSession: true,

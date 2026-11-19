@@ -114,12 +114,12 @@ const isAgentOffline = (error?: PeripheralOperationError) =>
 const printWarningMessage = (error?: PeripheralOperationError) =>
   isAgentOffline(error)
     ? "Compra guardada, pero no se pudo contactar el agente de perifericos"
-    : "Compra guardada, pero fallo la impresion MOCK";
+    : "Compra guardada, pero fallo la impresion";
 
 const drawerWarningMessage = (error?: PeripheralOperationError) =>
   isAgentOffline(error)
     ? "Compra guardada, pero no se pudo contactar el agente de perifericos"
-    : "Compra guardada, pero fallo la apertura de caja MOCK";
+    : "Compra guardada, pero fallo la apertura de caja";
 
 export const runPurchasePeripheralOperations = async (
   context: PurchasePeripheralContext,
