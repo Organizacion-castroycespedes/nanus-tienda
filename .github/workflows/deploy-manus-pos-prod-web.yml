@@ -1,0 +1,435 @@
+name: Deploy MANUS POS Production Web
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Full 40-character SHA of the current master commit
+        required: true
+        type: string
+      confirm_target:
+        description: Type MANUS_POS_PRD to confirm the independent Contabo target
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manus-pos-production-web
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24.21.0"
+  RELEASE_ARCHIVE: manus-pos-web-release.tar.gz
+  BRAND_ASSET_PUBLIC_PATH: /login-bg.png
+  BRAND_ASSET_CHECKSUM_FILE: web/public/login-bg.png.sha256
+
+jobs:
+  build:
+    name: Validate and build web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      archive_sha256: ${{ steps.package_runtime.outputs.archive_sha256 }}
+      brand_asset_sha256: ${{ steps.branding.outputs.brand_asset_sha256 }}
+      build_id: ${{ steps.package_runtime.outputs.build_id }}
+      fs_helper_sha256: ${{ steps.package_runtime.outputs.fs_helper_sha256 }}
+    steps:
+      - name: Validate manual release request
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          CONFIRM_TARGET: ${{ inputs.confirm_target }}
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF}" == "refs/heads/master" ]]
+          [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${RELEASE_SHA}" == "${GITHUB_SHA}" ]]
+          [[ "${CONFIRM_TARGET}" == "MANUS_POS_PRD" ]]
+
+      - name: Checkout approved commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify commit belongs to master
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]]
+          git merge-base --is-ancestor "${RELEASE_SHA}" origin/master
+          [[ "$(git rev-parse origin/master)" == "${RELEASE_SHA}" ]]
+
+      - name: Setup pinned Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Validate approved MANUS POS branding asset
+        id: branding
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${BRAND_ASSET_PUBLIC_PATH}" == "/login-bg.png" ]]
+          [[ -s web/public/login-bg.png ]]
+          [[ -s "${BRAND_ASSET_CHECKSUM_FILE}" ]]
+          expected_sha="$(cut -d' ' -f1 "${BRAND_ASSET_CHECKSUM_FILE}")"
+          [[ "${expected_sha}" =~ ^[0-9a-f]{64}$ ]]
+          (
+            cd web/public
+            sha256sum --check login-bg.png.sha256
+          )
+          printf 'brand_asset_sha256=%s\n' "${expected_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run focused web tests
+        working-directory: web
+        run: node --test lib/login-branding.spec.mjs
+
+      - name: Run focused deployment tests
+        run: bash scripts/deploy/test-manus-pos-prod-web-deploy.sh
+
+      - name: Run lint
+        working-directory: web
+        run: npm run lint
+
+      - name: Build and strictly type-check MANUS POS web
+        working-directory: web
+        env:
+          NEXT_PUBLIC_LOGIN_BRAND_NAME: MANUS POS
+          NEXT_PUBLIC_GIN_BG_IMAGE: /login-bg.png
+          NEXT_PUBLIC_API_BASE_URL: /api
+          NEXT_PUBLIC_REPORTS_API_BASE_URL: /api
+          API_PROXY_TARGET: http://127.0.0.1:4020
+        run: npm run build
+
+      - name: Capture production dependency audit
+        id: dependency_audit
+        working-directory: web
+        shell: bash
+        run: npm audit --omit=dev --audit-level=high --json > ../production-dependency-audit.json
+
+      - name: Capture full dependency audit evidence
+        id: full_dependency_audit
+        working-directory: web
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > ../full-dependency-audit.json
+          audit_exit=$?
+          set -e
+          printf 'audit_exit=%s\n' "${audit_exit}" >> "${GITHUB_OUTPUT}"
+          [[ -s ../full-dependency-audit.json ]]
+
+      - name: Summarize production dependency audit
+        if: always()
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const report = JSON.parse(fs.readFileSync("production-dependency-audit.json", "utf8"));
+          const fullReport = JSON.parse(fs.readFileSync("full-dependency-audit.json", "utf8"));
+          const counts = report.metadata?.vulnerabilities;
+          const fullCounts = fullReport.metadata?.vulnerabilities;
+          const lines = counts
+            ? [
+                "## Production dependency audit",
+                "",
+                `Total: ${counts.total}; critical: ${counts.critical}; high: ${counts.high}; moderate: ${counts.moderate}; low: ${counts.low}.`,
+                `Full install evidence: total ${fullCounts?.total ?? "unknown"}; critical ${fullCounts?.critical ?? "unknown"}; high ${fullCounts?.high ?? "unknown"}.`,
+                "Production findings block the build. Dev-only findings remain visible for separate remediation and are not packaged into production node_modules.",
+              ]
+            : [
+                "## Production dependency audit",
+                "",
+                "Audit metadata unavailable. Treat production approval as blocked until reviewed.",
+              ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join("\n")}\n`);
+          NODE
+
+      - name: Package reproducible web runtime
+        id: package_runtime
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          AUDIT_OUTCOME: ${{ steps.dependency_audit.outcome }}
+          BRAND_ASSET_SHA256: ${{ steps.branding.outputs.brand_asset_sha256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p package/release/web-runtime package/release/scripts/deploy package/runtime-dependencies
+          cp web/package.json web/package-lock.json package/runtime-dependencies/
+          (
+            cd package/runtime-dependencies
+            npm ci --omit=dev
+            for dev_only in vitest vite tinypool; do
+              [[ ! -e "node_modules/${dev_only}" ]]
+            done
+          )
+          cp -a web/.next package/release/web-runtime/.next
+          cp -a web/public package/release/web-runtime/public
+          rm -- package/release/web-runtime/public/logo-login-tablet.png
+          [[ ! -e package/release/web-runtime/public/logo-login-tablet.png ]]
+          [[ -s package/release/web-runtime/public/login-bg.png ]]
+          cp -a web/lib package/release/web-runtime/lib
+          cp -a package/runtime-dependencies/node_modules package/release/web-runtime/node_modules
+          cp web/package.json web/package-lock.json web/next.config.mjs package/release/web-runtime/
+          cp scripts/deploy/manus-pos-prod-web-deploy.sh package/release/scripts/deploy/
+          cp production-dependency-audit.json package/release/production-dependency-audit.json
+          cp full-dependency-audit.json package/release/full-dependency-audit.json
+          if find package/release -name '.env*' -print -quit | grep -q .; then
+            echo "Environment files must not enter the release artifact" >&2
+            exit 1
+          fi
+          build_id="$(tr -d '\r\n' < web/.next/BUILD_ID)"
+          [[ "${build_id}" =~ ^[A-Za-z0-9._-]+$ ]]
+          next_version="$(node -p "require('./web/node_modules/next/package.json').version")"
+          helper_sha="$(sha256sum scripts/deploy/manus-pos-prod-web-fs-helper.sh | cut -d' ' -f1)"
+          printf '%s\n' \
+            '{' \
+            '  "hu": "HU-CONTABO-DEP-001",' \
+            '  "repository": "Organizacion-castroycespedes/nanus-tienda",' \
+            "  \"commit\": \"${RELEASE_SHA}\"," \
+            '  "branch": "master",' \
+            '  "component": "web",' \
+            "  \"node_version\": \"${NODE_VERSION}\"," \
+            '  "runner_image": "ubuntu-24.04",' \
+            "  \"next_version\": \"${next_version}\"," \
+            "  \"build_id\": \"${build_id}\"," \
+            "  \"brand_asset_sha256\": \"${BRAND_ASSET_SHA256}\"," \
+            "  \"fs_helper_sha256\": \"${helper_sha}\"," \
+            '  "next_public_login_brand_name": "MANUS POS",' \
+            '  "next_public_gin_bg_image": "/login-bg.png",' \
+            '  "next_public_api_base_url": "/api",' \
+            '  "next_public_reports_api_base_url": "/api",' \
+            '  "api_proxy_target": "http://127.0.0.1:4020",' \
+            "  \"production_dependency_audit_outcome\": \"${AUDIT_OUTCOME}\"" \
+            '}' > package/release/release-manifest.json
+          (
+            cd package/release
+            find web-runtime scripts -type l -printf '%p\t%l\n' | LC_ALL=C sort > SYMLINKS.txt
+            while IFS=$'\t' read -r link target; do
+              [[ -z "${link}" ]] && continue
+              resolved="$(realpath -m -- "$(dirname "${link}")/${target}")"
+              [[ "${resolved}" == "$(realpath -m web-runtime)"/* || "${resolved}" == "$(realpath -m scripts)"/* ]]
+            done < SYMLINKS.txt
+            find web-runtime scripts production-dependency-audit.json full-dependency-audit.json -type f -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > SHA256SUMS
+            sha256sum SYMLINKS.txt >> SHA256SUMS
+            sha256sum release-manifest.json >> SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+          tar -C package -czf "${RELEASE_ARCHIVE}" release
+          sha256sum "${RELEASE_ARCHIVE}" > "${RELEASE_ARCHIVE}.sha256"
+          sha256sum --check "${RELEASE_ARCHIVE}.sha256"
+          printf 'archive_sha256=%s\n' "$(cut -d' ' -f1 "${RELEASE_ARCHIVE}.sha256")" >> "${GITHUB_OUTPUT}"
+          printf 'build_id=%s\n' "${build_id}" >> "${GITHUB_OUTPUT}"
+          printf 'fs_helper_sha256=%s\n' "${helper_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload immutable release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: manus-pos-web-${{ inputs.release_sha }}
+          path: |
+            ${{ env.RELEASE_ARCHIVE }}
+            ${{ env.RELEASE_ARCHIVE }}.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy approved web release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: manus-pos-production
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      EXPECTED_ARTIFACT_SHA256: ${{ needs.build.outputs.archive_sha256 }}
+      BRAND_ASSET_SHA256: ${{ needs.build.outputs.brand_asset_sha256 }}
+      BRAND_ASSET_PATH: /login-bg.png
+      EXPECTED_BUILD_ID: ${{ needs.build.outputs.build_id }}
+      FS_HELPER_SHA256: ${{ needs.build.outputs.fs_helper_sha256 }}
+      MANUS_POS_PROD_HOST: ${{ vars.MANUS_POS_PROD_HOST }}
+      MANUS_POS_PROD_SSH_USER: ${{ vars.MANUS_POS_PROD_SSH_USER }}
+      MANUS_POS_PROD_SSH_PORT: ${{ vars.MANUS_POS_PROD_SSH_PORT }}
+      MANUS_POS_PROD_STAGING_ROOT: ${{ vars.MANUS_POS_PROD_STAGING_ROOT }}
+      MANUS_POS_PROD_BACKUP_ROOT: ${{ vars.MANUS_POS_PROD_BACKUP_ROOT }}
+      MANUS_POS_PROD_PUBLIC_BASE_URL: ${{ vars.MANUS_POS_PROD_PUBLIC_BASE_URL }}
+      MANUS_POS_PROD_WEB_PATH: ${{ vars.MANUS_POS_PROD_WEB_PATH }}
+      MANUS_POS_PROD_PM2_PROCESS: ${{ vars.MANUS_POS_PROD_PM2_PROCESS }}
+      MANUS_POS_PROD_WEB_PORT: ${{ vars.MANUS_POS_PROD_WEB_PORT }}
+      MANUS_POS_PROD_API_PROXY_TARGET: ${{ vars.MANUS_POS_PROD_API_PROXY_TARGET }}
+      MANUS_POS_PROD_SERVER_REPO_PATH: ${{ vars.MANUS_POS_PROD_SERVER_REPO_PATH }}
+      MANUS_POS_PROD_PM2_OWNER: ubuntu
+      MANUS_POS_PROD_PM2_HOME: /home/ubuntu/.pm2
+      MANUS_POS_PROD_FS_HELPER_PATH: /usr/local/sbin/manuspos-web-fs-helper
+    steps:
+      - name: Download approved release
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: manus-pos-web-${{ inputs.release_sha }}
+
+      - name: Validate release and target configuration
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.MANUS_POS_PROD_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.MANUS_POS_PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for name in \
+            MANUS_POS_PROD_HOST MANUS_POS_PROD_SSH_USER MANUS_POS_PROD_SSH_PORT \
+            MANUS_POS_PROD_STAGING_ROOT MANUS_POS_PROD_BACKUP_ROOT \
+            MANUS_POS_PROD_PUBLIC_BASE_URL MANUS_POS_PROD_WEB_PATH \
+            MANUS_POS_PROD_PM2_PROCESS MANUS_POS_PROD_WEB_PORT \
+            MANUS_POS_PROD_API_PROXY_TARGET MANUS_POS_PROD_SERVER_REPO_PATH \
+            SSH_PRIVATE_KEY SSH_KNOWN_HOSTS; do
+            [[ -n "${!name:-}" ]] || { echo "Missing required environment value: ${name}" >&2; exit 64; }
+          done
+          [[ "${MANUS_POS_PROD_HOST}" == "109.123.251.8" ]]
+          [[ "${MANUS_POS_PROD_SSH_USER}" == "ubuntu" ]]
+          [[ "${MANUS_POS_PROD_WEB_PATH}" == "/var/www/manuspos-web" ]]
+          [[ "${MANUS_POS_PROD_PM2_PROCESS}" == "manuspos-web" ]]
+          [[ "${MANUS_POS_PROD_WEB_PORT}" == "19500" ]]
+          [[ "${MANUS_POS_PROD_API_PROXY_TARGET}" == "http://127.0.0.1:4020" ]]
+          [[ "${MANUS_POS_PROD_SERVER_REPO_PATH}" == "/opt/manuspos/repos/nanus-tienda" ]]
+          [[ "${MANUS_POS_PROD_PM2_OWNER}" == "ubuntu" ]]
+          [[ "${MANUS_POS_PROD_PM2_HOME}" == "/home/ubuntu/.pm2" ]]
+          [[ "${MANUS_POS_PROD_FS_HELPER_PATH}" == "/usr/local/sbin/manuspos-web-fs-helper" ]]
+          [[ "${MANUS_POS_PROD_SSH_PORT}" =~ ^[0-9]{1,5}$ ]]
+          (( MANUS_POS_PROD_SSH_PORT >= 1 && MANUS_POS_PROD_SSH_PORT <= 65535 ))
+          [[ "${MANUS_POS_PROD_SSH_USER}" =~ ^[A-Za-z_][A-Za-z0-9._-]*$ ]]
+          [[ "${MANUS_POS_PROD_STAGING_ROOT}" =~ ^/[A-Za-z0-9._/-]+$ && "${MANUS_POS_PROD_STAGING_ROOT}" != "/" ]]
+          [[ "${MANUS_POS_PROD_BACKUP_ROOT}" =~ ^/[A-Za-z0-9._/-]+$ && "${MANUS_POS_PROD_BACKUP_ROOT}" != "/" ]]
+          [[ "${MANUS_POS_PROD_PUBLIC_BASE_URL}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~:/?#%+&=-]*)?$ ]]
+          [[ "${EXPECTED_ARTIFACT_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${BRAND_ASSET_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${BRAND_ASSET_PATH}" == "/login-bg.png" ]]
+          [[ "${FS_HELPER_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${EXPECTED_BUILD_ID}" =~ ^[A-Za-z0-9._-]+$ ]]
+          sha256sum --check "${RELEASE_ARCHIVE}.sha256"
+          [[ "$(sha256sum "${RELEASE_ARCHIVE}" | cut -d' ' -f1)" == "${EXPECTED_ARTIFACT_SHA256}" ]]
+
+      - name: Configure pinned SSH identity
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.MANUS_POS_PROD_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.MANUS_POS_PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "${RUNNER_TEMP}/manus-pos-ssh"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${RUNNER_TEMP}/manus-pos-ssh/id_ed25519"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${RUNNER_TEMP}/manus-pos-ssh/known_hosts"
+          chmod 600 "${RUNNER_TEMP}/manus-pos-ssh/id_ed25519" "${RUNNER_TEMP}/manus-pos-ssh/known_hosts"
+
+      - name: Transfer to guarded staging and deploy
+        id: remote_deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_key="${RUNNER_TEMP}/manus-pos-ssh/id_ed25519"
+          known_hosts="${RUNNER_TEMP}/manus-pos-ssh/known_hosts"
+          run_id="gha-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          remote_stage="${MANUS_POS_PROD_STAGING_ROOT%/}/${run_id}-${RELEASE_SHA}"
+          artifact_sha="$(cut -d' ' -f1 "${RELEASE_ARCHIVE}.sha256")"
+          ssh_opts=(
+            -i "$ssh_key"
+            -o IdentitiesOnly=yes
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=${known_hosts}"
+            -p "$MANUS_POS_PROD_SSH_PORT"
+          )
+          scp_opts=(
+            -i "$ssh_key"
+            -o IdentitiesOnly=yes
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=${known_hosts}"
+            -P "$MANUS_POS_PROD_SSH_PORT"
+          )
+          target="${MANUS_POS_PROD_SSH_USER}@${MANUS_POS_PROD_HOST}"
+
+          ssh "${ssh_opts[@]}" "$target" \
+            "test -d '${MANUS_POS_PROD_SERVER_REPO_PATH}/.git' && mkdir -p '${remote_stage}'"
+          scp "${scp_opts[@]}" \
+            "$RELEASE_ARCHIVE" "${RELEASE_ARCHIVE}.sha256" \
+            "${target}:${remote_stage}/"
+          ssh "${ssh_opts[@]}" "$target" \
+            "cd '${remote_stage}' && sha256sum --check '${RELEASE_ARCHIVE}.sha256' && mkdir release-root && tar -xzf '${RELEASE_ARCHIVE}' -C release-root --strip-components=1"
+
+          remote_script="${remote_stage}/release-root/scripts/deploy/manus-pos-prod-web-deploy.sh"
+          remote_command="RELEASE_SHA='${RELEASE_SHA}' RUN_ID='${run_id}' STAGING_DIR='${remote_stage}' STAGING_ROOT='${MANUS_POS_PROD_STAGING_ROOT}' BACKUP_ROOT='${MANUS_POS_PROD_BACKUP_ROOT}' WEB_PATH='${MANUS_POS_PROD_WEB_PATH}' PM2_PROCESS='${MANUS_POS_PROD_PM2_PROCESS}' PM2_OWNER='${MANUS_POS_PROD_PM2_OWNER}' PM2_HOME='${MANUS_POS_PROD_PM2_HOME}' WEB_PORT='${MANUS_POS_PROD_WEB_PORT}' API_PROXY_TARGET='${MANUS_POS_PROD_API_PROXY_TARGET}' SERVER_REPO_PATH='${MANUS_POS_PROD_SERVER_REPO_PATH}' RELEASE_ROOT='${remote_stage}/release-root' PUBLIC_BASE_URL='${MANUS_POS_PROD_PUBLIC_BASE_URL}' ARTIFACT_SHA256='${artifact_sha}' BRAND_ASSET_PATH='${BRAND_ASSET_PATH}' BRAND_ASSET_SHA256='${BRAND_ASSET_SHA256}' EXPECTED_BUILD_ID='${EXPECTED_BUILD_ID}' FS_HELPER_PATH='${MANUS_POS_PROD_FS_HELPER_PATH}' FS_HELPER_SHA256='${FS_HELPER_SHA256}' bash '${remote_script}'"
+
+          set +e
+          ssh "${ssh_opts[@]}" "$target" "${remote_command} deploy"
+          deploy_exit=$?
+          set -e
+          if [[ "$deploy_exit" -ne 0 ]]; then
+            exit "$deploy_exit"
+          fi
+
+          public_asset="${RUNNER_TEMP}/manus-pos-public-brand.png"
+          if ! curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            --connect-timeout 10 --max-time 20 \
+            "${MANUS_POS_PROD_PUBLIC_BASE_URL%/}/login" | grep -Fq 'MANUS POS' \
+            || ! curl --fail --silent --show-error --retry 5 --retry-all-errors \
+              --connect-timeout 10 --max-time 20 \
+              "${MANUS_POS_PROD_PUBLIC_BASE_URL%/}${BRAND_ASSET_PATH}" -o "${public_asset}" \
+            || [[ "$(sha256sum "${public_asset}" | cut -d' ' -f1)" != "${BRAND_ASSET_SHA256}" ]]; then
+            echo "Runner-side public smoke failed; requesting guarded rollback" >&2
+            ssh "${ssh_opts[@]}" "$target" "${remote_command} rollback"
+            exit 71
+          fi
+
+      - name: Collect sanitized deployment evidence
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p deployment-evidence
+          ssh_key="${RUNNER_TEMP}/manus-pos-ssh/id_ed25519"
+          known_hosts="${RUNNER_TEMP}/manus-pos-ssh/known_hosts"
+          run_id="gha-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          remote_stage="${MANUS_POS_PROD_STAGING_ROOT%/}/${run_id}-${RELEASE_SHA}"
+          scp \
+            -i "$ssh_key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=${known_hosts}" \
+            -P "$MANUS_POS_PROD_SSH_PORT" \
+            "${MANUS_POS_PROD_SSH_USER}@${MANUS_POS_PROD_HOST}:${remote_stage}/deployment-evidence.json" \
+            deployment-evidence/deployment-evidence.json
+          evidence_exit=$?
+          if [[ "$evidence_exit" -ne 0 ]]; then
+            printf '%s\n' \
+              '{' \
+              '  "hu": "HU-CONTABO-DEP-001",' \
+              "  \"run_id\": \"${run_id}\"," \
+              "  \"release_sha\": \"${RELEASE_SHA}\"," \
+              '  "status": "evidence_unavailable"' \
+              '}' > deployment-evidence/deployment-evidence.json
+          fi
+          exit 0
+
+      - name: Upload deployment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: manus-pos-deployment-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: deployment-evidence/deployment-evidence.json
+          if-no-files-found: error
+          retention-days: 30

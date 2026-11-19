@@ -108,7 +108,9 @@ const PosPage = () => {
     if (
       typeof window === "undefined" ||
       !isLocalQaLocation(window.location) ||
-      !hasElectronTerminalBridge(window.manusTerminal)
+      !hasElectronTerminalBridge(
+        (window as Window & { manusTerminal?: unknown }).manusTerminal,
+      )
     ) {
       return;
     }

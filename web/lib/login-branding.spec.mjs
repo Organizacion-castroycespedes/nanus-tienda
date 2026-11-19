@@ -19,6 +19,16 @@ test("falls back together when both values are absent", () => {
   assert.deepEqual(resolveLoginBranding({}), DEFAULT_LOGIN_BRANDING);
 });
 
+test("preserves the explicit EMAUS branding pair", () => {
+  assert.deepEqual(
+    resolveLoginBranding({
+      NEXT_PUBLIC_GIN_BG_IMAGE: "/logo-login-tablet.png",
+      NEXT_PUBLIC_LOGIN_BRAND_NAME: "EMAUS POS",
+    }),
+    DEFAULT_LOGIN_BRANDING,
+  );
+});
+
 test("does not mix brands when configuration is partial", () => {
   assert.deepEqual(
     resolveLoginBranding({ NEXT_PUBLIC_GIN_BG_IMAGE: "/login-bg.png" }),
