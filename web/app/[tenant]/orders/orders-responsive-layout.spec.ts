@@ -20,7 +20,7 @@ const invoiceForm = readWebSource(
 describe("orders responsive layout contract", () => {
   it("uses available desktop width and preserves a readable scrollable table", () => {
     expect(ordersPage).toContain(
-      'className="w-full min-w-[1360px] table-fixed divide-y divide-slate-200 text-sm"',
+      'className="w-full min-w-[1480px] table-fixed divide-y divide-slate-200 text-sm"',
     );
     expect(ordersPage).toContain(
       'aria-label="Tabla de pedidos con desplazamiento horizontal"',
@@ -28,6 +28,8 @@ describe("orders responsive layout contract", () => {
     expect(ordersPage).toContain('role="region"');
     expect(ordersPage).toContain("tabIndex={0}");
     expect(ordersPage).toContain("sticky right-0");
+    expect(ordersPage).toContain("Facturación</th>");
+    expect(ordersPage).toContain("colSpan={12}");
   });
 
   it("compacts filters progressively without removing controls", () => {

@@ -120,12 +120,12 @@ const isAgentOffline = (error?: PeripheralOperationError) =>
 const printWarningMessage = (error?: PeripheralOperationError) =>
   isAgentOffline(error)
     ? "Pedido guardado, pero no se pudo contactar el agente de perifericos"
-    : "Pedido guardado, pero fallo la impresion MOCK";
+    : "Pedido guardado, pero fallo la impresion";
 
 const drawerWarningMessage = (error?: PeripheralOperationError) =>
   isAgentOffline(error)
     ? "Pedido guardado, pero no se pudo contactar el agente de perifericos"
-    : "Pedido guardado, pero fallo la apertura de caja MOCK";
+    : "Pedido guardado, pero fallo la apertura de caja";
 
 export const runOrderPeripheralOperations = async (
   context: OrderPeripheralContext,
