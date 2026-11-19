@@ -192,6 +192,8 @@ Admission (exact pair) -> POS-running preflight (unknown scope fails closed) -> 
 
 Integration note (develop): the Build 08 baseline integration excluded `versionar-candidato-qa-windows` and its QA static build/validation scripts, because the OpenSpec CLI 1.4.0 used by CI does not accept `skip_specs: true`. That change now joins `develop` separately, with a `qa-windows-candidate-build` tooling delta in place of `skip_specs` and the QA identity `0.1.1-qa.18`; the row above refers to it. Supporting `skip_specs` in CI still requires its own evaluation.
 
+C-2 determination (2026-11-18): the installed Build 07 `0.1.1-qa.16` and the frozen Build 09 `0.1.1-qa.18` (sha256 `863bfe99…`) both ship POS `0.1.0` with different bytes, so that pair is unsupported and stays rejected as `pos_label_collision`. A certifiable target needs a new Agent QA identity (not `0.1.1-qa.18`, whose bytes are frozen) built with a POS version distinct from `0.1.0` and recorded with its payload hash. PR #427 assigned the POS version independently: `desktop/electron/package.json` is the only source, the next POS identity is `0.1.1`, and `0.1.0` is retired for new payloads. That makes an installed POS `0.1.0` to POS `0.1.1` pair a distinct-label candidate for 14.4a; it is still not executable without 14.4b and 14.4c.
+
 C-2 is BLOCKED pending a coordinated decision by those owners. Until it is resolved, 14.4a/14.4b SHALL treat a reused POS version label with different bytes as unsupported, so no supported pair exists for builds that share POS `0.1.0`. A new candidate pair may therefore be required before 14.4c; the current Build 08 is not presumed to be the certified target.
 
 ### 6. Historical evidence and acceptance

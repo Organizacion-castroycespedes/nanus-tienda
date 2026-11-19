@@ -319,6 +319,7 @@
         "web/domains/peripherals/scale-authorization-ui-state.ts",
         "openspec/changes/autorizar-balanza-real-pos-peso/**",
         "desktop/electron/package.json",
+        "desktop/electron/package-lock.json",
         "desktop/electron/window-close-policy.ts",
         "desktop/electron/window-close-policy.spec.ts"
       ],
@@ -875,6 +876,7 @@
         "backend-perifericos/windows-installer/main_windows.go",
         "backend-perifericos/windows-installer/install_transition_admission_windows.go",
         "backend-perifericos/windows-installer/install_transition_admission_windows_test.go",
+        "backend-perifericos/windows-installer/install_transition_executor_windows.go",
         "backend-perifericos/windows-installer/pos_process_cleanup_windows.go",
         "backend-perifericos/windows-installer/process_discovery_scope_windows.go",
         "backend-perifericos/windows-installer/pos_process_cleanup_windows_test.go",
@@ -900,7 +902,9 @@
         "backend-perifericos/scripts/agent-version.spec.mjs",
         "backend-perifericos/scripts/build-windows-qa-static.mjs",
         "backend-perifericos/scripts/validate-windows-qa-static.mjs",
-        "backend-perifericos/scripts/qa-static-build.spec.mjs"
+        "backend-perifericos/scripts/qa-static-build.spec.mjs",
+        "backend-perifericos/scripts/pos-version.mjs",
+        "backend-perifericos/scripts/pos-version.spec.mjs"
       ],
       "exemptions": []
     },

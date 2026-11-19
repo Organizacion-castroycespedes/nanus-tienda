@@ -46,3 +46,18 @@ Static validation SHALL open the packaged POS `app.asar` and SHALL reject the ar
 #### Scenario: Missing close-policy module
 - **WHEN** the packaged `app.asar` main module cannot resolve `window-close-policy`
 - **THEN** static validation rejects the artifact.
+
+### Requirement: POS version identity is independent and never reused
+The POS version SHALL come only from the `version` of `desktop/electron/package.json`, independent of the Agent version, and SHALL be propagated unchanged to the POS manifest and the installer manifest. A POS label already distributed with different bytes SHALL be retired: `0.1.0` SHALL NOT be used for a new POS payload.
+
+#### Scenario: Retired POS label
+- **WHEN** the canonical POS version is `0.1.0`
+- **THEN** static validation of a QA artifact fails and no success report is written.
+
+#### Scenario: Inconsistent packaged POS version
+- **WHEN** the installer manifest or the POS manifest carries a POS version different from the canonical one
+- **THEN** static validation fails and no success report is written.
+
+#### Scenario: Next POS identity
+- **WHEN** a QA candidate is packaged from the current source
+- **THEN** its POS version is `0.1.1`, a label never distributed before.

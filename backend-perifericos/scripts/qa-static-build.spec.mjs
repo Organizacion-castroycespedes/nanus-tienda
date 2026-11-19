@@ -2,12 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { QA_AGENT_VERSION } from "./agent-version.mjs";
 import { createBuildPlan } from "./build-windows-qa-static.mjs";
+import { readPosVersion } from "./pos-version.mjs";
 import { inspectPeX64, validateInstallerDiscoveryGateSource, validatePackagedClosePolicy, validateQaAgentConfig, validateStaticQaPackage } from "./validate-windows-qa-static.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -36,7 +37,7 @@ const minimalPeX64 = () => {
   return data;
 };
 
-const makeStaticPackageFixture = async (configOverride = {}, { includeClosePolicy = true } = {}) => {
+const makeStaticPackageFixture = async (configOverride = {}, { includeClosePolicy = true, installerPosVersion = readPosVersion(), posManifestVersion = installerPosVersion } = {}) => {
   const root = mkdtempSync(join(tmpdir(), "manus-qa17-static-test-"));
   const agentVersion = QA_AGENT_VERSION;
   const agentRoot = join(root, "dist-terminal", "windows-x64", `ManusPeripheralAgent-win-x64-${agentVersion}`);
@@ -66,7 +67,7 @@ const makeStaticPackageFixture = async (configOverride = {}, { includeClosePolic
     bundleRoot: `assets/bundle/ManusPeripheralAgent-win-x64-${agentVersion}`,
     serviceName: "ManusPeripheralAgent",
     serviceAccount: "NT AUTHORITY\\LocalService",
-    posVersion: "0.1.0",
+    posVersion: installerPosVersion,
   };
   const installerManifestBytes = putJson(join(assetsRoot, "manifest.json"), installerManifest);
   const shellConfig = {
@@ -96,7 +97,7 @@ const makeStaticPackageFixture = async (configOverride = {}, { includeClosePolic
     writeFileSync(path, file.data);
   }
   const posManifest = {
-    posVersion: "0.1.0",
+    posVersion: posManifestVersion,
     executable: "Manus POS.exe",
     payloadSize: posFiles.reduce((sum, file) => sum + file.data.length, 0),
     files: posFiles.map((file) => ({ path: file.path, size: file.data.length, sha256: createHash("sha256").update(file.data).digest("hex") })),
@@ -189,6 +190,21 @@ test("static validator rejects a POS app.asar whose main cannot resolve the clos
   const fixture = await makeStaticPackageFixture({}, { includeClosePolicy: false });
   t.after(() => rmSync(fixture.root, { recursive: true, force: true }));
   await assert.rejects(validateStaticQaPackage({ root: fixture.root, outputName: fixture.outputName }), /compiled close-policy module/);
+});
+
+test("static validator rejects the retired POS label 0.1.0 and inconsistent POS manifests", async (t) => {
+  const cases = [
+    // Canonical POS version still at the retired label, even with consistent manifests.
+    [{ installerPosVersion: "0.1.0" }, "0.1.0", /POS version 0\.1\.0 is retired/],
+    [{ posManifestVersion: "0.1.0" }, undefined, /POS manifest posVersion 0\.1\.0 does not match/],
+    [{ installerPosVersion: "9.9.9", posManifestVersion: readPosVersion() }, undefined, /installer manifest posVersion 9\.9\.9 does not match/],
+  ];
+  for (const [options, posVersion, expected] of cases) {
+    const fixture = await makeStaticPackageFixture({}, options);
+    t.after(() => rmSync(fixture.root, { recursive: true, force: true }));
+    await assert.rejects(validateStaticQaPackage({ root: fixture.root, outputName: fixture.outputName, posVersion }), expected);
+    assert.equal(existsSync(fixture.installerPath.replace(/\.exe$/i, ".build-manifest.json")), false);
+  }
 });
 
 test("QA build plan uses package stages and static validation only", () => {
