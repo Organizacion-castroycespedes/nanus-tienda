@@ -2,7 +2,7 @@
 
 - [x] 1.1 Change `implementar-cotizaciones-pedido` (`.openspec.yaml`, proposal, design, tasks, spec `cotizaciones`).
 - [x] 1.2 Entrada en `scripts/governance/openspec-scope.json` y traspaso de `current_ownership` de `order.service.ts`, `order.service.spec.ts`, `order.controller.ts`, `order.controller.spec.ts` y `web/domains/menu/constants.ts`.
-- [ ] 1.3 `openspec.cmd validate implementar-cotizaciones-pedido --strict`.
+- [x] 1.3 `openspec.cmd validate implementar-cotizaciones-pedido --strict` (válido, Windows, 2026-11-20).
 
 ## 2. Base de datos
 

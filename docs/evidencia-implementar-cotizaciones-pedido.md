@@ -131,5 +131,5 @@ Solicitadas por el propietario después del QA:
 ## Cierre (2026-11-20)
 - QA manual del propietario: **PASS** en QA-01 a QA-29 (flujo completo, PDF, conversión, vencida/renovar, permisos, envío por correo y captura con lector).
 - Validación automática en Windows: API 1284/1292 sin fallas (8 omitidas por BD de integración) + build; reportería build (única falla de su suite, preexistente: `thermal-layout.spec.ts`); web lint + build.
-- Pendiente antes del merge: `openspec.cmd validate implementar-cotizaciones-pedido --strict` y CI de gobernanza en el PR.
+- `openspec.cmd validate implementar-cotizaciones-pedido --strict`: **válido** (Windows, 2026-11-20). Rama publicada en `origin`; pendiente el CI de gobernanza del PR.
 - Despliegue QA/PRD: aplicar V120 con `apply_single_migration.sh` **antes** de la API; la API necesita `CONTROL_CENTER_SMTP_*` + `CONTROL_CENTER_ALERTS_FROM` y alcanzar reportería por `REPORTS_API_BASE_URL`.
