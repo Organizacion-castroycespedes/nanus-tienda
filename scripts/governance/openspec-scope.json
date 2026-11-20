@@ -880,6 +880,7 @@
         "backend-perifericos/windows-installer/install_transition_journal_windows.go",
         "backend-perifericos/windows-installer/install_transition_native_windows.go",
         "backend-perifericos/windows-installer/install_transition_route_windows.go",
+        "backend-perifericos/windows-installer/install_transition_evidence_windows.go",
         "backend-perifericos/windows-installer/pos_process_cleanup_windows.go",
         "backend-perifericos/windows-installer/process_discovery_scope_windows.go",
         "backend-perifericos/windows-installer/pos_process_cleanup_windows_test.go",

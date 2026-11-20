@@ -196,6 +196,17 @@ C-2 determination (2026-11-18): the installed Build 07 `0.1.1-qa.16` and the fro
 
 C-2 is BLOCKED pending a coordinated decision by those owners. Until it is resolved, 14.4a/14.4b SHALL treat a reused POS version label with different bytes as unsupported, so no supported pair exists for builds that share POS `0.1.0`. A new candidate pair may therefore be required before 14.4c; the current Build 08 is not presumed to be the certified target.
 
+#### 5.3 Native transition evidence contract (manus-update-evidence/v1)
+
+The observer in `install_transition_evidence_windows.go` reads only, through the P0-B read-only boundary (`installAdmissionIO`), and produces the `installTransitionEvidence` that the 14.4a policy cross-checks against an exact allowlist entry. Every digest is SHA-256 in lowercase hex.
+
+- **Agent payload digest:** `installTransitionPayloadDigest` over every regular file of a version root, with paths relative to that root (case-insensitive, order-independent, size and content bound). Installed: every file under `VersionsRoot\<installed version>`, which the installer fills with the embedded bundle plus `ManusTerminalSetup.exe` (the Agent config is only seeded there and copied to ProgramData). Candidate: the P0-B candidate inventory under the target `VersionRoot` (embedded bundle plus this executable).
+- **POS payload digest:** the same over the POS version root. Installed: the directory the POS current junction targets, which must be a direct child of `POSVersionsRoot` whose name is a valid version. Candidate: the P0-B candidate inventory under the target `POSVersionRoot`, already checked against the embedded `pos-manifest.json`.
+- **Candidate artifact SHA-256:** the digest of the running installer executable (the inventory entry for the target `ManusTerminalSetup.exe`).
+- **QA environment digest:** SHA-256 of `manus-qa-environment/v1`, then the normalized enrollment endpoint (`https`, lowercase host, no trailing slash, no user info, query or fragment), the enrollment audience and the operator-provisioned signing key ID, one per line with a final newline. It is read from the retained host config `ConfigRoot\agent.config.local.json`, which UPDATE preserves. The candidate package must carry the same endpoint and audience and no trust fields (packages never embed trust). The public key, DPAPI material and every secret stay out of it.
+
+An allowlist entry pins source and target artifacts, the candidate artifact SHA-256, the LocalService account and the QA environment digest. It is valid for any host enrolled in that environment with that exact source payload; host identity is protected separately by the installation ID and protected-state digests the executor records before it stops the service. Missing, unreadable, reparse-point, ambiguous or inconsistent input fails closed. The assumption that an installed version root holds exactly the bundle plus the installer executable (no runtime-written files) is verified only on the 14.4c VM; if it does not hold, admission rejects rather than guessing.
+
 ### 6. Historical evidence and acceptance
 
 The ten JSON files and QA-05 protocol are immutable source evidence. QA-terminal-22 states PARTIAL, readyForLiveQa=false and build08Justified=false. The supervisor evidence filename says terminal-15 but its qaId is QA_TERMINAL_21; do not rename or rewrite it. QA-05 uses BUILD-04/older SHA and XP-58 and is not an execution plan for this baseline.
