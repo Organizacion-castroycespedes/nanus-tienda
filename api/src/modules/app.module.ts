@@ -23,6 +23,7 @@ import { TerminalRuntimeModule } from "./terminal-runtime/terminal-runtime.modul
 import { ScaleAuthorizationRuntimeModule } from "./scale-authorization/scale-authorization.runtime.module";
 import { ControlCenterModule } from "./control-center/control-center.module";
 import { BillingNoticesModule } from "./billing-notices/billing-notices.module";
+import { QuotationsModule } from "./quotations/quotations.module";
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { BillingNoticesModule } from "./billing-notices/billing-notices.module";
     ScaleAuthorizationRuntimeModule,
     ControlCenterModule,
     BillingNoticesModule,
+    QuotationsModule,
   ],
 })
 export class AppModule {}
