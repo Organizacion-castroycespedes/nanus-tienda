@@ -88,6 +88,36 @@ type CreateOrderInput = {
   actor: BranchScopedActor;
 };
 
+export type PricedOrderItemInput = {
+  productId: string;
+  quantity: number;
+  baseUnitPrice: number;
+  finalUnitPrice: number;
+  discountAmount: number;
+  discountPercent: number;
+  discountTotal: number;
+  appliedPromotionId: string | null;
+  appliedPromotionName: string | null;
+  taxId: string | null;
+  taxRate: number;
+  taxBase: number;
+  taxAmount: number;
+  lineTotal: number;
+  pricingSnapshot: Record<string, unknown>;
+  pricingCalculatedAt: Date;
+};
+
+export type CreateOrderFromPricedItemsInput = {
+  tenantId: string;
+  customerId: string;
+  branchId: string;
+  type?: OrderType;
+  quotationId: string;
+  items: PricedOrderItemInput[];
+  context?: InventoryContext;
+  actor: BranchScopedActor;
+};
+
 type UpdateOrderInput = Partial<{
   customerId: string;
   branchId: string;
@@ -111,6 +141,8 @@ type OrderRow = {
   total_paid: string | number;
   balance_due: string | number;
   created_at: string | Date;
+  quotation_id?: string | null;
+  quotation_code?: string | null;
 };
 
 type OrderListRow = OrderRow & {
@@ -582,7 +614,7 @@ export class OrderService {
   }
 
   private async ensureProductsBelongToTenant(
-    items: CreateOrderItemInput[],
+    items: Array<{ productId: string }>,
     tenantId: string,
     client: PoolClient
   ) {
@@ -904,47 +936,165 @@ export class OrderService {
 
     const orderId = crypto.randomUUID();
     const createdAt = new Date();
-    let orderTerminal: TerminalRow | null = null;
 
     const client = await this.db.getClient();
     try {
       await client.query("BEGIN");
-      await this.ensureCustomerBelongsToTenant(data.customerId, data.tenantId, client);
-      await this.ensureProductsBelongToTenant(data.items, data.tenantId, client);
-      await this.ensureBranchBelongsToTenant(orderBranchId, data.tenantId, client);
-      if (orderTerminalId) {
-        orderTerminal = await this.ensureTerminalBelongsToBranch(
-          orderTerminalId,
-          data.tenantId,
-          orderBranchId,
-          client
-        );
-      }
-
-      const items = await this.calculatePricedItems({
+      const created = await this.insertOrderInTransaction(client, {
         tenantId: data.tenantId,
-        branchId: orderBranchId,
         customerId: data.customerId,
+        type: data.type,
+        productIds: data.items,
         orderId,
-        items: data.items,
-        pricingCalculatedAt: createdAt,
-      });
-      const total = this.calculateOrderTotal(items);
-      const order = OrderEntity.create({
-        id: orderId,
-        tenantId: data.tenantId,
-        customerId: data.customerId,
-        type: data.type ?? "CASH",
-        status: "DRAFT",
-        total,
-        totalPaid: 0,
-        balanceDue: total,
-        paymentStatus: "PENDING",
         createdAt,
+        orderBranchId,
+        orderTerminalId,
+        context: data.context,
+        buildItems: () =>
+          this.calculatePricedItems({
+            tenantId: data.tenantId,
+            branchId: orderBranchId,
+            customerId: data.customerId,
+            orderId,
+            items: data.items,
+            pricingCalculatedAt: createdAt,
+          }),
       });
+      await client.query("COMMIT");
 
-      const orderResult = await client.query<OrderRow>(
-        `
+      this.logOrderCreated(created, data.context);
+
+      return this.buildCreatedOrderResponse(created);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Crea un pedido DRAFT con lineas ya valorizadas (precios cotizados) dentro de una
+   * transaccion abierta por quien llama. No recalcula precios ni abre/cierra la transaccion.
+   * Lo usa la conversion de cotizaciones; createOrder no cambia.
+   * La auditoria ORDER_CREATED se registra con `logCreated()` despues del COMMIT.
+   */
+  async createOrderFromPricedItems(
+    client: PoolClient,
+    data: CreateOrderFromPricedItemsInput
+  ) {
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      throw new BadRequestException("order items are required");
+    }
+    const resolvedScope = await this.resolveOrderScope(data.actor, {
+      tenantId: data.tenantId,
+      branchId: data.branchId,
+    });
+    const orderBranchId = resolvedScope.branchId ?? data.branchId;
+    if (orderBranchId !== data.branchId) {
+      throw new ForbiddenException("No autorizado para otra sucursal");
+    }
+    const orderTerminalId =
+      data.context?.branchId === orderBranchId ? data.context?.terminalId ?? null : null;
+    const orderId = crypto.randomUUID();
+    const createdAt = new Date();
+
+    const created = await this.insertOrderInTransaction(client, {
+      tenantId: data.tenantId,
+      customerId: data.customerId,
+      type: data.type,
+      productIds: data.items,
+      orderId,
+      createdAt,
+      orderBranchId,
+      orderTerminalId,
+      context: data.context,
+      buildItems: async () =>
+        data.items.map((item) =>
+          OrderItemEntity.create({
+            id: crypto.randomUUID(),
+            orderId,
+            productId: item.productId,
+            orderedQuantity: item.quantity,
+            deliveredQuantity: 0,
+            price: item.finalUnitPrice,
+            subtotal: item.lineTotal,
+            baseUnitPrice: item.baseUnitPrice,
+            finalUnitPrice: item.finalUnitPrice,
+            discountAmount: item.discountAmount,
+            discountPercent: item.discountPercent,
+            discountTotal: item.discountTotal,
+            appliedPromotionId: item.appliedPromotionId,
+            appliedPromotionName: item.appliedPromotionName,
+            taxId: item.taxId,
+            taxRate: item.taxRate,
+            taxBase: item.taxBase,
+            taxAmount: item.taxAmount,
+            lineTotal: item.lineTotal,
+            pricingSnapshot: item.pricingSnapshot,
+            pricingCalculatedAt: item.pricingCalculatedAt,
+          })
+        ),
+    });
+
+    await client.query(
+      `UPDATE orders SET quotation_id = $3 WHERE id = $1 AND tenant_id = $2`,
+      [orderId, data.tenantId, data.quotationId]
+    );
+
+    return {
+      ...this.buildCreatedOrderResponse(created),
+      quotationId: data.quotationId,
+      logCreated: () =>
+        this.logOrderCreated(created, data.context, { quotationId: data.quotationId }),
+    };
+  }
+
+  private async insertOrderInTransaction(
+    client: PoolClient,
+    input: {
+      tenantId: string;
+      customerId: string;
+      type?: OrderType;
+      productIds: Array<{ productId: string }>;
+      orderId: string;
+      createdAt: Date;
+      orderBranchId: string;
+      orderTerminalId: string | null;
+      context?: InventoryContext;
+      buildItems: () => Promise<OrderItemEntity[]>;
+    }
+  ) {
+    let orderTerminal: TerminalRow | null = null;
+    await this.ensureCustomerBelongsToTenant(input.customerId, input.tenantId, client);
+    await this.ensureProductsBelongToTenant(input.productIds, input.tenantId, client);
+    await this.ensureBranchBelongsToTenant(input.orderBranchId, input.tenantId, client);
+    if (input.orderTerminalId) {
+      orderTerminal = await this.ensureTerminalBelongsToBranch(
+        input.orderTerminalId,
+        input.tenantId,
+        input.orderBranchId,
+        client
+      );
+    }
+
+    const items = await input.buildItems();
+    const total = this.calculateOrderTotal(items);
+    const order = OrderEntity.create({
+      id: input.orderId,
+      tenantId: input.tenantId,
+      customerId: input.customerId,
+      type: input.type ?? "CASH",
+      status: "DRAFT",
+      total,
+      totalPaid: 0,
+      balanceDue: total,
+      paymentStatus: "PENDING",
+      createdAt: input.createdAt,
+    });
+
+    const orderResult = await client.query<OrderRow>(
+      `
           INSERT INTO orders (
             id,
             tenant_id,
@@ -973,57 +1123,71 @@ export class OrderService {
             balance_due,
             created_at
         `,
-        [
-          order.id,
-          order.tenantId,
-          order.customerId,
-          data.context?.cashSessionId ?? null,
-          order.type,
-          order.status,
-          order.total,
-          order.paymentStatus,
-          order.totalPaid,
-          order.balanceDue,
-          order.createdAt,
-        ]
-      );
+      [
+        order.id,
+        order.tenantId,
+        order.customerId,
+        input.context?.cashSessionId ?? null,
+        order.type,
+        order.status,
+        order.total,
+        order.paymentStatus,
+        order.totalPaid,
+        order.balanceDue,
+        order.createdAt,
+      ]
+    );
 
-      await this.replaceItems(order.id, data.tenantId, items, client);
-      await client.query("COMMIT");
+    await this.replaceItems(order.id, input.tenantId, items, client);
 
-      this.auditService.logEvent({
-        tenantId: order.tenantId,
-        userId: data.context?.userId ?? null,
-        module: "inventory",
-        entity: "orders",
-        entityId: order.id,
-        action: "ORDER_CREATED",
-        after: {
-          customerId: order.customerId,
-          type: order.type,
-          total: order.total,
-          branchId: orderBranchId,
-          terminalId: orderTerminalId,
-          posSessionId:
-            data.context?.branchId === orderBranchId ? data.context?.posSessionId ?? null : null,
-          cashSessionId: data.context?.cashSessionId ?? null,
-        },
-      });
+    return {
+      order,
+      orderRow: orderResult.rows[0],
+      items,
+      orderBranchId: input.orderBranchId,
+      orderTerminalId: input.orderTerminalId,
+      orderTerminal,
+    };
+  }
 
-      return {
-        ...this.mapOrder(orderResult.rows[0]),
-        cashSessionId: orderResult.rows[0].cash_session_id ?? null,
+  private logOrderCreated(
+    created: Awaited<ReturnType<OrderService["insertOrderInTransaction"]>>,
+    context: InventoryContext | undefined,
+    extra: Record<string, unknown> = {}
+  ) {
+    const { order, orderBranchId, orderTerminalId } = created;
+    this.auditService.logEvent({
+      tenantId: order.tenantId,
+      userId: context?.userId ?? null,
+      module: "inventory",
+      entity: "orders",
+      entityId: order.id,
+      action: "ORDER_CREATED",
+      after: {
+        customerId: order.customerId,
+        type: order.type,
+        total: order.total,
         branchId: orderBranchId,
         terminalId: orderTerminalId,
-        terminalName: orderTerminal?.name ?? null,
-        items,
-      };
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
+        posSessionId:
+          context?.branchId === orderBranchId ? context?.posSessionId ?? null : null,
+        cashSessionId: context?.cashSessionId ?? null,
+        ...extra,
+      },
+    });
+  }
+
+  private buildCreatedOrderResponse(
+    created: Awaited<ReturnType<OrderService["insertOrderInTransaction"]>>
+  ) {
+    return {
+      ...this.mapOrder(created.orderRow),
+      cashSessionId: created.orderRow.cash_session_id ?? null,
+      branchId: created.orderBranchId,
+      terminalId: created.orderTerminalId,
+      terminalName: created.orderTerminal?.name ?? null,
+      items: created.items,
+    };
   }
 
   async updateOrder(
@@ -1313,6 +1477,8 @@ export class OrderService {
           o.created_at,
           c.name AS customer_name,
           c.document_number AS customer_document,
+          o.quotation_id::text AS quotation_id,
+          quotation.code AS quotation_code,
           audit_context.branch_id::text AS branch_id,
           branch.nombre AS branch_name,
           audit_context.terminal_id::text AS terminal_id,
@@ -1332,6 +1498,9 @@ export class OrderService {
         LEFT JOIN customers c
           ON c.id = o.customer_id
          AND c.tenant_id = o.tenant_id
+        LEFT JOIN quotations quotation
+          ON quotation.id = o.quotation_id
+         AND quotation.tenant_id = o.tenant_id
         LEFT JOIN LATERAL (
           SELECT
             NULLIF(ae.datos_despues->>'branchId', '')::uuid AS branch_id,
@@ -1392,6 +1561,8 @@ export class OrderService {
       generatedSaleId: row.generated_sale_id,
       generatedSales: row.generated_sales ?? [],
       billingStatus: row.billing_status,
+      quotationId: row.quotation_id ?? null,
+      quotationCode: row.quotation_code ?? null,
     }));
   }
 
@@ -1417,9 +1588,13 @@ export class OrderService {
           o.payment_status,
           o.total_paid,
           o.balance_due,
-          o.created_at
+          o.created_at,
+          o.quotation_id::text AS quotation_id,
+          quotation.code AS quotation_code
         FROM orders o
         LEFT JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+        LEFT JOIN quotations quotation
+          ON quotation.id = o.quotation_id AND quotation.tenant_id = o.tenant_id
         WHERE o.id = $1 AND o.tenant_id = $2
         LIMIT 1
       `,
@@ -1515,6 +1690,8 @@ export class OrderService {
       cashSessionId: orderRow.cash_session_id ?? null,
       customerName: orderRow.customer_name ?? null,
       customerDocument: orderRow.customer_document ?? null,
+      quotationId: orderRow.quotation_id ?? null,
+      quotationCode: orderRow.quotation_code ?? null,
       branchId: orderAuditContext.branch_id,
       branchName: orderAuditContext.branch_name,
       terminalId: orderAuditContext.terminal_id,
