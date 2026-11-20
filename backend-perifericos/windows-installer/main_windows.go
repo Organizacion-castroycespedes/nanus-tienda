@@ -336,7 +336,7 @@ func installWithObserver(manifest installerManifest, observer installerCoreEvent
 		return observeInstallAdmission(manifest, layout, nativeInstallAdmissionIO{})
 	})
 	if err != nil {
-		return err
+		return routeInstallTransition(manifest, layout, admission, err)
 	}
 
 	// First persistent effect. Rejected/changed observations never reach this point.
