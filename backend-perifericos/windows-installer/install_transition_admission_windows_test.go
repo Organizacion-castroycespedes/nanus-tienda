@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -1838,4 +1839,331 @@ func TestHUWIN144bMainCallsOnlyTheRouteAndAdapterAvoidsDestructiveHelpers(t *tes
 	if strings.Contains(source, "--remove-data") {
 		t.Fatal("native adapter must never use --remove-data")
 	}
+}
+
+// ---- 14.4a native evidence observer: read-only contract, fakes only ----
+
+const (
+	txHostQAConfig      = `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":"manus-agent:qa","enrollmentSigningKeyId":"qa-key-1","enrollmentSigningPublicKeyPem":"-----BEGIN PUBLIC KEY-----\nfixture\n-----END PUBLIC KEY-----"}`
+	txCandidateQAConfig = `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":"manus-agent:qa","enrollmentSigningKeyId":"","enrollmentSigningPublicKeyPem":""}`
+)
+
+func TestHUWIN144aQAEnvironmentContractIsDeterministicAndStrict(t *testing.T) {
+	env, err := parseInstallTransitionQAEnvironment([]byte(txHostQAConfig), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := installTransitionQAEnvironment{Endpoint: "https://api.apptiendamanus.space/api", Audience: "manus-agent:qa", KeyID: "qa-key-1"}
+	if env != want {
+		t.Fatalf("parsed %+v", env)
+	}
+	vector := sha256.Sum256([]byte("manus-qa-environment/v1\nhttps://api.apptiendamanus.space/api\nmanus-agent:qa\nqa-key-1\n"))
+	if got := installTransitionQAEnvironmentDigest(env); got != hex.EncodeToString(vector[:]) {
+		t.Fatalf("digest vector mismatch: %s", got)
+	}
+	normalized, err := parseInstallTransitionQAEnvironment([]byte(`{"enrollmentApiBaseUrl":" https://API.AppTiendaManus.space/api/ ","enrollmentAudience":"manus-agent:qa","enrollmentSigningKeyId":"qa-key-1"}`), true)
+	if err != nil || installTransitionQAEnvironmentDigest(normalized) != installTransitionQAEnvironmentDigest(env) {
+		t.Fatalf("host case and trailing slash must normalize: %+v %v", normalized, err)
+	}
+	for field, mutate := range map[string]installTransitionQAEnvironment{
+		"endpoint": {Endpoint: "https://portal.emaus.centrivosoft.com/api", Audience: env.Audience, KeyID: env.KeyID},
+		"audience": {Endpoint: env.Endpoint, Audience: "manus-agent:production", KeyID: env.KeyID},
+		"key id":   {Endpoint: env.Endpoint, Audience: env.Audience, KeyID: "qa-key-2"},
+	} {
+		if installTransitionQAEnvironmentDigest(mutate) == installTransitionQAEnvironmentDigest(env) {
+			t.Fatalf("changing the %s must change the digest", field)
+		}
+	}
+	bad := map[string]string{
+		"not json":       `{`,
+		"not object":     `[]`,
+		"http":           `{"enrollmentApiBaseUrl":"http://api.apptiendamanus.space/api","enrollmentAudience":"a","enrollmentSigningKeyId":"k"}`,
+		"no endpoint":    `{"enrollmentAudience":"a","enrollmentSigningKeyId":"k"}`,
+		"userinfo":       `{"enrollmentApiBaseUrl":"https://u:p@api.apptiendamanus.space/api","enrollmentAudience":"a","enrollmentSigningKeyId":"k"}`,
+		"query":          `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api?x=1","enrollmentAudience":"a","enrollmentSigningKeyId":"k"}`,
+		"fragment":       `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api#f","enrollmentAudience":"a","enrollmentSigningKeyId":"k"}`,
+		"empty audience": `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":" ","enrollmentSigningKeyId":"k"}`,
+		"audience lines": `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":"a\nb","enrollmentSigningKeyId":"k"}`,
+		"no key id":      `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":"a","enrollmentSigningKeyId":""}`,
+		"bad key id":     `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":"a","enrollmentSigningKeyId":"key id/../x"}`,
+		"non string":     `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":7,"enrollmentSigningKeyId":"k"}`,
+	}
+	for name, config := range bad {
+		if _, err := parseInstallTransitionQAEnvironment([]byte(config), true); err == nil {
+			t.Fatalf("host config %q must be rejected", name)
+		}
+	}
+	for name, config := range map[string]string{
+		"packaged key id": `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":"a","enrollmentSigningKeyId":"k"}`,
+		"packaged pem":    `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":"a","enrollmentSigningPublicKeyPem":"pem"}`,
+	} {
+		if _, err := parseInstallTransitionQAEnvironment([]byte(config), false); err == nil {
+			t.Fatalf("%s must be rejected: packages carry no trust", name)
+		}
+	}
+}
+
+func TestHUWIN144aCandidateMustTargetTheHostEnvironment(t *testing.T) {
+	digest, err := observeInstallTransitionQAEnvironment([]byte(txHostQAConfig), []byte(txCandidateQAConfig))
+	if err != nil || !installTransitionHex64(digest) {
+		t.Fatalf("matching environment: %q %v", digest, err)
+	}
+	cases := map[string][2]string{
+		"production candidate": {txHostQAConfig, `{"enrollmentApiBaseUrl":"https://portal.emaus.centrivosoft.com/api","enrollmentAudience":"manus-agent:qa"}`},
+		"other audience":       {txHostQAConfig, `{"enrollmentApiBaseUrl":"https://api.apptiendamanus.space/api","enrollmentAudience":"manus-agent:production"}`},
+		"host without trust":   {txCandidateQAConfig, txCandidateQAConfig},
+		"candidate with trust": {txHostQAConfig, txHostQAConfig},
+	}
+	for name, configs := range cases {
+		if _, err := observeInstallTransitionQAEnvironment([]byte(configs[0]), []byte(configs[1])); err == nil {
+			t.Fatalf("%s must be rejected", name)
+		}
+	}
+}
+
+type txEvidenceCase struct {
+	m, source  installerManifest
+	l, sourceL runtimeLayout
+	f          *fakeP0BAdmissionIO
+	sources    installTransitionEvidenceSources
+	host       string
+}
+
+func txEvidenceFixture(t *testing.T) *txEvidenceCase {
+	t.Helper()
+	source, sourceL, f := p0BAdmissionFixture(t)
+	f.paths[sourceL.VersionRoot] = installAdmissionPath{Presence: installEvidencePresent, Directory: true, Fingerprint: "dir:agent-source"}
+	f.paths[sourceL.POSVersionRoot] = installAdmissionPath{Presence: installEvidencePresent, Directory: true, Fingerprint: "dir:pos-source"}
+	m := source
+	m.Version, m.PosVersion = "0.1.1-qa.19", "0.1.1"
+	l := buildLayout(m)
+	f.paths[l.VersionRoot] = installAdmissionPath{Presence: installEvidenceAbsent, Fingerprint: "absent:agent-target"}
+	f.paths[l.POSVersionRoot] = installAdmissionPath{Presence: installEvidenceAbsent, Fingerprint: "absent:pos-target"}
+	candidate := map[string][]byte{
+		filepath.Join(l.VersionRoot, "VERSION.json"):        []byte(`{"version":"0.1.1-qa.19"}`),
+		filepath.Join(l.VersionRoot, "runtime", "node.exe"): []byte("node runtime"),
+		filepath.Join(l.VersionRoot, "app", "main.js"):      []byte("agent qa.19 with EXCLUSIVE_ACQUISITION_V1"),
+		l.ServiceExe: []byte("installer qa.19 bytes"),
+		filepath.Join(l.POSVersionRoot, "Manus POS.exe"):                        []byte("pos 0.1.1"),
+		filepath.Join(l.POSVersionRoot, "resources", "app.asar"):                []byte("asar 0.1.1"),
+		filepath.Join(l.POSVersionRoot, "resources", "manus-shell.config.json"): []byte("{}"),
+	}
+	f.expected = nil
+	for path, data := range candidate {
+		f.expected = append(f.expected, installAdmissionExpectedFile{Path: path, Size: int64(len(data)), SHA256: fmt.Sprintf("%x", sha256.Sum256(data))})
+	}
+	c := &txEvidenceCase{m: m, source: source, l: l, sourceL: sourceL, f: f, host: txHostQAConfig}
+	c.sources = installTransitionEvidenceSources{
+		api:             f,
+		protected:       func() ([]installTransitionProtectedItem, error) { return txFixtureProtected(), nil },
+		hostConfig:      func() ([]byte, error) { return []byte(c.host), nil },
+		candidateConfig: func() ([]byte, error) { return []byte(txCandidateQAConfig), nil },
+	}
+	return c
+}
+
+func txApprovalFromEvidence(ev installTransitionEvidence) installTransitionApproval {
+	return installTransitionApproval{
+		ID: "qa13-to-qa19-fixture", CandidateArtifactSHA256: ev.CandidateArtifactSHA256,
+		SourceAgent: ev.InstalledAgent, TargetAgent: ev.CandidateAgent, SourcePOS: ev.InstalledPOS, TargetPOS: ev.CandidatePOS,
+		ServiceAccount: "NT AUTHORITY\\LocalService", QAEnvironment: ev.QAEnvironment,
+	}
+}
+
+func TestHUWIN144aObserverEvidenceFeedsTheExactPolicy(t *testing.T) {
+	c := txEvidenceFixture(t)
+	ev, err := observeInstallTransitionEvidence(c.m, c.l, c.sources)
+	if err != nil {
+		t.Fatalf("observe: %v (ops=%v)", err, c.f.ops)
+	}
+	if ev.InstalledAgent.Version != c.source.Version || ev.CandidateAgent.Version != c.m.Version ||
+		ev.InstalledPOS.Version != c.source.PosVersion || ev.CandidatePOS.Version != "0.1.1" {
+		t.Fatalf("versions: %+v", ev)
+	}
+	exe := sha256.Sum256([]byte("installer qa.19 bytes"))
+	if ev.CandidateArtifactSHA256 != hex.EncodeToString(exe[:]) {
+		t.Fatal("candidate artifact digest must be the installer executable digest")
+	}
+	for _, digest := range []string{ev.InstalledAgent.PayloadDigest, ev.CandidateAgent.PayloadDigest, ev.InstalledPOS.PayloadDigest, ev.CandidatePOS.PayloadDigest, ev.QAEnvironment} {
+		if !installTransitionHex64(digest) {
+			t.Fatalf("digest %q invalid", digest)
+		}
+	}
+	for _, op := range c.f.ops {
+		if !strings.HasPrefix(op, "path:") && !strings.HasPrefix(op, "read:") && !strings.HasPrefix(op, "hash:") &&
+			!strings.HasPrefix(op, "files:") && !strings.HasPrefix(op, "registry:") && !strings.HasPrefix(op, "service:") && !strings.HasPrefix(op, "candidate:") {
+			t.Fatalf("observer used a non read-only operation %s", op)
+		}
+	}
+	approvals := []installTransitionApproval{txApprovalFromEvidence(ev)}
+	d, err := classifyInstallTransition(approvals, c.m, c.l, ev)
+	if err != nil || d.State != installAdmissionUpdate || !d.Eligible || d.ExecutionPermitted {
+		t.Fatalf("observed evidence against its exact approval: %+v %v", d, err)
+	}
+	if d, err := classifyInstallTransition(approvedInstallTransitions, c.m, c.l, ev); err == nil || d.Eligible {
+		t.Fatal("the empty production allowlist must reject observed evidence")
+	}
+	// Same approval, tampered evidence sources.
+	tamper := map[string]func(*txEvidenceCase){
+		"installed agent file changed": func(c *txEvidenceCase) {
+			c.f.data[filepath.Join(c.sourceL.VersionRoot, "app", "main.js")] = []byte("tampered")
+		},
+		"installed agent file added": func(c *txEvidenceCase) { c.f.data[filepath.Join(c.sourceL.VersionRoot, "extra.dll")] = []byte("x") },
+		"installed pos file changed": func(c *txEvidenceCase) {
+			c.f.data[filepath.Join(c.sourceL.POSVersionRoot, "Manus POS.exe")] = []byte("x")
+		},
+		"candidate payload changed": func(c *txEvidenceCase) { c.f.expected[0].SHA256 = txDigest("other candidate byte") },
+		"host key id changed": func(c *txEvidenceCase) {
+			c.host = strings.Replace(txHostQAConfig, "qa-key-1", "qa-key-2", 1)
+		},
+	}
+	for name, mutate := range tamper {
+		t.Run(name, func(t *testing.T) {
+			c := txEvidenceFixture(t)
+			mutate(c)
+			ev, err := observeInstallTransitionEvidence(c.m, c.l, c.sources)
+			if err != nil {
+				t.Fatalf("tampered evidence must still be observable so the policy decides: %v", err)
+			}
+			if d, err := classifyInstallTransition(approvals, c.m, c.l, ev); err == nil || d.Eligible {
+				t.Fatalf("tampered evidence must not be admitted: %+v", d)
+			}
+		})
+	}
+}
+
+func TestHUWIN144aObserverFailsClosedOnMissingOrAmbiguousEvidence(t *testing.T) {
+	cases := map[string]func(*txEvidenceCase){
+		"same version is not a transition": func(c *txEvidenceCase) { c.m.Version = c.source.Version; c.l = buildLayout(c.m) },
+		"pos activation outside versions": func(c *txEvidenceCase) {
+			c.f.paths[c.sourceL.POSCurrentRoot] = installAdmissionPath{Presence: installEvidencePresent, Directory: true, Target: `C:\Elsewhere\0.1.0`, Fingerprint: "pos-current"}
+		},
+		"installed root is a reparse point": func(c *txEvidenceCase) {
+			c.f.paths[c.sourceL.VersionRoot] = installAdmissionPath{Presence: installEvidencePresent, Directory: true, Target: `C:\Other`, Fingerprint: "reparse"}
+		},
+		"installed file unreadable": func(c *txEvidenceCase) {
+			c.f.fail["hash:"+filepath.Join(c.sourceL.VersionRoot, "app", "main.js")] = errors.New("changed while read")
+		},
+		"candidate inventory missing": func(c *txEvidenceCase) { c.f.fail["candidate"] = errors.New("embedded asset missing") },
+		"candidate artifact missing": func(c *txEvidenceCase) {
+			var kept []installAdmissionExpectedFile
+			for _, file := range c.f.expected {
+				if !installTransitionSamePath(file.Path, c.l.ServiceExe) {
+					kept = append(kept, file)
+				}
+			}
+			c.f.expected = kept
+		},
+		"candidate pos payload missing": func(c *txEvidenceCase) {
+			var kept []installAdmissionExpectedFile
+			for _, file := range c.f.expected {
+				if !pathWithinRoot(file.Path, c.l.POSVersionRoot) {
+					kept = append(kept, file)
+				}
+			}
+			c.f.expected = kept
+		},
+		"host config unreadable": func(c *txEvidenceCase) {
+			c.sources.hostConfig = func() ([]byte, error) { return nil, errors.New("access denied") }
+		},
+		"production host": func(c *txEvidenceCase) {
+			c.host = strings.Replace(txHostQAConfig, "api.apptiendamanus.space", "portal.emaus.centrivosoft.com", 1)
+		},
+		"protected state unavailable": func(c *txEvidenceCase) {
+			c.sources.protected = func() ([]installTransitionProtectedItem, error) { return nil, errors.New("acl read denied") }
+		},
+		"sources missing": func(c *txEvidenceCase) { c.sources.api = nil },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			c := txEvidenceFixture(t)
+			mutate(c)
+			if ev, err := observeInstallTransitionEvidence(c.m, c.l, c.sources); err == nil {
+				t.Fatalf("observation must fail closed, got %+v", ev)
+			}
+		})
+	}
+}
+
+func TestHUWIN144aPayloadDigestsAreRootRelativeAndStrict(t *testing.T) {
+	root := `C:\Fixture\versions\2`
+	files := []installAdmissionExpectedFile{
+		{Path: root + `\app\main.js`, Size: 3, SHA256: txDigest("a")},
+		{Path: root + `\ManusTerminalSetup.exe`, Size: 4, SHA256: txDigest("b")},
+		{Path: `C:\Fixture\pos\1\Manus POS.exe`, Size: 5, SHA256: txDigest("c")},
+	}
+	first, err := installTransitionExpectedDigest(files, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := []installAdmissionExpectedFile{
+		{Path: `D:\Elsewhere\v\2\ManusTerminalSetup.exe`, Size: 4, SHA256: strings.ToUpper(txDigest("b"))},
+		{Path: `D:\Elsewhere\v\2\APP\Main.js`, Size: 3, SHA256: txDigest("a")},
+	}
+	if second, err := installTransitionExpectedDigest(moved, `D:\Elsewhere\v\2`); err != nil || second != first {
+		t.Fatalf("digest must depend only on relative paths, sizes and contents: %s %v", second, err)
+	}
+	if _, err := installTransitionExpectedDigest(files, `C:\Fixture\versions\3`); err == nil {
+		t.Fatal("an empty selection must fail")
+	}
+	f := &fakeP0BAdmissionIO{paths: map[string]installAdmissionPath{root: {Presence: installEvidencePresent, Directory: true, Fingerprint: "d"}}, data: map[string][]byte{}, identities: map[string]string{}, fail: map[string]error{}}
+	if _, err := installTransitionInstalledDigest(f, `C:\Fixture\other\2`, `C:\Fixture\versions`); err == nil {
+		t.Fatal("a root outside its versions directory must fail")
+	}
+	if _, err := installTransitionInstalledDigest(f, root, `C:\Fixture\versions`); err == nil {
+		t.Fatal("an empty installed root must fail")
+	}
+}
+
+func TestHUWIN144aRunTransitionStopsAtProductionGateBeforeNativeSeams(t *testing.T) {
+	c := txEvidenceFixture(t)
+	ev, err := observeInstallTransitionEvidence(c.m, c.l, c.sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvals := []installTransitionApproval{txApprovalFromEvidence(ev)}
+	original := &installAdmissionError{State: installAdmissionUnknown, Reason: "transition_unproven"}
+	observe := func() (installTransitionEvidence, error) { return ev, nil }
+	err = runInstallTransition(c.m, c.l, original, approvals, observe, requireInstallTransitionExecution)
+	if err == nil || !errors.Is(err, original) || !strings.Contains(err.Error(), "update_execution_disabled") {
+		t.Fatalf("production gate must stop an admitted pair and keep the P0-B rejection: %v", err)
+	}
+	if err := runInstallTransition(c.m, c.l, original, approvals, func() (installTransitionEvidence, error) {
+		return installTransitionEvidence{}, errors.New("observer failure")
+	}, requireInstallTransitionExecution); err == nil || !errors.Is(err, original) || !strings.Contains(err.Error(), "update_not_admitted") {
+		t.Fatalf("observer failure must not admit: %v", err)
+	}
+	if err := runInstallTransition(c.m, c.l, original, approvedInstallTransitions, observe, txExecPermissiveGate); err == nil || !strings.Contains(err.Error(), "update_not_admitted") {
+		t.Fatalf("the empty production allowlist must not admit, even with a permissive gate: %v", err)
+	}
+}
+
+func TestHUWIN144aEvidenceObserverIsReadOnly(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "install_transition_evidence_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writes := map[string]bool{"WriteFile": true, "Remove": true, "RemoveAll": true, "Rename": true, "Mkdir": true, "MkdirAll": true,
+		"Create": true, "OpenFile": true, "Chmod": true, "Chown": true, "Symlink": true, "Link": true, "Truncate": true,
+		"SetNamedSecurityInfo": true, "SetSecurityInfo": true, "UpdateConfig": true, "Delete": true, "Start": true, "Control": true,
+		"StopService": true, "StartService": true, "SetJunction": true, "SetServiceBinary": true, "StagePayload": true, "WriteUninstallMetadata": true}
+	helpers := map[string]bool{"executeInstallTransition": true, "recoverInstallTransition": true, "writeUninstallMetadata": true, "configureService": true,
+		"startService": true, "stopService": true, "copyBundleToVersion": true, "installPOSPayload": true, "ensureCurrentJunction": true, "uninstall": true}
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		switch fun := call.Fun.(type) {
+		case *ast.Ident:
+			if helpers[fun.Name] {
+				t.Errorf("observer calls %s", fun.Name)
+			}
+		case *ast.SelectorExpr:
+			if writes[fun.Sel.Name] {
+				t.Errorf("observer calls write operation %s", fun.Sel.Name)
+			}
+		}
+		return true
+	})
 }
