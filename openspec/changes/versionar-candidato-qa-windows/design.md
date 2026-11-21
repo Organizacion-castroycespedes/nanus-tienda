@@ -52,3 +52,11 @@ The change previously set `skip_specs: true` to avoid inventing a product capabi
 ## Independent POS version (C-2)
 
 Every QA candidate from `0.1.1-qa.13` to `0.1.1-qa.18` shipped POS `0.1.0` with different bytes, so any pair among them is a `pos_label_collision` under C-2. The POS version is now independent of the Agent version and has a single source: `desktop/electron/package.json` (`version`). The packaging stage already copies it into `pos-manifest.json` and the installer manifest; the static validator now checks both against that source instead of a hard-coded value. `scripts/pos-version.mjs` retires `0.1.0` and requires a semantic version. The next POS identity is `0.1.1`, which no earlier build used. The frozen qa.18 artifact is unchanged and still ships `0.1.0`; the first candidate with POS `0.1.1` needs a new Agent QA identity and waits for 14.4b.
+
+## qa.19 identity
+
+The first candidate that can form a C-2-compatible pair with the installed Build 07 is `0.1.1-qa.19` with POS `0.1.1`: Build 07 ships POS `0.1.0`, which is retired for new payloads, and the frozen `0.1.1-qa.18` artifact also ships POS `0.1.0`. Only `QA_AGENT_VERSION` changes; the POS version stays in `desktop/electron/package.json`. The artifact is built only from a merged `develop` commit, so its bytes, SHA-256 and identity are fixed once; any rebuild with different bytes moves to the next QA label. Its evidence for an exact approval (installed and candidate payload digests, candidate artifact SHA-256 and QA environment digest) follows `manus-update-evidence/v1` (lifecycle design 5.3).
+
+### Certification build, certification and installation
+
+These are three separate gates. A **certification build** produces the statically validated qa.19 artifact and its build manifest from merged `develop`, without executing it; it is allowed as the 14.4c target before UPDATE is certified. **Certification** is the native 14.4b verification and the 14.4c VM run with that exact artifact and the exact Build 07 source. **Installation** on any host, including the QA terminal, needs both to pass and its own operator approval. No gate relaxes compatibility, identity or security controls: the allowlist stays empty and execution stays disabled until certification evidence exists.
