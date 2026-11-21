@@ -127,8 +127,8 @@ const makeStaticPackageFixture = async (configOverride = {}, { includeClosePolic
   return { root, installerPath, outputName };
 };
 
-test("QA version advances past installed qa.16 and the reserved Build 08 qa.17 identity", () => {
-  assert.equal(QA_AGENT_VERSION, "0.1.1-qa.18");
+test("QA version advances past installed qa.16, Build 08 qa.17 and frozen Build 09 qa.18", () => {
+  assert.equal(QA_AGENT_VERSION, "0.1.1-qa.19");
 });
 
 test("static QA config requires real adapters, no startup discovery, and absent trust material", () => {
@@ -159,7 +159,7 @@ test("static validator certifies a synthetic QA artifact and writes only a sidec
   const fixture = await makeStaticPackageFixture();
   t.after(() => rmSync(fixture.root, { recursive: true, force: true }));
   const result = await validateStaticQaPackage({ root: fixture.root, outputName: fixture.outputName });
-  assert.equal(result.manifest.candidateId, "manus-terminal-0.1.1-qa.18-win-x64");
+  assert.equal(result.manifest.candidateId, "manus-terminal-0.1.1-qa.19-win-x64");
   assert.equal(result.manifest.agent.enableRealAdapters, true);
   assert.equal(result.manifest.agent.discoverOnStartup, false);
   assert.equal(result.manifest.enrollment.status, "BLOCKED");

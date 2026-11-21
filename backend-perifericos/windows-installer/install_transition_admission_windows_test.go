@@ -2167,3 +2167,55 @@ func TestHUWIN144aEvidenceObserverIsReadOnly(t *testing.T) {
 		return true
 	})
 }
+
+// Synthetic eligibility for the planned pair: installed Build 07 Agent 0.1.1-qa.16
+// with POS 0.1.0 to the future candidate 0.1.1-qa.19 with POS 0.1.1. Digests are
+// fixtures; the real values are recorded only after both artifacts are built and
+// observed. The pair is eligible against an exact fixture approval, never
+// executable, and rejected by the empty production allowlist.
+func TestHUWIN144aPlannedQA16ToQA19PairIsEligibleButNotExecutable(t *testing.T) {
+	m, l, approvals, ev := txFixture()
+	a := approvals[0]
+	a.ID = "qa16-to-qa19-synthetic"
+	a.SourceAgent = installTransitionArtifact{Version: "0.1.1-qa.16", PayloadDigest: txDigest("agent-qa16")}
+	a.TargetAgent = installTransitionArtifact{Version: "0.1.1-qa.19", PayloadDigest: txDigest("agent-qa19")}
+	a.SourcePOS = installTransitionArtifact{Version: "0.1.0", PayloadDigest: txDigest("pos-0.1.0-build07")}
+	a.TargetPOS = installTransitionArtifact{Version: "0.1.1", PayloadDigest: txDigest("pos-0.1.1-qa19")}
+	m.Version, m.PosVersion = a.TargetAgent.Version, a.TargetPOS.Version
+	l.VersionRoot = filepath.Join(l.VersionsRoot, a.TargetAgent.Version)
+	l.POSVersionRoot = filepath.Join(l.POSVersionsRoot, a.TargetPOS.Version)
+	sourceRoot := filepath.Join(l.VersionsRoot, a.SourceAgent.Version)
+	ev.InstalledAgent, ev.CandidateAgent = a.SourceAgent, a.TargetAgent
+	ev.InstalledPOS, ev.CandidatePOS = a.SourcePOS, a.TargetPOS
+	ev.AgentCurrent.Target = sourceRoot
+	ev.POSCurrent.Target = filepath.Join(l.POSVersionsRoot, a.SourcePOS.Version)
+	ev.Service.Binary = buildServiceBinaryPath(filepath.Join(sourceRoot, "ManusTerminalSetup.exe"), "service")
+	ev.Registration.Version = a.SourceAgent.Version
+	approved := []installTransitionApproval{a}
+	d, err := classifyInstallTransition(approved, m, l, ev)
+	if err != nil || d.State != installAdmissionUpdate || d.Reason != "approved_exact_pair" || !d.Eligible || d.ExecutionPermitted {
+		t.Fatalf("planned qa.16 to qa.19 pair: decision=%+v error=%v", d, err)
+	}
+	var admission *installAdmissionError
+	if err := requireInstallTransitionExecution(d); !errors.As(err, &admission) || admission.Reason != "update_execution_disabled" {
+		t.Fatalf("execution gate = %v", err)
+	}
+	if d, err := classifyInstallTransition(approvedInstallTransitions, m, l, ev); err == nil || d.Eligible {
+		t.Fatal("the empty production allowlist must reject the planned pair")
+	}
+	plan, err := buildInstallTransitionPlan(d, approved, l)
+	if err != nil || !installTransitionSamePath(plan.SourceAgentRoot, sourceRoot) ||
+		!installTransitionSamePath(plan.TargetPOSRoot, filepath.Join(l.POSVersionsRoot, "0.1.1")) {
+		t.Fatalf("plan roots: %+v %v", plan, err)
+	}
+	// Reusing the frozen qa.18 identity (POS 0.1.0) as target stays a POS label collision.
+	ev.CandidateAgent = installTransitionArtifact{Version: "0.1.1-qa.18", PayloadDigest: txDigest("agent-qa18")}
+	ev.CandidatePOS = installTransitionArtifact{Version: "0.1.0", PayloadDigest: txDigest("pos-0.1.0-build09")}
+	m.Version, m.PosVersion = "0.1.1-qa.18", "0.1.0"
+	l.VersionRoot = filepath.Join(l.VersionsRoot, m.Version)
+	l.POSVersionRoot = filepath.Join(l.POSVersionsRoot, m.PosVersion)
+	d, err = classifyInstallTransition(approved, m, l, ev)
+	if err == nil || d.Eligible {
+		t.Fatalf("qa.18 with POS 0.1.0 must not be admitted: %+v", d)
+	}
+}

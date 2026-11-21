@@ -1,4 +1,4 @@
-export const QA_AGENT_VERSION = "0.1.1-qa.18";
+export const QA_AGENT_VERSION = "0.1.1-qa.19";
 
 export const resolveAgentVersion = ({
   packageVersion,
